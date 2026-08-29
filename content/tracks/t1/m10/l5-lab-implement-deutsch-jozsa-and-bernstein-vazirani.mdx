@@ -1,0 +1,220 @@
+---
+id: t1.m10.l5
+title: "Lab: Implement Deutsch-Jozsa and Bernstein-Vazirani"
+type: lab
+track: t1
+module: t1.m10
+level: L1
+minutes: 40
+objectives:
+  - Build a Deutsch-Jozsa circuit that outputs all zeros exactly when the oracle is constant
+  - Build a Bernstein-Vazirani circuit that outputs the hidden string in one query
+prerequisites:
+  - t1.m10.l4
+sources:
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+tags: [oracle, deutsch-jozsa, bernstein-vazirani, lab]
+---
+
+You have read both algorithms. Now write them, and let the grader disagree with
+you. Every claim these four lessons made is checkable in about forty lines of
+Qiskit, and the two circuits differ by so little that building them side by side
+is the fastest way to see what each one actually exploits.
+
+Both use $n$ query qubits at indices $0$ to $n-1$ and one ancilla at index $n$,
+and both measure only the query qubits. Qubit 0 is the most significant bit, so
+a measured bitstring reads $q_0$ first.
+
+<Margin label="Why an ancilla">
+The oracle is a reversible map $\ket{x}\ket{y} \mapsto \ket{x}\ket{y \oplus f(x)}$.
+The ancilla is the $y$ register. Preparing it in $\ket{-}$ is what turns that
+bit flip into a phase on the query register.
+</Margin>
+
+## The shared skeleton
+
+Both algorithms are the same four steps, and only the oracle differs:
+
+1. Put the ancilla in $\ket{-}$: an $X$ followed by an $H$.
+2. Hadamard every query qubit, producing a uniform superposition over all $2^n$ inputs.
+3. Call the oracle once.
+4. Hadamard every query qubit again, then measure them.
+
+Step 1 is what makes step 3 write into the phase rather than into the ancilla.
+With the ancilla in $\ket{-}$,
+
+$$
+U_f \ket{x}\ket{-} = (-1)^{f(x)} \ket{x}\ket{-},
+$$
+
+so the ancilla comes out untouched and the query register picks up a sign that
+depends on $f$. That is phase kickback, and it is the entire trick.
+
+## Task
+
+Implement two functions.
+
+```python
+def dj_circuit(n: int, oracle: QuantumCircuit) -> QuantumCircuit:
+    """Deutsch-Jozsa on n query qubits plus one ancilla at index n."""
+
+def bv_circuit(s: str) -> QuantumCircuit:
+    """Bernstein-Vazirani for the hidden string s, read with qubit 0 first."""
+```
+
+`dj_circuit` receives the oracle already built, as an $(n+1)$-qubit circuit you
+compose onto yours. `bv_circuit` builds its own oracle from `s`: for the inner
+product $f(x) = s \cdot x \bmod 2$, that is one CNOT from query qubit $i$ to the
+ancilla for each position where $s_i = 1$, and nothing at all where $s_i = 0$.
+
+<Callout tone="gotcha" title="The indexing trap">
+`s[0]` is the most significant bit and belongs to qubit 0. Qiskit numbers its
+qubits the other way round, so if you write your circuit directly in Qiskit and
+read the counts back without care, you will recover the reverse of the string
+and every test will fail on symmetric inputs while passing on palindromes. Lesson
+T0.M5.L3 covers this conversion in full.
+</Callout>
+
+## What correct looks like
+
+Deutsch-Jozsa is deterministic. A constant oracle sends every amplitude back to
+the all-zero string; a balanced one sends none of it there. On two query qubits
+with the balanced oracle $f(x) = x_0 \oplus x_1$, the outcome is $11$ with
+certainty:
+
+<Simulate
+  show={['probabilities', 'qasm']}
+  caption="Deutsch-Jozsa with the balanced oracle f(x) = x0 XOR x1. All the weight lands on 11."
+  ir={{
+    version: 1,
+    name: "deutsch-jozsa-balanced",
+    qubits: 3,
+    clbits: 2,
+    ops: [
+      { id: "x", gate: "x", targets: [2] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "o0", gate: "x", targets: [2], controls: [0] },
+      { id: "o1", gate: "x", targets: [2], controls: [1] },
+      { id: "h0b", gate: "h", targets: [0] },
+      { id: "h1b", gate: "h", targets: [1] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $00$ | $0.000000$ |
+| $11$ | $1.000000$ |
+
+</Simulate>
+
+Swap the oracle for a constant one, meaning do nothing to the ancilla at all, and
+every shot returns $00$ instead. There is no middle ground: any nonzero
+probability on a mixture of outcomes means your circuit is wrong, not that the
+oracle was borderline.
+
+Bernstein-Vazirani is the same skeleton with the inner-product oracle, and it
+returns the hidden string itself. For $s = 1011$:
+
+<Simulate
+  show="probabilities"
+  caption="Bernstein-Vazirani recovers s = 1011 from a single oracle query."
+  ir={{
+    version: 1,
+    name: "bernstein-vazirani-1011",
+    qubits: 5,
+    clbits: 4,
+    ops: [
+      { id: "x", gate: "x", targets: [4] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "h3", gate: "h", targets: [3] },
+      { id: "h4", gate: "h", targets: [4] },
+      { id: "o0", gate: "x", targets: [4], controls: [0] },
+      { id: "o2", gate: "x", targets: [4], controls: [2] },
+      { id: "o3", gate: "x", targets: [4], controls: [3] },
+      { id: "h0b", gate: "h", targets: [0] },
+      { id: "h1b", gate: "h", targets: [1] },
+      { id: "h2b", gate: "h", targets: [2] },
+      { id: "h3b", gate: "h", targets: [3] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] },
+      { id: "m2", gate: "measure", targets: [2], cbits: [2] },
+      { id: "m3", gate: "measure", targets: [3], cbits: [3] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $1011$ | $1.000000$ |
+
+</Simulate>
+
+Note that the oracle has a CNOT exactly where $s$ has a 1: positions 0, 2 and 3.
+Position 1 is untouched, and qubit 1 duly comes back as 0.
+
+<Check question="Classically, how many queries does it take to learn an n-bit hidden string s, and why does one quantum query suffice?">
+Classically you need $n$ queries: each one returns a single bit, $s \cdot x$, and
+$n$ independent bits of information require $n$ answers. Querying $x = 100\ldots0$
+gives $s_0$, and so on down the register.
+
+The quantum circuit queries every $x$ at once in superposition. Phase kickback
+writes $(-1)^{s \cdot x}$ onto each branch, which is precisely the Fourier
+transform of $s$ over $\mathbb{Z}_2^n$. The final layer of Hadamards inverts that
+transform, and the string falls out with certainty. The information was never
+compressed; it was moved into a basis where one measurement reads it all.
+</Check>
+
+## Grading
+
+The public tests check the two cases above. The hidden tests add: a constant
+oracle that inverts the ancilla rather than leaving it alone, which must still
+give all zeros; balanced oracles on three and four query qubits; hidden strings
+with leading and trailing zeros, which catch reversed indexing; and a resource
+bound of one oracle call, because an implementation that calls the oracle $n$
+times will otherwise pass on correctness and miss the entire point.
+
+<Solution>
+```python
+from qiskit import QuantumCircuit
+
+
+def dj_circuit(n: int, oracle: QuantumCircuit) -> QuantumCircuit:
+    qc = QuantumCircuit(n + 1, n)
+    qc.x(n)                      # ancilla to |1>
+    qc.h(range(n + 1))           # ancilla to |->, queries to uniform superposition
+    qc.compose(oracle, inplace=True)
+    qc.h(range(n))               # invert the transform on the query register only
+    qc.measure(range(n), range(n))
+    return qc
+
+
+def bv_circuit(s: str) -> QuantumCircuit:
+    n = len(s)
+    qc = QuantumCircuit(n + 1, n)
+    qc.x(n)
+    qc.h(range(n + 1))
+    # s[0] is the most significant bit and belongs to qubit 0.
+    for i, bit in enumerate(s):
+        if bit == '1':
+            qc.cx(i, n)
+    qc.h(range(n))
+    qc.measure(range(n), range(n))
+    return qc
+```
+
+The two bodies are identical apart from the oracle, which is the point worth
+taking away: Deutsch-Jozsa and Bernstein-Vazirani are one algorithm asked two
+different questions. Simon's algorithm, from the previous lesson, is the same
+skeleton again over a larger group, and the quantum Fourier transform in T2 is
+what generalises the final Hadamard layer beyond $\mathbb{Z}_2^n$.
+</Solution>
