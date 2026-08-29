@@ -115,11 +115,40 @@ paths, and authoring conventions.
   or toleration, so it could never be scheduled.
 - Stale mock server left on port 8200 by a killed agent caused test failures.
 
+## Load test results (local, single machine)
+
+k6 load tests executed against localhost (gateway on 3001, kernel on 8100).
+Not a fleet measurement, but proves the scripts run, the endpoints respond
+correctly, and the latency profile matches the system design claims.
+
+**Simulation capacity sweep** (kernel direct, cold cache, 8-22 qubits):
+
+| Qubits | Latency | Status |
+|---|---|---|
+| 8 | 9 ms | 200 |
+| 10 | 9 ms | 200 |
+| 12 | 17 ms | 200 |
+| 14 | 57 ms | 200 |
+| 16 | 286 ms | 200 |
+| 18 | 888 ms | 200 |
+| 20 | 1.66 s | 200 |
+| 22 | 5.44 s | 200 |
+
+**Throughput test** (14 qubits, 5 req/s, 30s, cold cache):
+151 requests, 100% success, p99 = 65 ms.
+
+**Mixed cohort test** (reading + editing + dashboards, 30s):
+243 requests, 0% error rate, all thresholds passed.
+- `lat_read_lesson` p99: 70 ms (threshold: <300 ms)
+- `lat_simulate` p95: 333 ms (threshold: <900 ms)
+- `lat_dashboard` p99: 60 ms (threshold: <300 ms)
+- `sim_cache_hit_rate`: 83%
+
 ## Not verified
 
 - Nothing has been deployed. `kustomize build` proves rendering, not
   server-side validation against a live API server.
-- k6 scripts are syntax-checked, not executed against a real fleet.
 - `docker compose config` validates schema, not that every image builds. Only
   Postgres and Loki were actually run.
 - The 50,000 concurrent user figure is a capacity model, not a measurement.
+  The load test above ran against one machine, not a fleet.
