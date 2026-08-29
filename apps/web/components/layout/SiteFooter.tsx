@@ -6,16 +6,13 @@ const COLUMNS = [
     links: [
       { href: '/curriculum', label: 'Curriculum' },
       { href: '/roadmaps', label: 'Roadmaps' },
-      { href: '/placement', label: 'Placement test' },
-      { href: '/glossary', label: 'Glossary' },
+      { href: '/dashboard', label: 'Your progress' },
     ],
   },
   {
     title: 'Build',
     links: [
       { href: '/lab', label: 'Circuit lab' },
-      { href: '/labs', label: 'Autograded labs' },
-      { href: '/algorithms', label: 'Algorithm catalogue' },
     ],
   },
   {
@@ -29,9 +26,7 @@ const COLUMNS = [
   {
     title: 'Institutions',
     links: [
-      { href: '/teams', label: 'For teams' },
-      { href: '/campus', label: 'For campuses' },
-      { href: '/instructors', label: 'Instructor tools' },
+      { href: '/pricing', label: 'Teams and Campus' },
     ],
   },
 ];

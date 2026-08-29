@@ -1,0 +1,196 @@
+---
+id: t2.m1.l1
+title: Oracles and How to Build One
+type: concept
+track: t2
+module: t2.m1
+level: L2
+minutes: 12
+objectives:
+  - Define the standard oracle U_f |x>|y> = |x>|y xor f(x)> and show it is unitary for every Boolean f
+  - Compile a small Boolean function into a reversible circuit using Toffoli gates and one ancilla
+  - Explain why the ancilla must be uncomputed before the oracle is called inside a larger algorithm
+prerequisites:
+  - t0.m6.l3
+  - t1.m4.l6
+  - t1.m10.l1
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: Watrous, Quantum Computation lecture notes
+    url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [oracle, reversibility]
+---
+
+Every algorithm in this track is stated against a black box, so the first
+question is what a black box even is when the thing querying it is a quantum
+computer. A classical subroutine takes $x$ and returns $f(x)$, destroying $x$ on
+the way. A unitary cannot do that: unitaries are invertible, and a map that
+forgets its input is not. The standard fix is one line long, and the rest of this
+lesson is the price you pay for it.
+
+## The standard oracle
+
+Fix $f: \{0,1\}^n \to \{0,1\}$. The **standard oracle** for $f$ acts on $n$ query
+qubits and one target qubit as
+
+$$
+U_f \ket{x}\ket{y} = \ket{x}\ket{y \oplus f(x)} .
+$$
+
+It keeps the input and writes the answer into a target by XOR rather than by
+overwrite. Three facts follow immediately.
+
+It is a permutation of the computational basis, so its matrix has exactly one 1
+in each row and each column: unitary, for every $f$, with no conditions on $f$
+at all. It is its own inverse, since $y \oplus f(x) \oplus f(x) = y$, so
+$U_f^2 = I$ and $U_f\dg = U_f$. And it is linear, which is the only interesting
+part: apply it to a superposition of inputs and you get
+
+$$
+U_f \left( \frac{1}{\sqrt{2^n}} \sum_x \ket{x} \right)\ket{0}
+= \frac{1}{\sqrt{2^n}} \sum_x \ket{x}\ket{f(x)} .
+$$
+
+<Margin label="One query, not $2^n$">
+That state contains every value of $f$, which tempts people to say the computer
+evaluated $f$ on all inputs at once. It did not do anything of the kind. Measure
+it and you get one random pair $(x, f(x))$, which is exactly what one classical
+query gives you. Everything in this track is about arranging *interference* so
+that a global property of $f$ concentrates on one measurement outcome.
+</Margin>
+
+Take $f(x_0, x_1) = x_0 \wedge x_1$ on two query qubits, target on qubit 2. The
+oracle is a single Toffoli, and running it on the uniform superposition of
+inputs gives four equally weighted branches whose target bit records the answer.
+
+<Circuit
+  caption="U_f for f = x0 AND x1 is one Toffoli. The target bit is 1 only in the branch |11>, so the surviving strings are 000, 010, 100 and 111."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "and-oracle",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "o", gate: "x", targets: [2], controls: [0, 1] }
+    ]
+  }}
+/>
+
+Four strings at $0.25$ each, and reading the last bit of each tells you the truth
+table: $f(00) = f(01) = f(10) = 0$ and $f(11) = 1$.
+
+## Compiling a function into gates
+
+A real oracle is not handed to you; you compile it. The recipe is the one from
+T0.M6.L3, and it has three steps.
+
+**Write $f$ as a reversible classical circuit.** Every Boolean function is a
+composition of NOT, AND and XOR. NOT is $X$. XOR into a fresh wire is CNOT. AND
+into a fresh wire is Toffoli. Nothing else is needed, because Toffoli alone is
+universal for reversible computation.
+
+**Give yourself scratch space.** A three-way AND needs a place to put the
+two-way AND first. Compute $x_0 \wedge x_1$ into an ancilla $a$ with one Toffoli,
+then $a \wedge x_2$ into the target with a second. In general a formula of size
+$s$ compiles to $O(s)$ Toffolis and $O(s)$ ancillas.
+
+**Uncompute the scratch space.** Run the ancilla-producing gates again in reverse
+order. Toffoli is its own inverse, so the second copy resets $a$ to $\ket{0}$
+while leaving the target alone. The whole thing costs a factor of two in gates
+and buys back every ancilla.
+
+<Callout tone="note" title="Bennett's trick, stated once">
+Compute, copy out, uncompute. If $C$ is a circuit with $C\ket{x}\ket{0}_a =
+\ket{x}\ket{g(x)}_a$ where $g(x)$ contains $f(x)$ somewhere, then
+$C\dg \cdot \mathrm{CNOT}_{a \to y} \cdot C$ implements $U_f$ exactly, with the
+ancillas returned to $\ket{0}$. Time doubles, space is recycled. This is the
+standard construction behind every "and therefore $f$ has an oracle" sentence in
+the literature.
+</Callout>
+
+## Why uncomputation is not optional
+
+Here is the failure you will meet if you skip step three. Take the same
+$f = x_0 \wedge x_1$, but this time compute it into an ancilla on qubit 3, XOR
+that ancilla into the target on qubit 2, uncompute, and finish with Hadamards on
+the query register. The target starts in $\ket{-}$, so kickback turns the oracle
+into the sign $(-1)^{f(x)}$.
+
+<Circuit
+  caption="Compute, copy out, uncompute. Qubit 3 is returned to |0>, so the final Hadamards see a clean phase state and every query string ends up equally likely."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "clean-ancilla",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "x2", gate: "x", targets: [2] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "c", gate: "x", targets: [3], controls: [0, 1] },
+      { id: "cp", gate: "x", targets: [2], controls: [3] },
+      { id: "u", gate: "x", targets: [3], controls: [0, 1] },
+      { id: "g0", gate: "h", targets: [0] },
+      { id: "g1", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+Eight strings at $12.5\%$, all of them ending in $0$ on qubit 3. Summing the two
+target values, each of the four query strings $z$ carries probability $0.25$.
+
+Now delete the uncompute gate and change nothing else.
+
+<Circuit
+  caption="The same circuit with the uncompute omitted. Qubit 3 still records which branch was the AND branch, and the interference is destroyed."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "dirty-ancilla",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "x2", gate: "x", targets: [2] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "c", gate: "x", targets: [3], controls: [0, 1] },
+      { id: "cp", gate: "x", targets: [2], controls: [3] },
+      { id: "g0", gate: "h", targets: [0] },
+      { id: "g1", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+The distribution has collapsed onto $\ket{0000}$ and $\ket{0010}$ at $28.125\%$
+each, so the query string $00$ now carries $0.625$ and the other three carry
+$0.125$. Nothing was measured. The ancilla simply *records* which branch took the
+AND, and a record is as good as a measurement: branches that differ in the
+ancilla can no longer cancel. Every quantum speedup in this track is a
+cancellation, so leaving scratch space behind does not degrade the algorithm, it
+deletes it.
+
+<Check question="You are handed a circuit $C$ that computes $f$ into an ancilla and leaves three other ancillas in arbitrary $f$-dependent states. Can you still build $U_f$ from it, and at what cost?">
+Yes. Apply $C$, CNOT the answer ancilla onto the target, then apply $C\dg$. The
+three garbage ancillas are restored to $\ket{0}$ by $C\dg$ along with everything
+else, because $C\dg C = I$ regardless of what $C$ computed. The cost is two calls
+to $C$ plus one CNOT, and the ancillas must be clean *before* $C$ runs, which is
+why they are called clean ancillas. You do not need to know what the garbage was.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), for the
+  query-model framing and the insistence that a superposition query is one query.
+- [Watrous, Quantum Computation notes](https://cs.uwaterloo.ca/~watrous/QC-notes/),
+  for the standard-oracle definition used throughout this track.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 3.2.5, for Bennett's compute-copy-uncompute construction.

@@ -1,0 +1,652 @@
+questions:
+  - id: iq-141
+    title: Design a quantum computing platform end to end
+    kind: system-design
+    prompt: |
+      You are the first platform engineer at a company that owns one 27-qubit
+      superconducting device sitting in a lab. Today the only software is a
+      folder of Python scripts that a physicist runs by hand, and a run takes
+      whatever the instrument driver feels like taking. In eighteen months the
+      company must serve 200 external users who submit circuits over the
+      internet, get results back, and never touch the lab. Sketch the whole
+      stack, layer by layer, and say what each layer owns. Name the one
+      interface you would freeze first and defend that choice. Assume a team of
+      eight engineers and no budget for a second device.
+    difficulty: easy
+    pattern: Full-stack quantum platform design
+    topics: [platform-architecture, layering, intermediate-representation, control-stack]
+    companies: [IBM, Rigetti, IonQ, Quantinuum]
+    modelAnswer: |
+      The decision that matters is where you cut the stack in two, and the cut
+      goes at a serialised intermediate representation plus a job queue.
+      Everything above that line is ordinary stateless cloud software that can
+      be scaled, redeployed and rolled back at will. Everything below it is a
+      hard real-time system attached to one irreplaceable piece of physics that
+      cannot be scaled at all. Teams that fail to draw this line end up with
+      an HTTP handler that reaches into an instrument driver, and then a web
+      deploy can take the fridge down.
+
+      The layers, top to bottom, with the owner of each:
+
+          Layer                What it owns                     Runs where
+          -------------------  -------------------------------  ------------
+          SDK                  Circuit construction, user API    User machine
+          Submission API       Auth, quota, validation, job id   Cloud
+          Compiler service     Layout, routing, basis, schedule  Cloud
+          Job queue            Ordering, fairness, retries       Cloud
+          Runtime / sequencer  Pulse program upload, execution   Lab rack
+          Control electronics  AWG waveforms, digitiser capture  Lab rack
+          Calibration service  Device parameters, drift, health  Lab, published
+          Result service       Counts, metadata, retention       Cloud
+
+      Freeze the IR first, not the REST API. The REST API can be versioned
+      cheaply because it is a thin envelope, but the IR is the contract between
+      three groups who otherwise cannot ship independently: the SDK team, the
+      compiler team, and the control team. Take OpenQASM 3 as the human-facing
+      form and a compact binary form for the wire, and require that both round
+      trip through the same parser. The rule to enforce from day one is that the
+      compiler service never sees a Python object and the control rack never
+      sees a compiler pass. If a physicist needs a feature, it arrives as an IR
+      extension with a version bump, not as a special case in a driver.
+
+      Sizing, so the plan is not vibes. 200 users submitting a job every few
+      minutes during working hours is roughly 1 job per second at peak, which is
+      nothing for the cloud tier: two API pods and two compiler pods carry it
+      with room to spare. The bottleneck is the single device. A 27-qubit job of
+      a few hundred gates with 4096 shots takes of order 2 to 10 seconds of
+      device time once you include the repetition delay needed to let qubits
+      relax, which at a 200 microsecond reset budget is about 0.8 seconds of
+      pure idling for 4096 shots. Call it 10 seconds per job, and one device
+      serves at most about 8600 jobs per day even with perfect packing. That
+      number, not the web tier, is what you tell the sales team.
+
+      The trade-off I accepted: freezing the IR early slows the physicists down.
+      They will want to try a pulse shape that the IR cannot express, and the
+      honest answer is that they get a separate lab-only path that bypasses the
+      queue during maintenance windows, and anything they want in production
+      goes through an IR version bump. If the company were still doing pure
+      physics research with no external users, I would decide the other way and
+      keep the scripts, because a frozen interface is pure cost until there is a
+      second consumer of it.
+    followUps:
+      - Where do you put the queue, and what happens to in-flight jobs when the device goes down for a calibration?
+      - What is the smallest set of metadata you must attach to a result so it is still interpretable in a year?
+      - Which layer would you outsource first if the team were four engineers rather than eight?
+    commonMistakes:
+      - Letting the web tier talk to instrument drivers directly, so a routine cloud deploy can interrupt an experiment or leave the sequencer in an undefined state.
+      - Versioning the REST API carefully while leaving the circuit representation as an unversioned pickle, which makes every result older than the last release uninterpretable.
+      - Sizing the platform from user counts rather than from device seconds, which produces a plan that is comfortable everywhere except at the only resource that is actually scarce.
+    references:
+      - label: OpenQASM 3 language specification
+        url: https://openqasm.com/
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+
+  - id: iq-142
+    title: Choose the intermediate representation for the whole platform
+    kind: system-design
+    prompt: |
+      Your platform must accept circuits written in three SDKs, compile them
+      once, and run them on two device families with different native gate sets
+      and different control hardware. The team is arguing between three options:
+      keep everything as the primary SDK's own circuit objects, adopt OpenQASM 3
+      as the single interchange format, or adopt QIR and lean on LLVM. Pick one,
+      or pick a combination, and defend it. You must say explicitly what
+      information the representation has to carry beyond gates, and what
+      happens at each boundary crossing. Assume you will add a third device
+      family in two years.
+    difficulty: medium
+    pattern: Full-stack quantum platform design
+    topics: [intermediate-representation, openqasm, qir, compiler-boundaries, interoperability]
+    companies: [Microsoft Azure Quantum, IBM, Quantinuum, Classiq]
+    modelAnswer: |
+      Use two representations, not one, and be deliberate about which is which.
+      OpenQASM 3 is the interchange and archival format at the platform edge.
+      A typed internal IR, QIR if you want the LLVM tooling or your own if you
+      do not, is the compilation format inside the compiler service. The single
+      most common failure is trying to make one format serve both roles: an
+      interchange format optimised for stability and human readability makes a
+      poor compiler IR, and a compiler IR that changes with every pass makes a
+      terrible archival record.
+
+      What the representation must carry beyond a gate list:
+
+          Classical control flow: if, while, and mid-circuit branching, because
+          a device that supports dynamic circuits cannot be described by a gate
+          list at all.
+          Timing: explicit delays and barriers, since a scheduled circuit and
+          an unscheduled one are different programs on real hardware.
+          Qubit identity: logical index, and after layout, the physical qubit
+          it was mapped to, kept side by side so results can be relabelled.
+          Parameters: symbolic, not substituted, so a variational sweep is one
+          compiled artefact rather than a thousand.
+          Provenance: SDK name and version, compiler version, target name,
+          calibration snapshot id.
+
+      That last line is the one candidates forget and the one operations teams
+      care about most. A result without the calibration snapshot id is a number
+      you cannot defend six months later.
+
+      The boundaries and what happens at each:
+
+          SDK -> platform edge:  export to OpenQASM 3, validated against a
+                                 schema, rejected with a line number if bad.
+          Edge -> compiler:      parse once into the internal IR, attach the
+                                 target description, run passes.
+          Compiler -> runtime:   lower to a device program: a pulse schedule or
+                                 a sequencer instruction stream, plus the qubit
+                                 mapping table.
+          Runtime -> results:    counts keyed by logical qubit order, with the
+                                 mapping applied, never raw physical order.
+
+      Why not the primary SDK's objects: they change on the SDK's release
+      schedule, not yours, and they encode that SDK's conventions, including its
+      bit ordering. RedQuant uses qubit 0 as the most significant bit; Qiskit
+      does not. If the SDK object is your interchange format, that convention
+      leaks into your storage and you will silently mislabel results forever.
+      Why not QIR alone: it is an excellent compilation and hybrid-program IR
+      and it is not something a physicist can read in a bug report, and a
+      platform whose only artefact is LLVM bitcode has no debuggable surface.
+
+      Adding the third device family in two years is the test. With this split,
+      it costs a new target description and a new lowering backend, and zero
+      changes above the compiler. With SDK objects as the IR, it costs a fork of
+      the whole path.
+
+      The trade-off: two representations means a translation layer and a class
+      of bugs that live only in translation, which you pay for with a round-trip
+      property test on every build, generating random circuits and asserting
+      that QASM to IR to QASM is the identity on semantics. If the platform only
+      ever had one device family and one SDK, the second representation would be
+      pure overhead and I would keep the single format.
+    followUps:
+      - How do you represent a parametrised circuit so a 1000-point sweep compiles once rather than 1000 times?
+      - What is your migration plan when OpenQASM adds a feature your internal IR cannot express?
+      - How would you prove a lowering backend correct for a new device family before it ever touches hardware?
+    commonMistakes:
+      - Substituting numeric parameters at export time, which turns one variational job into thousands of distinct compilations and destroys the compile cache hit rate.
+      - Storing results in physical qubit order because that is what the hardware returned, leaving every downstream consumer to reapply a mapping they may not have.
+      - Adopting a compiler IR as the archival format, so a compiler refactor makes last year's stored programs unreadable.
+    references:
+      - label: OpenQASM 3 language specification
+        url: https://openqasm.com/
+      - label: QIR Alliance
+        url: https://qir-alliance.org/
+
+  - id: iq-143
+    title: Tier the simulation backend behind a single platform API
+    kind: system-design
+    prompt: |
+      Your platform exposes one endpoint that runs a circuit, and users do not
+      want to think about which engine served it. Behind that endpoint you have
+      a browser simulator, a CPU statevector simulator, a GPU statevector
+      simulator, a tensor network engine, a stabilizer simulator, and real
+      hardware. Design the routing policy. The constraints stated out loud:
+      a synchronous request must answer within 2 seconds or be converted into a
+      job, users must never get a silently wrong answer because a cheaper engine
+      was picked, and the cost per request must be bounded. Say what you
+      inspect about the circuit before you choose.
+    difficulty: medium
+    pattern: Full-stack quantum platform design
+    topics: [backend-routing, simulator-tiering, admission-control, cost-control]
+    companies: [IBM, AWS Braket, Xanadu, Q-CTRL]
+    modelAnswer: |
+      The decision that matters is that engine selection is an admission
+      control problem, not a heuristic. Compute a cost estimate before you
+      allocate anything, compare it against the caller's budget, and refuse or
+      downgrade explicitly. Choosing an engine after you have already started
+      allocating memory is how a 30-qubit request takes a node down.
+
+      What you inspect, in this order, because each test is cheap and each one
+      can settle the question outright:
+
+          1. Qubit count n. Memory for a dense statevector is 2^n * 16 bytes at
+             complex128: n=20 is 16 MiB, n=24 is 256 MiB, n=30 is 16 GiB,
+             n=32 is 64 GiB. This is a hard wall, not a preference.
+          2. Gate set. If every gate is Clifford and the measurements are in
+             the computational basis, route to the stabilizer simulator, which
+             is polynomial in n and will happily do 5000 qubits.
+          3. Treewidth proxy. For a shallow or geometrically local circuit,
+             estimate the contraction cost of the tensor network. If the
+             estimated contraction is below the statevector cost, use it.
+          4. Noise model. A density matrix needs 2^(2n) amplitudes, so n=14 is
+             already 4 GiB. Trajectory sampling trades that back for shots.
+          5. Non-unitary features: mid-circuit measurement, classical feedback,
+             reset. These disqualify several engines outright.
+
+      The routing table that falls out, with the latency each tier is allowed:
+
+          Tier         Engine                Range              Budget
+          -----------  --------------------  -----------------  ---------
+          Client       Browser statevector   n <= 14, no noise  under 10 ms
+          Sync CPU     NumPy statevector     15 to 26 qubits    under 2 s
+          Sync special Stabilizer            any n, Clifford    under 2 s
+          Async GPU    GPU statevector       27 to 32 qubits    seconds
+          Async TN     Tensor network        low treewidth      minutes
+          Hardware     QPU                   device dependent   queued
+
+      Anything whose estimate exceeds the synchronous budget returns 202 with a
+      job id rather than blocking a connection for 40 seconds. That conversion
+      point is the reason the endpoint can be one endpoint.
+
+      Never silently wrong is the constraint that shapes the rest. Two rules
+      enforce it. First, a downgrade that changes semantics is always visible:
+      if the request asked for a noisy simulation and you served a trajectory
+      approximation with 1000 trajectories, the response says so and carries the
+      resulting statistical error. Second, an engine may only be selected if it
+      is exact for the circuit as written, or if the approximation is declared
+      in the response with a bound. A tensor network contraction truncated to
+      bond dimension 128 is an approximation and must be labelled as one.
+
+      Cost bounding: price every request in a single unit before it runs. A
+      workable formula is credits = ceil(2^(n-16)) * (shots / 1024) *
+      engine_multiplier, debited in the same transaction that enqueues the job,
+      so a job can never execute uncharged. Cache on
+      sha256(canonical_ir, engine, shots, noise_model, seed); on a teaching or
+      benchmarking workload the same circuit is submitted by many users and the
+      hit rate is high enough to move the fleet size.
+
+      The trade-off: the estimator will sometimes be wrong, and a circuit whose
+      true contraction cost blows past the estimate will be killed mid-run,
+      which looks to the user like a failure rather than a refusal. I accept
+      that because the alternative, optimistic execution, converts a bad
+      estimate into an out-of-memory event on a shared node, which hurts every
+      other tenant instead of just one. If every user had a dedicated node I
+      would loosen this and let them fail alone.
+    followUps:
+      - How do you estimate tensor network contraction cost cheaply enough to run it on every request?
+      - What do you return when the only engine that can serve a request is one the caller has no entitlement for?
+      - How would you A/B test a new routing policy without exposing users to worse latency?
+    commonMistakes:
+      - Selecting the engine after allocation has begun, so a bad estimate becomes an out-of-memory kill that takes other tenants down with it.
+      - Serving an approximate tensor network result without reporting the truncation, which is the definition of a silently wrong answer.
+      - Assuming stabilizer simulation is a fallback for hard circuits. It is exact and fast only for Clifford circuits, and adding a handful of T gates makes it exponential in the T count.
+    references:
+      - label: Qiskit Aer simulator documentation
+        url: https://qiskit.github.io/qiskit-aer/
+      - label: Stim, a fast stabilizer circuit simulator
+        url: https://github.com/quantumlib/Stim
+
+  - id: iq-144
+    title: Design entitlements and quotas for a quantum cloud product
+    kind: system-design
+    prompt: |
+      Your platform has a free tier, a paid research tier, and enterprise
+      contracts. The scarce resources are device seconds on two QPUs, GPU hours
+      on the simulator fleet, and inference spend on an AI assistant that
+      explains results. Design the entitlement and quota system. Constraints
+      stated out loud: a feature check must never call the payment provider, a
+      user must never be able to consume a resource they have not been charged
+      for, and an enterprise customer with a prepaid block must be able to see
+      exactly where their block went. Say what you store and where.
+    difficulty: medium
+    pattern: Full-stack quantum platform design
+    topics: [entitlements, quotas, metering, billing, capacity-planning]
+    companies: [IBM, AWS Braket, Microsoft Azure Quantum, Terra Quantum]
+    modelAnswer: |
+      The decision that matters is that entitlement is a pure function of a
+      locally stored subscription state, and the ledger that records consumption
+      is append-only and written in the same transaction as the job enqueue.
+      Those two choices, taken together, satisfy all three stated constraints
+      and almost nothing else does.
+
+      Entitlements. Store a single row per principal in an entitlements table
+      that is derived from subscription state by a reconciler, never read live
+      from the payment provider. The gateway loads it once per session and
+      caches it. A feature check is then a map lookup, which costs microseconds
+      and, importantly, keeps working when the payment provider is down. Webhook
+      events from the provider are idempotent, keyed on the provider's event id
+      with a unique index, and a nightly job replays provider state and diffs it
+      against the table so drift is detected rather than discovered by a user.
+
+      Metering. Define one unit per scarce resource and refuse to define more:
+
+          Resource         Unit                  Charged on
+          ---------------  --------------------  ---------------------------
+          QPU              device milliseconds   Actual execution window
+          Simulator        credits, formula      Enqueue, refunded on failure
+          AI assistant     tokens                Streamed, capped per hour
+
+      The credits formula for simulation should be predictable enough that a
+      user can compute it before submitting: ceil(2^(n-16)) * (shots / 1024) *
+      engine_multiplier. Predictability matters more than precision here, since
+      a bill nobody can predict generates support tickets that cost more than
+      the compute.
+
+      Never consume uncharged. Debit the ledger and enqueue the job inside one
+      database transaction. If the debit fails the job does not exist; if the
+      enqueue fails the debit rolls back. For the QPU, where the true cost is
+      known only after execution, reserve an upper bound at enqueue and settle
+      the difference at completion, which is the same hold-and-capture pattern
+      card networks use. Partial execution is the interesting case: if a job ran
+      3000 of 4096 shots before the device faulted, charge for 3000 and return
+      the partial counts flagged as partial, because throwing away paid-for
+      shots is worse for the customer than a labelled partial result.
+
+      Enterprise visibility. The ledger is append-only with one row per debit
+      and credit, carrying job id, resource, quantity, unit price and a
+      timestamp, and the balance is a materialised aggregate that can always be
+      rebuilt by replaying the ledger. That rebuild is the audit story: when a
+      customer disputes a number you replay their block from zero and show them
+      the line items. A mutable balance column with no ledger behind it cannot
+      answer that question at any price.
+
+      Quota enforcement sits at the gateway as a token bucket in Redis with a
+      Lua script, per principal and per organisation, so a single runaway script
+      inside an enterprise cannot exhaust the whole block in an hour. Reasonable
+      starting limits: reads 120 per 10 seconds, simulator submissions 30 per
+      minute on free and 240 per minute on paid, QPU submissions 6 per minute,
+      and a hard daily ceiling on assistant tokens.
+
+      The trade-off: the reconciler means entitlements can lag the payment
+      provider by up to one reconciliation interval, so a customer who upgrades
+      may wait seconds to minutes for the new limits unless the webhook path is
+      healthy. I accept that because the alternative, checking live, makes every
+      page load depend on a third party's availability. If the product were
+      transactional, one-off purchases rather than subscriptions, I would decide
+      the other way and check at purchase time.
+    followUps:
+      - How do you handle a job that fails because of a hardware fault rather than the user's circuit, and who pays?
+      - What does a fair overage policy look like when the underlying resource cannot be scaled at all?
+      - How would you expose a dry-run endpoint that returns the cost of a job without running it?
+    commonMistakes:
+      - Reading subscription state from the payment provider on the request path, which couples a feature check to a third party's uptime.
+      - Keeping a mutable balance with no ledger, so a billing dispute cannot be answered and a double-debit bug cannot be detected after the fact.
+      - Charging at completion only, which lets a user with a zero balance queue unlimited work before anyone notices.
+    references:
+      - label: AWS Braket documentation
+        url: https://docs.aws.amazon.com/braket/
+      - label: Redis documentation
+        url: https://redis.io/docs/latest/
+
+  - id: iq-145
+    title: Version the SDK, compiler, firmware and device together
+    kind: system-design
+    prompt: |
+      Four things ship on four different clocks: the user-facing SDK, the
+      compiler service, the control-rack firmware, and the physical device
+      itself, whose properties change every calibration. A user pins an SDK
+      version in their requirements file and expects results to be reproducible.
+      Design the compatibility and release strategy. State explicitly what you
+      guarantee to reproduce, what you refuse to guarantee, and how a user
+      discovers that a result from six months ago cannot be reproduced today.
+      Assume you ship the compiler weekly and recalibrate the device daily.
+    difficulty: hard
+    pattern: Full-stack quantum platform design
+    topics: [versioning, reproducibility, release-engineering, compatibility, provenance]
+    companies: [IBM, Rigetti, Quantinuum, Q-CTRL]
+    modelAnswer: |
+      The decision that matters is to split reproducibility into two promises
+      that are honoured very differently: bitwise reproducibility of the
+      compiled artefact, which you can and should guarantee, and statistical
+      reproducibility of the measured result, which you cannot guarantee and
+      should stop pretending to. Every confused conversation about this topic
+      comes from collapsing the two.
+
+      What you guarantee. Given the same source program, the same compiler
+      version, the same target description and the same seed, the compiler emits
+      a byte-identical device program. That requires three disciplines:
+      every stochastic pass takes an explicit seed and never reads a global RNG,
+      pass output must not depend on iteration order of a hash map, and the
+      target description is content-addressed so that a compile references an
+      immutable snapshot rather than a live device record. Under those rules a
+      compile is a pure function and you can cache it on the hash of its inputs,
+      which is a large practical win as well as a correctness one.
+
+      What you refuse to guarantee. The device has different T1, T2 and per-pair
+      error rates today than it had in March. Two-qubit error rates on
+      superconducting hardware drift enough between calibrations that the best
+      pair last week may not be the best pair today, and a device that reported
+      an average two-qubit error in the low 1e-3 range can show a factor of two
+      spread across pairs on the same day. So the measured counts from March are
+      not reproducible in principle, and the honest guarantee is that you can
+      reproduce the exact program that was run and the exact calibration
+      snapshot under which it was run, so the difference is explainable.
+
+      The mechanism is a provenance record attached to every result:
+
+          sdk_version, compiler_version, pass_manager_preset, seed
+          source_program_hash, compiled_program_hash
+          target_description_id  (immutable, content-addressed)
+          calibration_snapshot_id, calibration_timestamp
+          firmware_version, device_serial
+
+      Six of those are cheap strings. The calibration snapshot is the expensive
+      one: a full snapshot for a 100-qubit device with per-qubit and per-pair
+      parameters is on the order of tens of kilobytes, so a daily snapshot for
+      years is a rounding error in storage, and you should keep every one.
+
+      Compatibility windows. Support the current SDK major version and the one
+      before it, which for a weekly compiler release means the compiler must
+      accept an IR version up to about a year old. Enforce that with a corpus
+      test: keep a frozen set of a few hundred programs at each supported IR
+      version and compile all of them on every build. Firmware is the tight
+      coupling, because a device program references sequencer features that only
+      some firmware has, so the compiled artefact records the minimum firmware
+      version it requires and the runtime refuses to load an artefact that
+      demands more than the rack has. Refusing loudly is much better than
+      loading it and producing pulses that mean something else.
+
+      How the user discovers a stale result. When a result is fetched, compare
+      its calibration_snapshot_id against the current one and return a
+      reproducibility field: identical, same_device_different_calibration, or
+      device_retired. That is a one-line API change that removes an entire class
+      of scientific misunderstanding.
+
+      The trade-off: content-addressed target descriptions and pinned seeds make
+      the compiler less free to improve, because improving a heuristic changes
+      output for everyone who did not pin. I accept that by making the pass
+      manager preset an explicit, versioned name rather than a number, so
+      preset "heavy_hex_v3" keeps behaving like v3 forever and users opt into
+      v4. If the platform were pre-production with no external users, all of
+      this would be premature and I would ship the improvements.
+    followUps:
+      - A user reports that the same job gives different counts on two consecutive days. Walk through your triage using the provenance record.
+      - How do you retire a device without orphaning every stored result that references it?
+      - What is your policy when a compiler bug fix changes the output of a preset that customers have pinned?
+    commonMistakes:
+      - Promising reproducible results rather than reproducible programs, which is a promise physics will break for you on the first recalibration.
+      - Letting a compiler pass read a global random seed, so the same inputs give different artefacts and the compile cache silently becomes useless.
+      - Storing a pointer to the live device record instead of an immutable calibration snapshot, so last month's compile cannot be explained today.
+    references:
+      - label: IBM Quantum transpiler documentation
+        url: https://docs.quantum.ibm.com/guides/transpile
+      - label: OpenQASM 3 language specification
+        url: https://openqasm.com/
+
+  - id: iq-146
+    title: Decide which layers of the stack to build and which to buy
+    kind: system-design
+    prompt: |
+      You are the head of software at a startup with a genuinely novel qubit
+      modality and 30 engineers, of whom 8 write software. You need a working
+      platform in two years, and your differentiation is entirely in the
+      physics, not the software. For each layer, SDK, compiler, control
+      electronics, control software, cloud service, and simulator, decide build,
+      buy, or adopt open source, and defend it. The constraints stated out loud:
+      your gate set is not in anyone's standard basis, your device has a
+      constraint no existing compiler models, and your investors expect a public
+      cloud endpoint before the device is good.
+    difficulty: hard
+    pattern: Full-stack quantum platform design
+    topics: [build-vs-buy, open-source-strategy, control-electronics, team-topology]
+    companies: [Alice & Bob, Atom Computing, Infleqtion, QuEra]
+    modelAnswer: |
+      The decision that matters is to build exactly two things and adopt
+      everything else: the target model plus the passes that encode your unique
+      hardware constraint, and the layer that turns a scheduled circuit into
+      your control hardware's instruction stream. Those two are where your
+      physics lives. Every other layer is a solved problem where the industry
+      has more engineer-years invested than you will ever have, and building
+      them is how eight-person software teams miss two-year deadlines.
+
+      Layer by layer:
+
+          Layer               Decision      Reason
+          ------------------  ------------  -----------------------------------
+          SDK                 Adopt         Users already know Qiskit, Cirq and
+                                            PennyLane; a fourth SDK is a tax on
+                                            adoption, not a feature.
+          IR                  Adopt         OpenQASM 3 in, QIR internally if you
+                                            want LLVM. Extend, do not replace.
+          Compiler frontend   Adopt         Parsing, unrolling and standard
+                                            optimisation are commodity.
+          Compiler backend    Build         Your constraint is here. This is the
+                                            only compiler code you own.
+          Control hardware    Buy           Commercial AWG and digitiser systems
+                                            exist and are good. Building one
+                                            costs years of unrelated engineering.
+          Control software    Build thin    The lowering and sequencing layer is
+                                            yours; the driver layer is vendor.
+          Cloud service       Buy access    List on an existing marketplace to
+                                            get an endpoint fast, then build.
+          Simulator           Adopt         Existing statevector and tensor
+                                            engines, plus your own noise model.
+
+      The two builds, in more detail. Your novel constraint, whatever it is,
+      shows up as a target model the existing compilers cannot express: a
+      connectivity that changes during a circuit, a gate whose fidelity depends
+      on the state of a neighbour, a scheduling rule with a hard dead time.
+      Encode it as a target description plus a small number of passes plugged
+      into an existing pass manager, so you inherit the frontend, the standard
+      optimisations and the test corpus, and you write hundreds of lines rather
+      than tens of thousands. The lowering layer is the second build because no
+      vendor knows what your pulses have to look like, and this is where the
+      abstraction genuinely cannot be bought.
+
+      The investor constraint is the interesting one, because a public endpoint
+      before the device is good is a request to expose something embarrassing.
+      The answer is to expose a simulator with your real noise model behind the
+      same API you will eventually use for hardware, labelled unambiguously as a
+      simulator, with a waitlist for hardware access. This is honest, it is
+      genuinely useful because it lets algorithm partners write code against
+      your constraints a year early, and it makes the hardware launch a config
+      change rather than an integration project. Listing on an existing cloud
+      marketplace gets you queueing, auth, billing and a customer base for the
+      cost of an integration rather than a platform team.
+
+      Team shape follows: of eight software engineers, roughly three on the
+      compiler backend and target model, three on control software and
+      calibration automation, one on the cloud integration and API, and one on
+      test infrastructure and the simulator noise model. Nobody is writing an
+      SDK, a queue, or a billing system.
+
+      The trade-off I accepted: adopting other people's SDKs and cloud means
+      your users' experience is shaped by someone else's roadmap and you have
+      limited ability to expose a feature they do not model. That is a real cost
+      and it will bite the first time your hardware does something interesting
+      that Qiskit has no way to express. I would decide differently if the
+      software were the differentiation, for example if the company were selling
+      a compiler or an orchestration layer, in which case buying the thing you
+      sell is obviously wrong.
+    followUps:
+      - Your unique hardware constraint cannot be expressed in any existing target model. What is the smallest extension that makes it expressible?
+      - When would you reverse the decision to buy control electronics, and what signal tells you the moment has come?
+      - How do you keep a simulator-only public endpoint from setting expectations the hardware will not meet?
+    commonMistakes:
+      - Writing a new SDK because the existing ones do not match the hardware's mental model, which spends a year of the team's capacity on the layer users care least about.
+      - Building control electronics from FPGAs because the commercial units are expensive, which trades a capital cost for a multi-year engineering programme unrelated to the company's differentiation.
+      - Exposing a simulator endpoint without labelling it, which converts an honest early-access strategy into a credibility problem the first time a customer notices.
+    references:
+      - label: Qiskit Aer simulator documentation
+        url: https://qiskit.github.io/qiskit-aer/
+      - label: Azure Quantum documentation
+        url: https://learn.microsoft.com/en-us/azure/quantum/
+
+  - id: iq-147
+    title: Build observability that spans the classical and quantum layers
+    kind: system-design
+    prompt: |
+      A user reports that their variational job "got worse" this week. The same
+      code, the same device, worse energies. Design the observability system
+      that lets an on-call engineer answer that in fifteen minutes. The
+      constraints stated out loud: you may not read the user's circuit contents
+      for privacy reasons, the device team and the platform team are separate
+      organisations with separate tooling, and the answer might be a compiler
+      change, a calibration drift, a queue policy change, or the user's own
+      code. Say what you instrument, what you alert on, and what you do not.
+    difficulty: hard
+    pattern: Full-stack quantum platform design
+    topics: [observability, telemetry, incident-response, drift-detection, slos]
+    companies: [IBM, Google Quantum AI, Q-CTRL, Rigetti]
+    modelAnswer: |
+      The decision that matters is to instrument a small set of device-agnostic
+      quality probes that run continuously on the same hardware as user jobs,
+      and to join them to job telemetry by calibration snapshot id. Without a
+      continuously running reference workload you cannot separate "the device
+      got worse" from "the compiler got worse" from "the user's ansatz got
+      worse", and you will spend the fifteen minutes arguing instead of
+      answering.
+
+      The three data sources, and what each contributes:
+
+          1. System probes, every 30 minutes, on the live device, using the same
+             submission path as users. Randomised benchmarking on a fixed set of
+             pairs, a small set of fixed reference circuits with known exact
+             answers, and readout assignment fidelity. Each probe emits a scalar
+             with an error bar and is tagged with the calibration snapshot id.
+             Cost: a probe suite of a few dozen circuits at 1024 shots is well
+             under a minute of device time per run, so under 5 percent duty.
+          2. Job telemetry, on every user job, with no circuit contents. Qubit
+             count, two-qubit gate count after transpilation, depth, the
+             physical qubits used, shots, queue wait, execution time, compiler
+             version, pass preset, seed, calibration snapshot id, and result
+             entropy. Every one of those is a shape, not a secret.
+          3. Change events. Compiler deploys, queue policy changes, firmware
+             updates, calibration runs, and device maintenance, all on the same
+             timeline with the same clock.
+
+      The triage runbook, in order, which is what makes fifteen minutes
+      realistic:
+
+          Step 1: overlay the user's job timeline with the change events. If a
+          compiler deploy or policy change lands at the inflection point, you
+          have a suspect in 60 seconds.
+          Step 2: pull the system probe series for the physical qubits the
+          user's jobs actually used. If the probes degraded on those qubits and
+          not others, it is a device or calibration issue and the device team
+          owns it.
+          Step 3: compare the transpiled two-qubit gate count and depth before
+          and after. If the same source now compiles to 40 percent more
+          two-qubit gates, it is a layout or routing regression, and you can see
+          that without reading a single gate of the user's circuit.
+          Step 4: if probes are flat, gate counts are flat, and no change events
+          line up, it is the user's code or their optimiser, and you say so with
+          the evidence rather than guessing.
+
+      What you alert on: SLO burn rates and derived quality signals, never raw
+      infrastructure counters. The useful alerts are probe fidelity dropping
+      more than a stated number of sigma below its trailing 14-day baseline,
+      transpiled two-qubit gate count for a fixed canary circuit moving more
+      than 10 percent release over release, queue wait p95 exceeding its
+      published target, and a jump in the fraction of jobs that fail after
+      partial execution. What you do not alert on: CPU, memory, individual job
+      failures, and anything a human cannot act on at 3 a.m.
+
+      Cross-organisation is a real constraint and the fix is boring: one shared
+      timeline. The device team keeps its own tooling, but it publishes
+      calibration events and probe results into the same store with the same
+      snapshot ids, and the platform team publishes change events into it. You
+      do not need to merge the two organisations' tools, only their clocks and
+      their identifiers.
+
+      The trade-off: continuous probing costs device time, which is the
+      scarcest resource on the platform, and at a 30-minute cadence you are
+      spending a few percent of the fleet's capacity on measuring itself. I
+      accept that because without it every regression investigation costs more
+      device time in ad hoc reruns than the probes would have cost in a month.
+      If the device were fully booked with a single high-value customer, I would
+      cut the cadence and accept slower triage.
+    followUps:
+      - How would you detect a regression that only affects circuits deeper than 200 layers, which your canary suite does not cover?
+      - What is the minimum job telemetry that still lets you triage without ever seeing circuit contents?
+      - How do you set the probe baseline so that a genuine improvement after a recalibration does not fire an alert?
+    commonMistakes:
+      - Relying on user job outcomes as the quality signal, which confounds device drift, compiler changes and user code because all three move at once.
+      - Alerting on raw CPU and memory for the classical tier while having no signal at all for the device, so the quantum layer is the only unobserved part of a quantum platform.
+      - Keeping device telemetry and platform telemetry in separate systems with different identifiers, which makes the join a manual spreadsheet exercise during an incident.
+    references:
+      - label: OpenTelemetry documentation
+        url: https://opentelemetry.io/docs/
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/

@@ -1,0 +1,193 @@
+---
+id: t2.m1.l2
+title: Bit-Flip vs Phase Oracles
+type: concept
+track: t2
+module: t2.m1
+level: L2
+minutes: 12
+objectives:
+  - "Derive the phase oracle O_f |x> = (-1)^f(x) |x> from the bit-flip oracle and a target qubit in |->"
+  - Show that the two oracle forms are interconvertible at the cost of one ancilla and two Hadamards
+  - Predict which of the two forms a given algorithm needs, and justify the choice
+prerequisites:
+  - t2.m1.l1
+  - t1.m9.l1
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+  - label: Matuschak & Nielsen, Quantum Computing for the Very Curious
+    url: https://quantum.country/qcvc
+tags: [oracle, phase-kickback]
+---
+
+The standard oracle writes its answer into a target qubit, which means every
+algorithm that uses it drags an extra wire around and has to decide what to do
+with it. There is a second form that carries no wire at all: it writes the answer
+into the *phase* of the query register. The two are the same operator seen in two
+bases, and knowing which one a given algorithm wants is most of what makes an
+oracle-based algorithm readable.
+
+## Kickback, in one line
+
+Put the target of $U_f$ in $\ket{-} = (\ket{0} - \ket{1})/\sqrt{2}$ and watch what
+XOR does to it. Since $X\ket{-} = -\ket{-}$,
+
+$$
+U_f \ket{x}\ket{-} = \ket{x} \cdot \frac{\ket{f(x)} - \ket{1 \oplus f(x)}}{\sqrt2}
+= (-1)^{f(x)} \ket{x}\ket{-} .
+$$
+
+The target came out exactly as it went in. It is never entangled, never
+measured, and can be prepared once at the start and forgotten. What changed is a
+sign in front of $\ket{x}$, and by linearity that sign attaches separately to
+every branch of a superposition. Define
+
+$$
+O_f \ket{x} = (-1)^{f(x)} \ket{x} ,
+$$
+
+and the identity above says $U_f = O_f \otimes I$ when the target sits in
+$\ket{-}$. $O_f$ is diagonal, Hermitian, and its own inverse.
+
+<Margin label="Why a sign is useful">
+A sign is invisible to measurement: $|(-1)^{f(x)}|^2 = 1$, so $O_f$ alone changes
+no probability whatsoever. It only becomes visible after a basis change that
+lets branches with opposite signs meet and cancel. Hadamards do that, and so
+does the Grover diffuser. Oracle then interference, always in that order.
+</Margin>
+
+Take $f(x_0, x_1) = x_0 \wedge x_1$ again, with the target on qubit 2 prepared in
+$\ket{-}$ by an $X$ then an $H$.
+
+<Circuit
+  caption="Bit-flip oracle with the target in |->. Every amplitude has magnitude 0.353553; only the two strings starting 11 carry the flipped sign."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "kickback-and",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "x2", gate: "x", targets: [2] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "o", gate: "x", targets: [2], controls: [0, 1] }
+    ]
+  }}
+/>
+
+Read the signs off qubit 0 and qubit 1. Branches $00$, $01$ and $10$ keep the
+pattern $(+0.353553, -0.353553)$ across the target bit, which is $+\ket{-}$.
+Branch $11$ shows $(-0.353553, +0.353553)$, which is $-\ket{-}$. That minus sign
+is $(-1)^{f(11)}$, and it is the only trace the oracle left.
+
+## The same thing with no wire at all
+
+If the target is a spectator, delete it. For $f(x) = x_0 \wedge x_1 \wedge x_2$
+the phase oracle is a single controlled-controlled-$Z$ on the query register,
+with no ancilla and no preparation.
+
+<Circuit
+  caption="Phase oracle for the three-way AND: one CCZ on the query register. Only |111> is negated, and all eight probabilities stay at 12.5%."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "phase-oracle-and3",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "z", gate: "ccz", targets: [0, 1, 2] }
+    ]
+  }}
+/>
+
+Every probability is $0.125$, exactly as it was before the CCZ. The information
+is entirely in the sign of $\ket{111}$, and it stays invisible until something
+interferes the branches.
+
+## Going back the other way
+
+Suppose you are given $O_f$ and need $U_f$, which happens whenever an algorithm
+must keep the value of $f$ rather than just its sign. Since $X = HZH$, flipping
+the target conditioned on $f$ is the same as phasing it conditioned on $f$,
+sandwiched between Hadamards on that target:
+
+$$
+U_f = H_y \cdot \big(\text{$O_f$ controlled on } y\big) \cdot H_y .
+$$
+
+For the two-way AND this reads $\mathrm{CCX} = H_2 \cdot \mathrm{CCZ} \cdot H_2$,
+an identity you can check on a basis state: set the query register to $11$ and the
+target to $0$, and the target must come out $1$.
+
+<Circuit
+  caption="H on the target, CCZ, H on the target. Input |110> comes out as |111>, so this composite is exactly the Toffoli."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "ccz-to-toffoli",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "a", gate: "x", targets: [0] },
+      { id: "b", gate: "x", targets: [1] },
+      { id: "h", gate: "h", targets: [2] },
+      { id: "z", gate: "ccz", targets: [0, 1, 2] },
+      { id: "h2", gate: "h", targets: [2] }
+    ]
+  }}
+/>
+
+So the conversion costs one ancilla and two Hadamards in each direction, and
+neither direction costs a query. The two forms are the same black box, and query
+complexity does not distinguish them.
+
+## Which form does an algorithm want
+
+| Algorithm | Form it uses | Why |
+| --- | --- | --- |
+| Deutsch-Jozsa | phase | The answer is the sum of signs; the target is pure overhead |
+| Bernstein-Vazirani | phase | $(-1)^{s \cdot x}$ is literally what the Hadamards decode |
+| Grover | phase | The iterate is a reflection, and a reflection is a diagonal sign |
+| Simon | bit-flip | The output register must be entangled, then discarded, to collapse the input onto a coset |
+| Order finding | neither | The oracle is a controlled *unitary*, not a Boolean function |
+
+The pattern: if the algorithm only ever needs to know something about the
+*pattern* of $f$ values, use the phase form and save a wire. If it needs the
+values themselves to become correlated with the inputs, as Simon does when the
+two preimages of a coset must be forced into the same branch, use the bit-flip
+form and let the target entangle.
+
+<Callout tone="gotcha" title="A phase oracle cannot be queried classically">
+A classical caller of $O_f$ learns nothing: it prepares $\ket{x}$, applies the
+oracle, measures, and reads $x$ back with probability 1. The whole content of
+$O_f$ lives in relative phases between branches, so it is only useful to a caller
+that can hold a superposition. This is not a loophole, it is the reason a query
+lower bound has to be proved rather than assumed: the quantum caller is strictly
+more powerful per query.
+</Callout>
+
+<Check question="An algorithm calls $O_f$ twice in a row with nothing in between. What has it computed, and how many queries has it spent?">
+Nothing, and two. $O_f$ is diagonal with entries $\pm 1$, so $O_f^2 = I$: the two
+calls cancel exactly and the state is unchanged. The query count still goes up by
+two, because query complexity counts oracle calls, not useful oracle calls. This
+is why every lower-bound proof in Module 9 tracks how much *amplitude* an
+algorithm places on each query index rather than how many calls it makes look
+productive.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), for the
+  phase-oracle definition and the classification of which algorithms need which.
+- [PennyLane Codebook](https://pennylane.ai/codebook), whose oracle modules build
+  both forms and check the conversion identity gate by gate.
+- [Quantum Computing for the Very Curious](https://quantum.country/qcvc), for the
+  kickback derivation in the same one-line form used here.

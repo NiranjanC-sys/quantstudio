@@ -1,0 +1,164 @@
+---
+id: t2.m1.l3
+title: Marking Oracles
+type: concept
+track: t2
+module: t2.m1
+level: L2
+minutes: 10
+objectives:
+  - Construct a marking oracle for an arbitrary set of target bitstrings using X masks and a multi-controlled Z
+  - Count the two-qubit gates that a k-controlled Z costs with and without a clean ancilla
+  - Explain why marking several bitstrings costs one masked multi-controlled Z per bitstring
+prerequisites:
+  - t2.m1.l2
+  - t1.m4.l5
+sources:
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+tags: [oracle, multi-controlled]
+---
+
+Grover needs one specific kind of phase oracle: the one whose $f$ is the
+indicator function of a set $S$ of bitstrings, so that $O_f$ negates exactly the
+solutions and leaves everything else alone. Building it is a two-line recipe, and
+the only interesting part is what it costs, because the cost is where an
+asymptotically quadratic speedup goes to die on a real device.
+
+## Negating one string
+
+A multi-controlled $Z$ on $n$ qubits negates the single amplitude of
+$\ket{11\cdots1}$ and nothing else. That is a marking oracle for the set
+$S = \{11\cdots1\}$. To mark some other string $m$ instead, conjugate with $X$
+gates that map $m$ to all ones:
+
+$$
+O_m = M\dg \, \mathrm{MCZ} \, M, \qquad
+M = \bigotimes_{q\,:\,m_q = 0} X_q .
+$$
+
+$M$ is a product of $X$ gates, so $M\dg = M$: the same mask goes on before and
+comes off after. That is the whole construction. The mask flips the zero
+positions of $m$ up to one, the MCZ fires only on the all-ones pattern, and the
+mask flips them back.
+
+<Margin label="Why $Z$ and not $X$">
+A marking oracle must be diagonal, because Grover's analysis treats it as a
+reflection about the marked subspace. A multi-controlled $X$ would instead move
+amplitude between basis states, and no amount of masking makes that a reflection.
+When you see MCX in a Grover implementation it is always sandwiched by Hadamards
+on the target, which is the $X = HZH$ identity of the previous lesson turning it
+back into an MCZ.
+</Margin>
+
+## Marking a set
+
+MCZ gates are diagonal, so masked copies of them commute. To mark a set
+$S = \{m^{(1)}, \dots, m^{(k)}\}$, apply one masked MCZ per element in any order.
+The total operator is diagonal with entry $(-1)^{|\{i : x = m^{(i)}\}|}$, which is
+$-1$ on each listed string and $+1$ elsewhere, exactly as required. Here is the
+pair of proper two-colourings of the four-cycle, $0101$ and $1010$, marked on four
+qubits with no ancillas.
+
+<Circuit
+  caption="Two masked multi-controlled Z gates on four qubits. Sixteen amplitudes of magnitude 0.25, of which exactly 0101 and 1010 carry the minus sign."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "mark-two-strings",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "h3", gate: "h", targets: [3] },
+      { id: "a0", gate: "x", targets: [0] },
+      { id: "a2", gate: "x", targets: [2] },
+      { id: "az", gate: "z", targets: [3], controls: [0, 1, 2] },
+      { id: "a0b", gate: "x", targets: [0] },
+      { id: "a2b", gate: "x", targets: [2] },
+      { id: "b1", gate: "x", targets: [1] },
+      { id: "b3", gate: "x", targets: [3] },
+      { id: "bz", gate: "z", targets: [3], controls: [0, 1, 2] },
+      { id: "b1b", gate: "x", targets: [1] },
+      { id: "b3b", gate: "x", targets: [3] }
+    ]
+  }}
+/>
+
+Every probability is still $0.0625$, because a diagonal sign changes no
+probability. The two negative entries are the whole output of the oracle.
+
+<Callout tone="gotcha" title="Duplicates cancel">
+List a string twice and its two sign flips multiply to $+1$, so it stops being
+marked. This is not a hypothetical: a colouring oracle that enumerates edges and
+negates once per violated edge will silently unmark any assignment that violates
+an even number of them. Build the solution set first, deduplicate it, then emit
+one masked MCZ per element.
+</Callout>
+
+## What a multi-controlled Z costs
+
+Count in two-qubit gates, because those are the expensive ones. A Toffoli, which
+is a two-controlled $X$, decomposes into 6 CNOTs and 9 one-qubit gates. An MCZ on
+$n$ qubits is a Toffoli-style gate with $m = n - 1$ controls, and its cost depends
+entirely on whether you can spare scratch space.
+
+**With $m - 2$ clean ancillas: linear.** Build an AND ladder. One Toffoli combines
+controls 1 and 2 into ancilla $a_1$, the next combines $a_1$ with control 3 into
+$a_2$, and so on, so $m - 2$ Toffolis leave $a_{m-2} = c_1 \wedge \cdots \wedge
+c_{m-1}$. One more gate, a CCZ on $a_{m-2}$, $c_m$ and the target, applies the
+phase. Then $m - 2$ Toffolis run in reverse to clear the ladder. The total is
+$2m - 3$ three-qubit gates, so $6(2m-3) = 12m - 18$ CNOTs. Linear in $m$.
+
+<Circuit
+  caption="A three-controlled Z on qubits 0 to 3 built from one clean ancilla on qubit 4: Toffoli up, CCZ, Toffoli back. Only 11110 is negated, and the ancilla returns to 0."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "cccz-via-ancilla",
+    qubits: 5,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "h3", gate: "h", targets: [3] },
+      { id: "up", gate: "ccx", targets: [0, 1, 4] },
+      { id: "phase", gate: "ccz", targets: [4, 2, 3] },
+      { id: "down", gate: "ccx", targets: [0, 1, 4] }
+    ]
+  }}
+/>
+
+Sixteen strings, all ending in $0$ on qubit 4, and only $11110$ carries the minus
+sign. The ancilla is clean on the way out, which matters for the reason
+T2.M1.L1 laboured: this three-gate identity is only an identity on the subspace
+where the ancilla starts in $\ket{0}$. Start it in $\ket{1}$ and the circuit
+computes something else entirely.
+
+**With no ancillas: quadratic.** The standard Barenco decomposition of an
+$m$-controlled gate on a bare register costs $\Theta(m^2)$ elementary gates. For
+the four-qubit marking oracle above that is a few dozen CNOTs rather than the
+single line the diagram suggests, and it is the reason the Grover labs in the next
+module cap their gate budgets: a "free" oracle is free only in the query model.
+
+<Check question="You need to mark the 8 strings of a 12-qubit register whose first four bits are 1011. What is the cheapest oracle, and how does its cost compare with eight masked MCZ gates?">
+Do not enumerate. The condition is a property of four bits only, so mask those
+four to all ones and apply a four-qubit MCZ on them, leaving the other eight
+qubits untouched. That is one masked three-controlled $Z$, roughly a dozen CNOTs
+with an ancilla. Eight masked eleven-controlled $Z$ gates would cost hundreds.
+The general lesson is that a marking oracle should be compiled from the
+*predicate* that defines the set, not from a list of its members; the list form is
+only reasonable when the set is tiny and irregular, as in the graph-colouring lab.
+</Check>
+
+## Where this comes from
+
+- [Microsoft Quantum Katas](https://github.com/microsoft/QuantumKatas), whose
+  marking-oracle kata sets exactly the mask-MCZ-unmask exercise used here.
+- [PennyLane Codebook](https://pennylane.ai/codebook), for the multi-controlled
+  decompositions and the clean-ancilla ladder.

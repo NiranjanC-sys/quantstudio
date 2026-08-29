@@ -39,7 +39,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
     }
     setPending(true);
     try {
-      const res = await fetch(`${API}/v1/auth/${isSignup ? 'register' : 'login'}`, {
+      const res = await fetch(`${API}/auth/${isSignup ? 'register' : 'login'}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         credentials: 'include',
@@ -69,7 +69,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'signup' }) {
 
       <div className="rq-auth-providers">
         {PROVIDERS.map((p) => (
-          <a key={p.id} href={`${API}/v1/auth/oauth/${p.id}`} className="rq-btn rq-btn-secondary rq-btn-block">
+          <a key={p.id} href={`${API}/auth/oauth/${p.id}`} className="rq-btn rq-btn-secondary rq-btn-block">
             {p.label}
           </a>
         ))}
