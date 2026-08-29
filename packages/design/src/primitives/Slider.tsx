@@ -4,7 +4,7 @@ import { forwardRef, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { Slider as RadixSlider } from 'radix-ui';
 import { cx } from '../utils.js';
-import { FieldShell, useFieldIds, type FieldParts } from './field.js';
+import { useFieldIds, type FieldParts } from './field.js';
 
 export interface SliderProps extends FieldParts {
   /** One number, or two for a range. */

@@ -15,7 +15,7 @@ export default defineConfig({
   schema: './dist/src/db/schema/index.js',
   out: './src/db/migrations',
   dialect: 'postgresql',
-  schemaFilter: ['identity', 'catalog', 'progress', 'labs', 'contest', 'billing', 'social'],
+  schemaFilter: ['identity', 'catalog', 'progress', 'labs', 'contest', 'billing', 'social', 'instructor'],
   dbCredentials: {
     url: process.env.DATABASE_URL ?? 'postgres://redquant:redquant@127.0.0.1:5432/redquant',
   },

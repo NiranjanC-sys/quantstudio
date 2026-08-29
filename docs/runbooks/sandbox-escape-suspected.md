@@ -61,7 +61,7 @@ alert condition**, not just a large volume of occurrences:
   `NetworkPolicy` deny-log hit for a sandbox pod. Should be impossible given
   the empty network namespace — any observed attempt means either an escape
   attempt in progress, or a control that was never actually in force being
-  tested (see §5.7-5.8 for how to prove it either way).
+  tested (see containment steps 7-8 for how to prove it either way).
 - A volume spike in seccomp-denied syscalls — may indicate active probing
   for a bypass.
 - A sandbox process that outlives its wall-clock or CPU limit without being

@@ -2377,3 +2377,7 @@
     line-height: 1.45;
   }
 }
+
+@layer components {
+  .rq-bad { border-radius: 13px; backdrop-filter: blur(12px); }
+}

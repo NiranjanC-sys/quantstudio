@@ -1,0 +1,228 @@
+---
+id: t0.m1.l3
+title: Probabilistic Operators and Stochastic Matrices
+type: concept
+track: t0
+module: t0.m1
+level: L0
+minutes: 13
+objectives:
+  - State the two conditions that make a matrix column-stochastic
+  - Prove that a product of column-stochastic matrices is column-stochastic
+  - Show that a stochastic matrix maps the probability simplex into itself
+prerequisites: [t0.m1.l2]
+sources:
+  - label: QWorld QBook101
+    url: https://qworld.net/qbook101/
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [probability, operators]
+---
+
+The last lesson wrote one particular game as a matrix. Which matrices are
+allowed? If a probabilistic state is a point in the simplex, an operation on it
+must be a map that never leaves the simplex, because there is no such thing as a
+bit that is 0 with probability $1.3$ or $-0.2$. That requirement has a clean
+answer, it is closed under composition, and the shape of the argument is the one
+you will reuse when unitarity replaces it.
+
+## The two conditions
+
+A real matrix $M$ is **column-stochastic** when
+
+1. every entry is non-negative, $M_{ij} \ge 0$, and
+2. every column sums to 1, $\sum_i M_{ij} = 1$ for each $j$.
+
+The second condition has a compact form. Let $\mathbf{1}^{T} = (1, 1, \dots, 1)$
+be the all-ones row vector. Then column sums are the entries of
+$\mathbf{1}^{T} M$, so condition 2 says
+
+$$
+\mathbf{1}^{T} M = \mathbf{1}^{T}.
+$$
+
+<Margin label="Why columns">
+Whether the sums live on rows or columns is a convention, set by whether states
+are columns or rows. RedQuant writes states as columns and acts on the left,
+$p' = Mp$, which is the convention every quantum text uses, so our stochastic
+matrices are column-stochastic. Much of the Markov chain literature writes rows
+on the left and calls the transpose stochastic.
+</Margin>
+
+Column $j$ of $M$ is the vector $M e_j$, the state you get from the certain
+state $j$. The two conditions say exactly that each such column is itself a
+probability distribution. A stochastic matrix is a table of conditional
+distributions, one per input.
+
+## It maps the simplex into the simplex
+
+Let $p$ be a probability vector and set $p' = Mp$. Two things to check.
+
+**Non-negativity.** Each entry is $p'_i = \sum_j M_{ij} p_j$, a sum of products
+of non-negative numbers, so $p'_i \ge 0$.
+
+**Normalisation.** Sum the entries and reorder the double sum:
+
+$$
+\sum_i p'_i
+= \sum_i \sum_j M_{ij} p_j
+= \sum_j \left( \sum_i M_{ij} \right) p_j
+= \sum_j 1 \cdot p_j
+= 1 .
+$$
+
+In the compact notation the same computation is one associativity step:
+$\mathbf{1}^{T}(Mp) = (\mathbf{1}^{T} M) p = \mathbf{1}^{T} p = 1$. Both
+conditions are needed. Drop non-negativity and $\big(\begin{smallmatrix} 2 & 0
+\\ -1 & 1\end{smallmatrix}\big)$ has unit column sums and sends $(1,0)^{T}$ to
+$(2,-1)^{T}$, which is not a distribution. Drop normalisation and the matrix
+$2I$ sends $(0.5, 0.5)^{T}$ to $(1,1)^{T}$, which claims total probability 2.
+
+## Composition preserves the property
+
+If $A$ and $B$ are column-stochastic, so is $AB$. Non-negativity again comes for
+free: $(AB)_{ij} = \sum_k A_{ik} B_{kj}$ is a sum of products of non-negative
+numbers. For the column sums,
+
+$$
+\mathbf{1}^{T} (AB) = (\mathbf{1}^{T} A) B = \mathbf{1}^{T} B = \mathbf{1}^{T} .
+$$
+
+So "run $B$, then run $A$" is a legal single-step operation, which is what lets
+you compress a whole circuit into one matrix. Concretely, with
+$A = \big(\begin{smallmatrix} 0.7 & 0.2 \\ 0.3 & 0.8 \end{smallmatrix}\big)$ and
+the fair coin $F = \big(\begin{smallmatrix} 0.5 & 0.5 \\ 0.5 & 0.5
+\end{smallmatrix}\big)$,
+
+$$
+AF = \begin{pmatrix} 0.45 & 0.45 \\ 0.55 & 0.55 \end{pmatrix},
+\qquad
+FA = \begin{pmatrix} 0.5 & 0.5 \\ 0.5 & 0.5 \end{pmatrix} = F .
+$$
+
+Both are column-stochastic, and they are not equal. Order matters: a fair coin
+after the biased map still erases everything, a fair coin before it does not.
+
+## A zoo, and what is missing from it
+
+Four operators on one bit, all column-stochastic:
+
+$$
+I = \begin{pmatrix} 1 & 0 \\ 0 & 1 \end{pmatrix},
+\quad
+N = \begin{pmatrix} 0 & 1 \\ 1 & 0 \end{pmatrix},
+\quad
+F = \begin{pmatrix} \half & \half \\ \half & \half \end{pmatrix},
+\quad
+R = \begin{pmatrix} 1 & 1 \\ 0 & 0 \end{pmatrix} .
+$$
+
+$I$ does nothing, $N$ is the NOT gate, $F$ is the fair coin, and $R$ resets the
+bit to 0 whatever it was. Only two of them are invertible, and only those two
+have a stochastic inverse: $I^{-1} = I$ and $N^{-1} = N$. $F$ and $R$ both have
+rank 1, so they destroy information outright, and no matrix can undo them.
+
+That is not an accident of small size. Suppose $M$ is stochastic, invertible,
+and $M^{-1}$ is stochastic too. Then $M$ maps the simplex onto the simplex
+bijectively. An affine bijection of a polytope onto itself must send extreme
+points to extreme points, and the extreme points of the simplex are exactly the
+deterministic states $e_1, \dots, e_n$. So every column $Me_j$ is some $e_i$,
+and invertibility forces distinct columns, making $M$ a permutation matrix.
+
+<Callout tone="note" title="The classical shadow of reversibility">
+Reversible classical computing (T0.M6.L3) is the study of permutation matrices,
+and unitary evolution is the quantum generalisation. The stochastic matrices
+that are *not* permutations are exactly the ones that lose information, which is
+why erasure has a thermodynamic cost and a NOT gate does not.
+</Callout>
+
+## Bigger alphabets, same rules
+
+Nothing above used $n = 2$. A three-outcome system evolves under a $3 \times 3$
+column-stochastic matrix in the same way:
+
+$$
+M = \begin{pmatrix}
+0.5 & 0.25 & 0 \\
+0.5 & 0.5 & 0.5 \\
+0 & 0.25 & 0.5
+\end{pmatrix},
+\qquad
+M \begin{pmatrix} 1 \\ 0 \\ 0 \end{pmatrix}
+= \begin{pmatrix} 0.5 \\ 0.5 \\ 0 \end{pmatrix},
+\qquad
+M^2 \begin{pmatrix} 1 \\ 0 \\ 0 \end{pmatrix}
+= \begin{pmatrix} 0.375 \\ 0.5 \\ 0.125 \end{pmatrix} .
+$$
+
+Its columns sum to 1, its eigenvalues are $1$, $0.5$ and $0$, and the
+eigenvector for 1, normalised to be a distribution, is $(0.25, 0.5, 0.25)$. That
+is the stationary state, and repeated application converges to it: after six
+steps the state is $(0.2578, 0.5, 0.2422)$ to four places. Every column-stochastic matrix has 1 in its spectrum,
+because $\mathbf{1}^{T}M = \mathbf{1}^{T}$ makes $\mathbf{1}$ a left
+eigenvector, and a matrix and its transpose share eigenvalues.
+
+## Doubly stochastic, and the bridge to quantum
+
+If the rows sum to 1 as well, $M$ is **doubly stochastic**. Then
+$M \mathbf{u} = \mathbf{u}$ for the uniform distribution
+$\mathbf{u} = (1/n, \dots, 1/n)^{T}$, since each entry of $M\mathbf{u}$ is a row
+sum divided by $n$. Among the four one-bit operators above, $I$, $N$ and $F$ are
+doubly stochastic and $R$ is not: $R$ has row sums 2 and 0, and it is precisely
+$R$ that can drive the uniform state somewhere else.
+
+Here is the connection to everything that follows. Take any unitary $U$ and form
+the matrix of squared magnitudes, $S_{ij} = |U_{ij}|^2$. Unitarity says the
+columns of $U$ are unit vectors, so the columns of $S$ sum to 1, and the rows of
+$U$ are unit vectors too, so the rows of $S$ also sum to 1. Every unitary casts a
+doubly stochastic shadow. For the Hadamard gate,
+
+$$
+H = \isqrt \begin{pmatrix} 1 & 1 \\ 1 & -1 \end{pmatrix}
+\quad \Longrightarrow \quad
+S = \begin{pmatrix} 0.5 & 0.5 \\ 0.5 & 0.5 \end{pmatrix} = F .
+$$
+
+Measure a single Hadamard and you cannot tell it from a fair coin, because the
+shadow is all a single measurement sees.
+
+<Simulate
+  show="probabilities"
+  caption="One Hadamard, measured. The output distribution is column 1 of the doubly stochastic shadow of H."
+  ir={{
+    version: 1,
+    name: "hadamard-shadow",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $0$ | $0.500000$ |
+| $1$ | $0.500000$ |
+
+</Simulate>
+
+The information the shadow throws away is the sign, and the previous lesson
+showed what that sign buys: $H^2 = I$, while $F^2 = F$.
+
+<Check question="Is $\big(\begin{smallmatrix} 0.6 & 0.1 \\ 0.4 & 0.9 \end{smallmatrix}\big)$ column-stochastic? Is it doubly stochastic? What is its stationary distribution?">
+Column-stochastic: yes, all entries are non-negative and both columns sum to 1.
+Doubly stochastic: no, the row sums are $0.7$ and $1.3$. For the stationary
+distribution use the fixed-point formula from the previous lesson with
+$a = 0.4$ and $b = 0.1$: $\pi = (b, a)/(a+b) = (0.1, 0.4)/0.5 = (0.2, 0.8)$.
+Check it: $0.6 \cdot 0.2 + 0.1 \cdot 0.8 = 0.12 + 0.08 = 0.2$.
+</Check>
+
+## Where this comes from
+
+- [QWorld QBook101](https://qworld.net/qbook101/), which introduces probabilistic
+  operators as tables of conditional distributions before naming them.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  chapter 1 and the exercises on doubly stochastic matrices, for the unitary
+  shadow argument used at the end.

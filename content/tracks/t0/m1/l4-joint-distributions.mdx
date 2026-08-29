@@ -1,0 +1,239 @@
+---
+id: t0.m1.l4
+title: Joint Distributions, Marginals, Correlation
+type: concept
+track: t0
+module: t0.m1
+level: L0
+minutes: 13
+objectives:
+  - Compute a marginal distribution by summing a joint table along one axis
+  - Decide whether a given joint distribution factorises into a product of marginals
+  - Construct a correlated two-bit distribution whose marginals are both uniform
+prerequisites: [t0.m1.l3]
+sources:
+  - label: QWorld QBook101
+    url: https://qworld.net/qbook101/
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [probability, correlation]
+---
+
+Two bits, four outcomes. Why is that not simply two copies of the one-bit story?
+Because a distribution over two bits needs three free numbers while two separate
+one-bit distributions need only two, and the missing number is correlation. That
+one extra parameter is where every interesting phenomenon lives, classical and
+quantum alike, so it is worth being exact about how to extract it and how to
+detect its absence.
+
+## The joint table
+
+A state of two bits $X$ and $Y$ is a distribution over the four outcomes $00$,
+$01$, $10$, $11$. Written as a column vector with $X$ as the leading bit,
+
+$$
+p = \begin{pmatrix} p_{00} \\ p_{01} \\ p_{10} \\ p_{11} \end{pmatrix},
+\qquad p_{xy} \ge 0, \qquad \sum_{x,y} p_{xy} = 1 .
+$$
+
+<Margin label="Ordering">
+The leading bit is the one written first, so index $xy$ in binary is the row
+number: $00 \to 0$, $01 \to 1$, $10 \to 2$, $11 \to 3$. RedQuant keeps this
+convention everywhere: qubit 0 is the most significant bit. T0.M5.L3 is entirely
+about what breaks when an SDK disagrees.
+</Margin>
+
+The same four numbers arranged as a $2 \times 2$ table make the sums easier to
+see, with $x$ indexing rows and $y$ indexing columns:
+
+|  | $y=0$ | $y=1$ |
+| --- | --- | --- |
+| $x=0$ | $p_{00}$ | $p_{01}$ |
+| $x=1$ | $p_{10}$ | $p_{11}$ |
+
+## Marginals are sums along an axis
+
+If you only ever look at $X$, the probability that $X = 0$ is the probability of
+$00$ plus the probability of $01$, because those are the disjoint ways it can
+happen. In general,
+
+$$
+p_X(x) = \sum_y p_{xy}, \qquad p_Y(y) = \sum_x p_{xy} .
+$$
+
+Marginalising over $Y$ is summing each row; marginalising over $X$ is summing
+each column. Both results are legitimate distributions: the entries are
+non-negative, and $\sum_x p_X(x) = \sum_{x,y} p_{xy} = 1$.
+
+Take the concrete joint distribution
+
+$$
+p = (0.30,\; 0.45,\; 0.10,\; 0.15)^{T} .
+$$
+
+Row sums give $p_X = (0.30 + 0.45,\; 0.10 + 0.15) = (0.75,\; 0.25)$. Column sums
+give $p_Y = (0.30 + 0.10,\; 0.45 + 0.15) = (0.40,\; 0.60)$.
+
+## Factorisation is a testable claim
+
+$X$ and $Y$ are **independent** when the joint table is the outer product of its
+own marginals:
+
+$$
+p_{xy} = p_X(x)\, p_Y(y) \quad \text{for all } x, y .
+$$
+
+Test it on the example. The outer product of $(0.75, 0.25)$ and $(0.40, 0.60)$
+is
+
+$$
+\begin{pmatrix} 0.75 \cdot 0.40 & 0.75 \cdot 0.60 \\
+0.25 \cdot 0.40 & 0.25 \cdot 0.60 \end{pmatrix}
+= \begin{pmatrix} 0.30 & 0.45 \\ 0.10 & 0.15 \end{pmatrix},
+$$
+
+which is the original table entry for entry. These two bits are independent, and
+the joint state is the tensor product $p_X \otimes p_Y$, the operation T0.M5
+builds properly.
+
+An independent pair is exactly as expensive to prepare as two separate bits.
+Here is a circuit that prepares one, using a rotation on each qubit and nothing
+between them:
+
+<Simulate
+  show="probabilities"
+  caption="Two independent biased bits, prepared with one rotation each and no interaction. Angles pi/3 and 1.7721542 give marginals (0.75, 0.25) and (0.40, 0.60)."
+  ir={{
+    version: 1,
+    name: "independent-pair",
+    qubits: 2,
+    clbits: 2,
+    ops: [
+      { id: "r0", gate: "ry", targets: [0], params: [1.0471975511965976] },
+      { id: "r1", gate: "ry", targets: [1], params: [1.7721542475852274] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $00$ | $0.300000$ |
+| $01$ | $0.450000$ |
+| $10$ | $0.100000$ |
+| $11$ | $0.150000$ |
+
+</Simulate>
+
+## Uniform marginals, maximal correlation
+
+Now the case that matters. Consider
+
+$$
+p = (0.5,\; 0,\; 0,\; 0.5)^{T},
+$$
+
+the state "both bits are equal, and which value is a fair coin". Row sums give
+$p_X = (0.5, 0.5)$. Column sums give $p_Y = (0.5, 0.5)$. Each bit on its own is
+a perfect fair coin, with no bias to detect by any amount of looking at it
+alone. Yet the outer product of the marginals is
+
+$$
+\begin{pmatrix} 0.25 & 0.25 \\ 0.25 & 0.25 \end{pmatrix}
+\ne
+\begin{pmatrix} 0.5 & 0 \\ 0 & 0.5 \end{pmatrix},
+$$
+
+so the bits are not independent. All of the structure is in the relationship,
+none of it in the parts. This is the classical fact that makes entanglement
+comprehensible when it arrives in T1.M5: a Bell pair also has uniform marginals
+and all its content in the correlation.
+
+<Simulate
+  show="probabilities"
+  caption="Hadamard then CNOT with qubit 0 as control. Both marginals are uniform, yet 01 and 10 never occur."
+  ir={{
+    version: 1,
+    name: "correlated-pair",
+    qubits: 2,
+    clbits: 2,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "cx", gate: "x", targets: [1], controls: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $00$ | $0.500000$ |
+| $01$ | $0.000000$ |
+| $10$ | $0.000000$ |
+| $11$ | $0.500000$ |
+
+</Simulate>
+
+<Callout tone="warning" title="Same marginals is not same state">
+The independent pair with $p_X = p_Y = (0.5, 0.5)$ and this correlated pair have
+identical single-bit statistics. No experiment on one bit can tell them apart.
+Only a joint measurement, comparing the two outcomes shot by shot, exposes the
+difference.
+</Callout>
+
+## Putting a number on it
+
+Treat the bits as the numbers 0 and 1 and compute the covariance,
+
+$$
+\operatorname{Cov}(X, Y) = \expect{XY} - \expect{X}\expect{Y} .
+$$
+
+For the correlated state, $\expect{X} = \expect{Y} = 0.5$ and
+$\expect{XY} = \sum_{xy} p_{xy}\, x y = 0.5$, since only the $11$ term survives.
+So $\operatorname{Cov} = 0.5 - 0.25 = 0.25$. The standard deviation of a fair
+bit is $\sqrt{0.25} = 0.5$, giving a correlation coefficient of
+
+$$
+\rho = \frac{0.25}{0.5 \cdot 0.5} = 1 ,
+$$
+
+the maximum. For an independent pair, $\expect{XY} = \expect{X}\expect{Y}$ by
+construction, so the covariance is 0.
+
+Correlation can be partial. The table
+
+$$
+\begin{pmatrix} 0.4 & 0.1 \\ 0.1 & 0.4 \end{pmatrix}
+$$
+
+still has uniform marginals, but now $\expect{XY} = 0.4$, so
+$\operatorname{Cov} = 0.4 - 0.25 = 0.15$ and $\rho = 0.6$. The three free
+parameters of a two-bit state can be taken to be the two marginals plus this one
+correlation number, which is why "three, not two" was the opening claim.
+
+<Callout tone="gotcha" title="Zero covariance is weaker than independence">
+Covariance only sees a linear relationship. For two bits the two notions happen
+to coincide, but on larger alphabets a distribution can have zero covariance and
+still be far from a product. Independence is the factorisation test, not the
+covariance test.
+</Callout>
+
+<Check question="For the joint table with $p_{00} = 0.1$, $p_{01} = 0.2$, $p_{10} = 0.3$, $p_{11} = 0.4$, find both marginals and decide whether the bits are independent.">
+Row sums: $p_X = (0.3, 0.7)$. Column sums: $p_Y = (0.4, 0.6)$. The outer product
+would be $(0.12, 0.18, 0.28, 0.42)$, and the actual table starts with $0.1$, not
+$0.12$, so the bits are dependent. Covariance confirms it:
+$\expect{X} = 0.7$, $\expect{Y} = 0.6$, $\expect{XY} = 0.4$, so
+$\operatorname{Cov} = 0.4 - 0.42 = -0.02$, a weak negative correlation.
+</Check>
+
+## Where this comes from
+
+- [QWorld QBook101](https://qworld.net/qbook101/), which builds correlated
+  classical bits before correlated qubits so that entanglement arrives as a
+  sharpening rather than a surprise.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  chapter 1 and appendix on probability, for marginals and the independence test
+  in the form used here.

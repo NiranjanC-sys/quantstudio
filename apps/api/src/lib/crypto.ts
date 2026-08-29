@@ -4,10 +4,13 @@
  * one place.
  */
 import {
+  createCipheriv,
+  createDecipheriv,
   createHash,
   createHmac,
   randomBytes,
   randomUUID,
+  scryptSync,
   timingSafeEqual,
 } from 'node:crypto';
 
@@ -65,4 +68,54 @@ export function normalisedSourceHash(source: string): string {
     .replace(/\s+/g, ' ')
     .trim();
   return sha256Hex(normalised);
+}
+
+/**
+ * Authenticated symmetric encryption for the few secrets that must be
+ * recoverable rather than merely verifiable — today that is the TOTP seed in
+ * `identity.mfa_methods.secret`, which the server has to replay to check a code.
+ *
+ * AES-256-GCM with a random 96-bit IV, key derived from the configured secret by
+ * scrypt so an operator can supply a passphrase rather than 32 raw bytes. The
+ * output is `v1.<iv>.<tag>.<ciphertext>`, all base64url, which is
+ * self-describing enough to rotate the scheme later without guessing.
+ */
+const SECRET_BOX_VERSION = 'v1';
+const SECRET_BOX_SALT = 'redquant/secret-box/v1';
+
+function secretBoxKey(secret: string): Buffer {
+  return scryptSync(secret, SECRET_BOX_SALT, 32);
+}
+
+export function encryptSecret(secret: string, plaintext: string): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', secretBoxKey(secret), iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return [
+    SECRET_BOX_VERSION,
+    iv.toString('base64url'),
+    tag.toString('base64url'),
+    ciphertext.toString('base64url'),
+  ].join('.');
+}
+
+/** Returns `null` for anything that does not decrypt and authenticate cleanly. */
+export function decryptSecret(secret: string, envelope: string): string | null {
+  const parts = envelope.split('.');
+  if (parts.length !== 4 || parts[0] !== SECRET_BOX_VERSION) return null;
+  try {
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      secretBoxKey(secret),
+      Buffer.from(parts[1] as string, 'base64url'),
+    );
+    decipher.setAuthTag(Buffer.from(parts[2] as string, 'base64url'));
+    return Buffer.concat([
+      decipher.update(Buffer.from(parts[3] as string, 'base64url')),
+      decipher.final(),
+    ]).toString('utf8');
+  } catch {
+    return null;
+  }
 }

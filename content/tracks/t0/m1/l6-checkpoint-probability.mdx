@@ -1,0 +1,159 @@
+---
+id: t0.m1.l6
+title: "Checkpoint: Probability and Information"
+type: checkpoint
+track: t0
+module: t0.m1
+level: L0
+minutes: 15
+objectives:
+  - Score 80 percent or better on stochastic-matrix and entropy problems
+  - Identify which module lesson explains each question you miss
+prerequisites: [t0.m1.l1, t0.m1.l2, t0.m1.l3, t0.m1.l4, t0.m1.l5]
+sources:
+  - label: QWorld QBook101
+    url: https://qworld.net/qbook101/
+  - label: Matuschak & Nielsen, Quantum Computing for the Very Curious
+    url: https://quantum.country/qcvc
+tags: [assessment]
+---
+
+Eight questions, one per idea that T0.M2 onwards will assume you already own.
+Answer each one before opening it. Six correct unlocks the next module; below
+that, the lesson named under each answer is the one to reread, and the tutor
+will schedule it first.
+
+Work them on paper. Every number here is small enough to do by hand, and the
+point of the exercise is that you can.
+
+## 1. Valid states
+
+<Check question="Which of these are valid probabilistic states of one bit? $a = (0.2, 0.8)$, $b = (0, 1)$, $c = (0.5, 0.5, 0)$ as a state of one bit, $d = (1.2, -0.2)$.">
+$a$ and $b$. $a$ is an interior point of the simplex and $b$ is the
+deterministic state $\ket{1}$, which is a perfectly good distribution. $c$ has
+three entries, so it describes a three-outcome system, not a bit. $d$ sums to 1
+but has a negative entry, and negative probability has no operational meaning.
+
+Covered by **T0.M1.L1, Bits and States**.
+</Check>
+
+## 2. One step of a chain
+
+<Check question="A bit flips from 0 to 1 with probability $0.1$ and from 1 to 0 with probability $0.4$. Write the operator, then apply it twice to the certain state $\ket{0}$.">
+Columns are conditional distributions, so
+
+$$
+M = \begin{pmatrix} 0.9 & 0.4 \\ 0.1 & 0.6 \end{pmatrix} .
+$$
+
+One step: $M(1,0)^{T} = (0.9, 0.1)^{T}$. Two steps:
+$M(0.9, 0.1)^{T} = (0.81 + 0.04,\; 0.09 + 0.06)^{T} = (0.85, 0.15)^{T}$.
+
+Covered by **T0.M1.L2, Coin-Flipping Games**.
+</Check>
+
+## 3. The fixed point
+
+<Check question="Where does the chain in question 2 end up after many steps, and how fast does it get there?">
+With $a = 0.1$ (the 0 to 1 rate) and $b = 0.4$ (the 1 to 0 rate), the stationary
+distribution is $\pi = (b, a)/(a+b) = (0.4, 0.1)/0.5 = (0.8, 0.2)$. Check:
+$0.9 \cdot 0.8 + 0.4 \cdot 0.2 = 0.72 + 0.08 = 0.8$. The deviation from $\pi$
+shrinks by a factor $1 - a - b = 0.5$ per step, so the gap halves each time.
+
+Covered by **T0.M1.L2, Coin-Flipping Games**.
+</Check>
+
+## 4. What makes an operator legal
+
+<Check question="State the two conditions for a column-stochastic matrix, and say in one line why the product of two of them is one.">
+Every entry is non-negative, and every column sums to 1, that is
+$\mathbf{1}^{T} M = \mathbf{1}^{T}$. For a product,
+$\mathbf{1}^{T}(AB) = (\mathbf{1}^{T}A)B = \mathbf{1}^{T}B = \mathbf{1}^{T}$,
+and non-negativity survives because the entries of $AB$ are sums of products of
+non-negative numbers.
+
+Covered by **T0.M1.L3, Probabilistic Operators and Stochastic Matrices**.
+</Check>
+
+## 5. Which operators are reversible
+
+<Check question="Of $I$, the NOT matrix $N$, the fair coin $F$ and the reset $R = \big(\begin{smallmatrix} 1 & 1 \\ 0 & 0\end{smallmatrix}\big)$, which have a stochastic inverse, and what is the general rule?">
+Only $I$ and $N$, and each is its own inverse. $F$ and $R$ have rank 1, so they
+are not invertible at all. The general rule: a stochastic matrix whose inverse
+is also stochastic must be a permutation matrix, because it maps the simplex
+bijectively onto itself and therefore permutes the extreme points, which are the
+deterministic states.
+
+Covered by **T0.M1.L3, Probabilistic Operators and Stochastic Matrices**.
+</Check>
+
+## 6. Marginals and independence
+
+<Check question="For the joint two-bit table $p_{00} = 0.2$, $p_{01} = 0.3$, $p_{10} = 0.3$, $p_{11} = 0.2$, find both marginals, decide whether the bits are independent, and compute the correlation coefficient.">
+Row sums: $p_X = (0.5, 0.5)$. Column sums: $p_Y = (0.5, 0.5)$. The outer product
+of the marginals is the uniform table $(0.25, 0.25, 0.25, 0.25)$, which is not
+the given table, so the bits are dependent. Covariance:
+$\expect{X} = \expect{Y} = 0.5$, $\expect{XY} = 0.2$, so
+$\operatorname{Cov} = 0.2 - 0.25 = -0.05$ and, since each bit has standard
+deviation $0.5$, $\rho = -0.05 / 0.25 = -0.2$. Weakly anticorrelated with
+perfectly uniform marginals.
+
+Covered by **T0.M1.L4, Joint Distributions, Marginals, Correlation**.
+</Check>
+
+## 7. Entropy by hand
+
+<Check question="Compute $H(0.5, 0.25, 0.25)$ and $H(0.9, 0.1)$ in bits, and state the maximum entropy available on a three-symbol alphabet.">
+$H(0.5, 0.25, 0.25) = 0.5 \cdot 1 + 0.25 \cdot 2 + 0.25 \cdot 2 = 1.5$ bits.
+$H(0.9, 0.1) = -0.9\log_2 0.9 - 0.1 \log_2 0.1 = 0.9 \cdot 0.152003 +
+0.1 \cdot 3.321928 = 0.136803 + 0.332193 = 0.468996$ bits. The maximum on three
+symbols is $\log_2 3 = 1.584963$ bits, attained only by the uniform
+distribution.
+
+Covered by **T0.M1.L5, Shannon Entropy as a Resource**.
+</Check>
+
+## 8. Correlation in bits
+
+<Check question="For the table in question 6, compute the joint entropy and the mutual information $I(X;Y)$.">
+The four probabilities are $0.2, 0.3, 0.3, 0.2$, so
+
+$$
+H(X,Y) = 2\big(0.2 \log_2 5 + 0.3 \log_2 \tfrac{10}{3}\big) = 1.970951 \text{ bits}.
+$$
+
+Both marginals are uniform, so $H(X) = H(Y) = 1$, and
+
+$$
+I(X;Y) = 1 + 1 - 1.970951 = 0.029049 \text{ bits}.
+$$
+
+Small but non-zero, which is the honest measure of the weak anticorrelation
+found in question 6. Compare the perfectly correlated table
+$(0.5, 0, 0, 0.5)$, whose mutual information is a full bit.
+
+Covered by **T0.M1.L4 and T0.M1.L5**.
+</Check>
+
+## Reading your score
+
+| Score | What happens |
+| --- | --- |
+| 8 of 8 | T0.M1 is marked mastered; the placement diagnostic in T0.M8 can skip it entirely |
+| 6 or 7 | Module unlocked; missed items become drill cards due tomorrow |
+| Below 6 | The lessons named under your missed answers are rescheduled ahead of T0.M2 |
+
+<Callout tone="note" title="Missing one is information, not failure">
+The purpose of a checkpoint is to find the gap while it is still one lesson
+wide. A question you got wrong here costs you ten minutes of rereading; the same
+gap discovered in T1.M5 costs an afternoon, because by then four other ideas are
+resting on it.
+</Callout>
+
+## Where this comes from
+
+- [QWorld QBook101](https://qworld.net/qbook101/), whose exercise sets for the
+  probabilistic-bit chapters set the difficulty calibration used here.
+- [Matuschak & Nielsen, Quantum Computing for the Very Curious](https://quantum.country/qcvc),
+  for the practice of testing retrieval rather than recognition, and of naming
+  the source lesson beside every answer.

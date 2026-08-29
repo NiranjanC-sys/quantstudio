@@ -98,13 +98,13 @@ flowchart TD
     A[StripeWebhookQueueDepthHigh or\nEntitlementDenialRateHigh fires] --> B{entitlement_denial_rate rising?}
     B -->|No, flat| C[SEV3: queue backlog only,\nentitlements still correct via cache\nsection 9 step 5. Drain queue, monitor.]
     B -->|Yes, rising| D{Is a PAYING user\nbeing denied their paid entitlement?}
-    D -->|Yes| E[SEV1: durability-adjacent correctness failure -\nmanually grant entitlement section 6,\nescalate per oncall.md]
+    D -->|Yes| E[SEV1: durability-adjacent correctness failure -\nmanually grant entitlement section 4.5,\nescalate per oncall.md]
     D -->|No, only new/ambiguous signups affected| F[SEV2: escalate, investigate\nwebhook processing failure]
     C --> G{Is Stripe itself down,\nor is OUR processing broken?}
     F --> G
     G -->|Stripe down| H[DEGRADE_BILLING_QUEUE engaged,\nnew purchases queue - section 5,\nmonitor Stripe status]
     G -->|Our processing broken| I[Check signature verification,\ncheck webhook consumer pod health,\ncheck DB write path -\nsee postgres-failover.md if relevant]
-    H --> J[Once Stripe recovers,\nreplay events section 7]
+    H --> J[Once Stripe recovers,\nreplay events section 4.4]
     I --> K[Fix processing, then\nreplay/drain backlog]
     J --> L[Run nightly reconciliation\nearly if backlog was large]
     K --> L
@@ -122,13 +122,13 @@ flowchart TD
    user is being denied an entitlement they currently hold — this is a
    SEV1, treat it like a durability violation (a paid customer's access is
    effectively "lost" from their perspective) and consider a manual grant
-   (§6) while root cause is fixed. If it's ambiguous/new-signup access
+   (§4.5) while root cause is fixed. If it's ambiguous/new-signup access
    delayed rather than an existing paid user's access revoked, it's SEV2.
 3. Determine whether Stripe itself is down (check Stripe's public status)
    or whether RedQuant's own webhook processing is broken (signature
    failures, consumer pod crash-looping, DB write failures). Route
    accordingly — §5 vs §4.3.
-4. Once the root cause is resolved, replay backlogged events (§7) and, if
+4. Once the root cause is resolved, replay backlogged events (§4.4) and, if
    the backlog was large or extended, trigger the nightly reconciliation job
    early rather than waiting for its normal schedule (§8).
 

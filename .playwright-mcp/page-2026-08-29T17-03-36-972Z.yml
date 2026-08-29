@@ -1,0 +1,526 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - link "Skip to content" [ref=e3] [cursor=pointer]:
+      - /url: "#main"
+    - link "RedQuant home" [ref=e4] [cursor=pointer]:
+      - /url: /
+      - text: RedQuant
+    - navigation "Main"
+    - generic [ref=e6]:
+      - 'button "Theme: System. Switch to Dark." [ref=e7] [cursor=pointer]': System
+      - link "Sign in" [ref=e8] [cursor=pointer]:
+        - /url: /login
+      - link "Start free" [ref=e9] [cursor=pointer]:
+        - /url: /signup
+  - main [ref=e10]:
+    - generic [ref=e11]:
+      - heading "The curriculum." [level=1] [ref=e12]
+      - paragraph [ref=e13]: Eight tracks and 64 modules, arranged as a prerequisite graph rather than a playlist. Every topic traces to at least two of the 20 syllabi in our benchmark, and every lesson cites its sources.
+      - paragraph [ref=e14]: 1 of 306 lessons authored so far.
+    - region [ref=e15]:
+      - generic [ref=e16]:
+        - generic [ref=e17]: T0
+        - generic [ref=e18]:
+          - heading "Mathematical and Computational Foundations" [level=2] [ref=e19]
+          - paragraph [ref=e20]: The track every other syllabus assumes you already have. Skippable by placement test.
+        - generic [ref=e21]: 1 / 26
+      - list [ref=e22]:
+        - listitem [ref=e23]:
+          - generic [ref=e24]:
+            - generic [ref=e25]: t0.m1
+            - heading "Probability and Information" [level=3] [ref=e26]
+            - generic [ref=e27]: 1 / 5
+          - list [ref=e28]:
+            - listitem [ref=e29]:
+              - link "Bits and States" [ref=e30] [cursor=pointer]:
+                - /url: /learn/t0/m1/l1-bits-and-states
+              - generic [ref=e31]: concept
+        - listitem [ref=e32]:
+          - generic [ref=e33]:
+            - generic [ref=e34]: t0.m2
+            - heading "Complex Numbers" [level=3] [ref=e35]
+            - generic [ref=e36]: 0 / 3
+          - paragraph [ref=e37]: Not yet authored.
+        - listitem [ref=e38]:
+          - generic [ref=e39]:
+            - generic [ref=e40]: t0.m3
+            - heading "Vectors and Vector Spaces" [level=3] [ref=e41]
+            - generic [ref=e42]: 0 / 3
+          - paragraph [ref=e43]: Not yet authored.
+        - listitem [ref=e44]:
+          - generic [ref=e45]:
+            - generic [ref=e46]: t0.m4
+            - heading "Matrices and Operators" [level=3] [ref=e47]
+            - generic [ref=e48]: 0 / 4
+          - paragraph [ref=e49]: Not yet authored.
+        - listitem [ref=e50]:
+          - generic [ref=e51]:
+            - generic [ref=e52]: t0.m5
+            - heading "Tensor Products" [level=3] [ref=e53]
+            - generic [ref=e54]: 0 / 3
+          - paragraph [ref=e55]: Not yet authored.
+        - listitem [ref=e56]:
+          - generic [ref=e57]:
+            - generic [ref=e58]: t0.m6
+            - heading "Classical Computation" [level=3] [ref=e59]
+            - generic [ref=e60]: 0 / 4
+          - paragraph [ref=e61]: Not yet authored.
+        - listitem [ref=e62]:
+          - generic [ref=e63]:
+            - generic [ref=e64]: t0.m7
+            - heading "Python for Quantum" [level=3] [ref=e65]
+            - generic [ref=e66]: 0 / 3
+          - paragraph [ref=e67]: Not yet authored.
+        - listitem [ref=e68]:
+          - generic [ref=e69]:
+            - generic [ref=e70]: t0.m8
+            - heading "Placement" [level=3] [ref=e71]
+            - generic [ref=e72]: 0 / 1
+          - paragraph [ref=e73]: Not yet authored.
+    - region [ref=e74]:
+      - generic [ref=e75]:
+        - generic [ref=e76]: T1
+        - generic [ref=e77]:
+          - heading "Quantum Computing Core" [level=2] [ref=e78]
+          - paragraph [ref=e79]: Qubits, measurement, entanglement, nonlocality, the circuit model, and your first four algorithms.
+        - generic [ref=e80]: 0 / 61
+      - list [ref=e81]:
+        - listitem [ref=e82]:
+          - generic [ref=e83]:
+            - generic [ref=e84]: t1.m1
+            - heading "The Qubit" [level=3] [ref=e85]
+            - generic [ref=e86]: 0 / 8
+          - paragraph [ref=e87]: Not yet authored.
+        - listitem [ref=e88]:
+          - generic [ref=e89]:
+            - generic [ref=e90]: t1.m2
+            - heading "Measurement" [level=3] [ref=e91]
+            - generic [ref=e92]: 0 / 5
+          - paragraph [ref=e93]: Not yet authored.
+        - listitem [ref=e94]:
+          - generic [ref=e95]:
+            - generic [ref=e96]: t1.m3
+            - heading "Single-Qubit Gates" [level=3] [ref=e97]
+            - generic [ref=e98]: 0 / 6
+          - paragraph [ref=e99]: Not yet authored.
+        - listitem [ref=e100]:
+          - generic [ref=e101]:
+            - generic [ref=e102]: t1.m4
+            - heading "Multi-Qubit Systems" [level=3] [ref=e103]
+            - generic [ref=e104]: 0 / 6
+          - paragraph [ref=e105]: Not yet authored.
+        - listitem [ref=e106]:
+          - generic [ref=e107]:
+            - generic [ref=e108]: t1.m5
+            - heading "Entanglement" [level=3] [ref=e109]
+            - generic [ref=e110]: 0 / 5
+          - paragraph [ref=e111]: Not yet authored.
+        - listitem [ref=e112]:
+          - generic [ref=e113]:
+            - generic [ref=e114]: t1.m6
+            - heading "Nonlocality and Games" [level=3] [ref=e115]
+            - generic [ref=e116]: 0 / 5
+          - paragraph [ref=e117]: Not yet authored.
+        - listitem [ref=e118]:
+          - generic [ref=e119]:
+            - generic [ref=e120]: t1.m7
+            - heading "Protocols" [level=3] [ref=e121]
+            - generic [ref=e122]: 0 / 5
+          - paragraph [ref=e123]: Not yet authored.
+        - listitem [ref=e124]:
+          - generic [ref=e125]:
+            - generic [ref=e126]: t1.m8
+            - heading "The Circuit Model" [level=3] [ref=e127]
+            - generic [ref=e128]: 0 / 6
+          - paragraph [ref=e129]: Not yet authored.
+        - listitem [ref=e130]:
+          - generic [ref=e131]:
+            - generic [ref=e132]: t1.m9
+            - heading "Phase and Interference" [level=3] [ref=e133]
+            - generic [ref=e134]: 0 / 4
+          - paragraph [ref=e135]: Not yet authored.
+        - listitem [ref=e136]:
+          - generic [ref=e137]:
+            - generic [ref=e138]: t1.m10
+            - heading "First Algorithms" [level=3] [ref=e139]
+            - generic [ref=e140]: 0 / 4
+          - paragraph [ref=e141]: Not yet authored.
+        - listitem [ref=e142]:
+          - generic [ref=e143]:
+            - generic [ref=e144]: t1.m11
+            - heading "Meeting Noise Early" [level=3] [ref=e145]
+            - generic [ref=e146]: 0 / 5
+          - paragraph [ref=e147]: Not yet authored.
+        - listitem [ref=e148]:
+          - generic [ref=e149]:
+            - generic [ref=e150]: t1.m12
+            - heading "Capstone" [level=3] [ref=e151]
+            - generic [ref=e152]: 0 / 2
+          - paragraph [ref=e153]: Not yet authored.
+    - region [ref=e154]:
+      - generic [ref=e155]:
+        - generic [ref=e156]: T2
+        - generic [ref=e157]:
+          - heading "Quantum Algorithms and Complexity" [level=2] [ref=e158]
+          - paragraph [ref=e159]: Grover, the Fourier transform, phase estimation, Shor, hidden subgroups, walks, simulation, lower bounds.
+        - generic [ref=e160]: 0 / 48
+      - list [ref=e161]:
+        - listitem [ref=e162]:
+          - generic [ref=e163]:
+            - generic [ref=e164]: t2.m1
+            - heading "The Query Model" [level=3] [ref=e165]
+            - generic [ref=e166]: 0 / 4
+          - paragraph [ref=e167]: Not yet authored.
+        - listitem [ref=e168]:
+          - generic [ref=e169]:
+            - generic [ref=e170]: t2.m2
+            - heading "Amplitude Amplification and Grover" [level=3] [ref=e171]
+            - generic [ref=e172]: 0 / 9
+          - paragraph [ref=e173]: Not yet authored.
+        - listitem [ref=e174]:
+          - generic [ref=e175]:
+            - generic [ref=e176]: t2.m3
+            - heading "The Fourier Transform" [level=3] [ref=e177]
+            - generic [ref=e178]: 0 / 6
+          - paragraph [ref=e179]: Not yet authored.
+        - listitem [ref=e180]:
+          - generic [ref=e181]:
+            - generic [ref=e182]: t2.m4
+            - heading "Phase Estimation" [level=3] [ref=e183]
+            - generic [ref=e184]: 0 / 3
+          - paragraph [ref=e185]: Not yet authored.
+        - listitem [ref=e186]:
+          - generic [ref=e187]:
+            - generic [ref=e188]: t2.m5
+            - heading "Order Finding and Shor" [level=3] [ref=e189]
+            - generic [ref=e190]: 0 / 5
+          - paragraph [ref=e191]: Not yet authored.
+        - listitem [ref=e192]:
+          - generic [ref=e193]:
+            - generic [ref=e194]: t2.m6
+            - heading "The Hidden Subgroup Problem" [level=3] [ref=e195]
+            - generic [ref=e196]: 0 / 3
+          - paragraph [ref=e197]: Not yet authored.
+        - listitem [ref=e198]:
+          - generic [ref=e199]:
+            - generic [ref=e200]: t2.m7
+            - heading "Quantum Walks" [level=3] [ref=e201]
+            - generic [ref=e202]: 0 / 5
+          - paragraph [ref=e203]: Not yet authored.
+        - listitem [ref=e204]:
+          - generic [ref=e205]:
+            - generic [ref=e206]: t2.m8
+            - heading "Hamiltonian Simulation" [level=3] [ref=e207]
+            - generic [ref=e208]: 0 / 5
+          - paragraph [ref=e209]: Not yet authored.
+        - listitem [ref=e210]:
+          - generic [ref=e211]:
+            - generic [ref=e212]: t2.m9
+            - heading "Lower Bounds and Complexity" [level=3] [ref=e213]
+            - generic [ref=e214]: 0 / 6
+          - paragraph [ref=e215]: Not yet authored.
+        - listitem [ref=e216]:
+          - generic [ref=e217]:
+            - generic [ref=e218]: t2.m10
+            - heading "Zoo Lab" [level=3] [ref=e219]
+            - generic [ref=e220]: 0 / 2
+          - paragraph [ref=e221]: Not yet authored.
+    - region [ref=e222]:
+      - generic [ref=e223]:
+        - generic [ref=e224]: T3
+        - generic [ref=e225]:
+          - heading "Quantum Software Engineering" [level=2] [ref=e226]
+          - paragraph [ref=e227]: Five SDKs, OpenQASM 3, transpilation, resource estimation, testing quantum code, benchmarking, mitigation.
+        - generic [ref=e228]: 0 / 41
+      - list [ref=e229]:
+        - listitem [ref=e230]:
+          - generic [ref=e231]:
+            - generic [ref=e232]: t3.m1
+            - heading "The SDK Landscape" [level=3] [ref=e233]
+            - generic [ref=e234]: 0 / 4
+          - paragraph [ref=e235]: Not yet authored.
+        - listitem [ref=e236]:
+          - generic [ref=e237]:
+            - generic [ref=e238]: t3.m2
+            - heading "OpenQASM 3" [level=3] [ref=e239]
+            - generic [ref=e240]: 0 / 3
+          - paragraph [ref=e241]: Not yet authored.
+        - listitem [ref=e242]:
+          - generic [ref=e243]:
+            - generic [ref=e244]: t3.m3
+            - heading "Transpilation" [level=3] [ref=e245]
+            - generic [ref=e246]: 0 / 6
+          - paragraph [ref=e247]: Not yet authored.
+        - listitem [ref=e248]:
+          - generic [ref=e249]:
+            - generic [ref=e250]: t3.m4
+            - heading "Resource Estimation" [level=3] [ref=e251]
+            - generic [ref=e252]: 0 / 3
+          - paragraph [ref=e253]: Not yet authored.
+        - listitem [ref=e254]:
+          - generic [ref=e255]:
+            - generic [ref=e256]: t3.m5
+            - heading "Hybrid Runtimes" [level=3] [ref=e257]
+            - generic [ref=e258]: 0 / 4
+          - paragraph [ref=e259]: Not yet authored.
+        - listitem [ref=e260]:
+          - generic [ref=e261]:
+            - generic [ref=e262]: t3.m6
+            - heading "Testing Quantum Code" [level=3] [ref=e263]
+            - generic [ref=e264]: 0 / 5
+          - paragraph [ref=e265]: Not yet authored.
+        - listitem [ref=e266]:
+          - generic [ref=e267]:
+            - generic [ref=e268]: t3.m7
+            - heading "Noise Models and Benchmarking" [level=3] [ref=e269]
+            - generic [ref=e270]: 0 / 5
+          - paragraph [ref=e271]: Not yet authored.
+        - listitem [ref=e272]:
+          - generic [ref=e273]:
+            - generic [ref=e274]: t3.m8
+            - heading "Error Mitigation" [level=3] [ref=e275]
+            - generic [ref=e276]: 0 / 5
+          - paragraph [ref=e277]: Not yet authored.
+        - listitem [ref=e278]:
+          - generic [ref=e279]:
+            - generic [ref=e280]: t3.m9
+            - heading "Capstone" [level=3] [ref=e281]
+            - generic [ref=e282]: 0 / 6
+          - paragraph [ref=e283]: Not yet authored.
+    - region [ref=e284]:
+      - generic [ref=e285]:
+        - generic [ref=e286]: T4
+        - generic [ref=e287]:
+          - heading "Noise, Error Correction and Fault Tolerance" [level=2] [ref=e288]
+          - paragraph [ref=e289]: Density matrices, channels, stabilizers, surface codes, decoding, magic states, the threshold theorem.
+        - generic [ref=e290]: 0 / 42
+      - list [ref=e291]:
+        - listitem [ref=e292]:
+          - generic [ref=e293]:
+            - generic [ref=e294]: t4.m1
+            - heading "Open Systems" [level=3] [ref=e295]
+            - generic [ref=e296]: 0 / 9
+          - paragraph [ref=e297]: Not yet authored.
+        - listitem [ref=e298]:
+          - generic [ref=e299]:
+            - generic [ref=e300]: t4.m2
+            - heading "General Measurement" [level=3] [ref=e301]
+            - generic [ref=e302]: 0 / 4
+          - paragraph [ref=e303]: Not yet authored.
+        - listitem [ref=e304]:
+          - generic [ref=e305]:
+            - generic [ref=e306]: t4.m3
+            - heading "From Classical to Quantum Codes" [level=3] [ref=e307]
+            - generic [ref=e308]: 0 / 4
+          - paragraph [ref=e309]: Not yet authored.
+        - listitem [ref=e310]:
+          - generic [ref=e311]:
+            - generic [ref=e312]: t4.m4
+            - heading "The Stabilizer Formalism" [level=3] [ref=e313]
+            - generic [ref=e314]: 0 / 7
+          - paragraph [ref=e315]: Not yet authored.
+        - listitem [ref=e316]:
+          - generic [ref=e317]:
+            - generic [ref=e318]: t4.m5
+            - heading "Topological Codes" [level=3] [ref=e319]
+            - generic [ref=e320]: 0 / 6
+          - paragraph [ref=e321]: Not yet authored.
+        - listitem [ref=e322]:
+          - generic [ref=e323]:
+            - generic [ref=e324]: t4.m6
+            - heading "Fault Tolerance" [level=3] [ref=e325]
+            - generic [ref=e326]: 0 / 5
+          - paragraph [ref=e327]: Not yet authored.
+        - listitem [ref=e328]:
+          - generic [ref=e329]:
+            - generic [ref=e330]: t4.m7
+            - heading "Beyond the Surface Code" [level=3] [ref=e331]
+            - generic [ref=e332]: 0 / 4
+          - paragraph [ref=e333]: Not yet authored.
+        - listitem [ref=e334]:
+          - generic [ref=e335]:
+            - generic [ref=e336]: t4.m8
+            - heading "Decoder Lab" [level=3] [ref=e337]
+            - generic [ref=e338]: 0 / 3
+          - paragraph [ref=e339]: Not yet authored.
+    - region [ref=e340]:
+      - generic [ref=e341]:
+        - generic [ref=e342]: T5
+        - generic [ref=e343]:
+          - heading "Applications" [level=2] [ref=e344]
+          - paragraph [ref=e345]: Chemistry and VQE, optimisation and QAOA, quantum machine learning, cryptography and the migration to PQC.
+        - generic [ref=e346]: 0 / 43
+      - list [ref=e347]:
+        - listitem [ref=e348]:
+          - generic [ref=e349]:
+            - generic [ref=e350]: t5.a
+            - heading "Chemistry and Materials" [level=3] [ref=e351]
+            - generic [ref=e352]: 0 / 12
+          - paragraph [ref=e353]: Not yet authored.
+        - listitem [ref=e354]:
+          - generic [ref=e355]:
+            - generic [ref=e356]: t5.b
+            - heading "Optimisation" [level=3] [ref=e357]
+            - generic [ref=e358]: 0 / 11
+          - paragraph [ref=e359]: Not yet authored.
+        - listitem [ref=e360]:
+          - generic [ref=e361]:
+            - generic [ref=e362]: t5.c
+            - heading "Quantum Machine Learning" [level=3] [ref=e363]
+            - generic [ref=e364]: 0 / 11
+          - paragraph [ref=e365]: Not yet authored.
+        - listitem [ref=e366]:
+          - generic [ref=e367]:
+            - generic [ref=e368]: t5.d
+            - heading "Cryptography and Security" [level=3] [ref=e369]
+            - generic [ref=e370]: 0 / 9
+          - paragraph [ref=e371]: Not yet authored.
+    - region [ref=e372]:
+      - generic [ref=e373]:
+        - generic [ref=e374]: T6
+        - generic [ref=e375]:
+          - heading "Hardware and Systems" [level=2] [ref=e376]
+          - paragraph [ref=e377]: Transmons, ions, photons, neutral atoms, spins. Coherence, calibration, cryogenics, cloud QPU systems.
+        - generic [ref=e378]: 0 / 30
+      - list [ref=e379]:
+        - listitem [ref=e380]:
+          - generic [ref=e381]:
+            - generic [ref=e382]: t6.m1
+            - heading "What a Qubit Is Made Of" [level=3] [ref=e383]
+            - generic [ref=e384]: 0 / 8
+          - paragraph [ref=e385]: Not yet authored.
+        - listitem [ref=e386]:
+          - generic [ref=e387]:
+            - generic [ref=e388]: t6.m2
+            - heading "Coherence and Control" [level=3] [ref=e389]
+            - generic [ref=e390]: 0 / 4
+          - paragraph [ref=e391]: Not yet authored.
+        - listitem [ref=e392]:
+          - generic [ref=e393]:
+            - generic [ref=e394]: t6.m3
+            - heading "Calibration" [level=3] [ref=e395]
+            - generic [ref=e396]: 0 / 3
+          - paragraph [ref=e397]: Not yet authored.
+        - listitem [ref=e398]:
+          - generic [ref=e399]:
+            - generic [ref=e400]: t6.m4
+            - heading "Cryogenics and Wiring" [level=3] [ref=e401]
+            - generic [ref=e402]: 0 / 3
+          - paragraph [ref=e403]: Not yet authored.
+        - listitem [ref=e404]:
+          - generic [ref=e405]:
+            - generic [ref=e406]: t6.m5
+            - heading "Cloud QPU Systems" [level=3] [ref=e407]
+            - generic [ref=e408]: 0 / 5
+          - paragraph [ref=e409]: Not yet authored.
+        - listitem [ref=e410]:
+          - generic [ref=e411]:
+            - generic [ref=e412]: t6.m6
+            - heading "Quantum Networking" [level=3] [ref=e413]
+            - generic [ref=e414]: 0 / 3
+          - paragraph [ref=e415]: Not yet authored.
+        - listitem [ref=e416]:
+          - generic [ref=e417]:
+            - generic [ref=e418]: t6.m7
+            - heading "Quantum and HPC" [level=3] [ref=e419]
+            - generic [ref=e420]: 0 / 4
+          - paragraph [ref=e421]: Not yet authored.
+    - region [ref=e422]:
+      - generic [ref=e423]:
+        - generic [ref=e424]: T7
+        - generic [ref=e425]:
+          - heading "Career and Research" [level=2] [ref=e426]
+          - paragraph [ref=e427]: Reading papers, thirty recurring interview patterns, twenty employer briefings, a defended capstone.
+        - generic [ref=e428]: 0 / 15
+      - list [ref=e429]:
+        - listitem [ref=e430]:
+          - generic [ref=e431]:
+            - generic [ref=e432]: t7.m1
+            - heading "Reading the Literature" [level=3] [ref=e433]
+            - generic [ref=e434]: 0 / 2
+          - paragraph [ref=e435]: Not yet authored.
+        - listitem [ref=e436]:
+          - generic [ref=e437]:
+            - generic [ref=e438]: t7.m2
+            - heading "Coding Interviews" [level=3] [ref=e439]
+            - generic [ref=e440]: 0 / 4
+          - paragraph [ref=e441]: Not yet authored.
+        - listitem [ref=e442]:
+          - generic [ref=e443]:
+            - generic [ref=e444]: t7.m3
+            - heading "System-Design Interviews" [level=3] [ref=e445]
+            - generic [ref=e446]: 0 / 4
+          - paragraph [ref=e447]: Not yet authored.
+        - listitem [ref=e448]:
+          - generic [ref=e449]:
+            - generic [ref=e450]: t7.m4
+            - heading "Company Briefings" [level=3] [ref=e451]
+            - generic [ref=e452]: 0 / 2
+          - paragraph [ref=e453]: Not yet authored.
+        - listitem [ref=e454]:
+          - generic [ref=e455]:
+            - generic [ref=e456]: t7.m5
+            - heading "Portfolio" [level=3] [ref=e457]
+            - generic [ref=e458]: 0 / 2
+          - paragraph [ref=e459]: Not yet authored.
+        - listitem [ref=e460]:
+          - generic [ref=e461]:
+            - generic [ref=e462]: t7.m6
+            - heading "Capstone" [level=3] [ref=e463]
+            - generic [ref=e464]: 0 / 1
+          - paragraph [ref=e465]: Not yet authored.
+  - contentinfo [ref=e466]:
+    - generic [ref=e467]:
+      - generic [ref=e468]:
+        - heading "Learn" [level=2] [ref=e469]
+        - list [ref=e470]:
+          - listitem [ref=e471]:
+            - link "Curriculum" [ref=e472] [cursor=pointer]:
+              - /url: /curriculum
+          - listitem [ref=e473]:
+            - link "Roadmaps" [ref=e474] [cursor=pointer]:
+              - /url: /roadmaps
+          - listitem [ref=e475]:
+            - link "Placement test" [ref=e476] [cursor=pointer]:
+              - /url: /placement
+          - listitem [ref=e477]:
+            - link "Glossary" [ref=e478] [cursor=pointer]:
+              - /url: /glossary
+      - generic [ref=e479]:
+        - heading "Build" [level=2] [ref=e480]
+        - list [ref=e481]:
+          - listitem [ref=e482]:
+            - link "Circuit lab" [ref=e483] [cursor=pointer]:
+              - /url: /lab
+          - listitem [ref=e484]:
+            - link "Autograded labs" [ref=e485] [cursor=pointer]:
+              - /url: /labs
+          - listitem [ref=e486]:
+            - link "Algorithm catalogue" [ref=e487] [cursor=pointer]:
+              - /url: /algorithms
+      - generic [ref=e488]:
+        - heading "Compete" [level=2] [ref=e489]
+        - list [ref=e490]:
+          - listitem [ref=e491]:
+            - link "Weekly contests" [ref=e492] [cursor=pointer]:
+              - /url: /contests
+          - listitem [ref=e493]:
+            - link "Leaderboard" [ref=e494] [cursor=pointer]:
+              - /url: /leaderboard
+          - listitem [ref=e495]:
+            - link "Interview bank" [ref=e496] [cursor=pointer]:
+              - /url: /interview
+      - generic [ref=e497]:
+        - heading "Institutions" [level=2] [ref=e498]
+        - list [ref=e499]:
+          - listitem [ref=e500]:
+            - link "For teams" [ref=e501] [cursor=pointer]:
+              - /url: /teams
+          - listitem [ref=e502]:
+            - link "For campuses" [ref=e503] [cursor=pointer]:
+              - /url: /campus
+          - listitem [ref=e504]:
+            - link "Instructor tools" [ref=e505] [cursor=pointer]:
+              - /url: /instructors
+    - paragraph [ref=e506]: Curriculum benchmarked against 20 published syllabi. Every lesson cites its sources.
+  - alert [ref=e507]

@@ -1,0 +1,230 @@
+- generic [active] [ref=f1e1]:
+  - banner [ref=f1e2]:
+    - link "Skip to content" [ref=f1e3] [cursor=pointer]:
+      - /url: "#main"
+    - link "RedQuant home" [ref=f1e4] [cursor=pointer]:
+      - /url: /
+      - text: RedQuant
+    - navigation "Main" [ref=f1e6]:
+      - list [ref=f1e7]:
+        - listitem [ref=f1e8]:
+          - link "Curriculum" [ref=f1e9] [cursor=pointer]:
+            - /url: /curriculum
+        - listitem [ref=f1e10]:
+          - link "Lab" [ref=f1e11] [cursor=pointer]:
+            - /url: /lab
+        - listitem [ref=f1e12]:
+          - link "Contests" [ref=f1e13] [cursor=pointer]:
+            - /url: /contests
+        - listitem [ref=f1e14]:
+          - link "Interview" [ref=f1e15] [cursor=pointer]:
+            - /url: /interview
+        - listitem [ref=f1e16]:
+          - link "Pricing" [ref=f1e17] [cursor=pointer]:
+            - /url: /pricing
+    - generic [ref=f1e18]:
+      - 'button "Theme: System. Switch to Dark." [ref=f1e19] [cursor=pointer]': System
+      - link "Sign in" [ref=f1e20] [cursor=pointer]:
+        - /url: /login
+      - link "Start free" [ref=f1e21] [cursor=pointer]:
+        - /url: /signup
+  - main [ref=f1e22]:
+    - generic [ref=f1e23]:
+      - heading "Pricing." [level=1] [ref=f1e24]
+      - paragraph [ref=f1e25]: The free tier is genuinely useful, because the curriculum is the funnel. Two tracks, 87 lessons, unlimited contests, and a browser simulator that never charges you.
+    - region "Plans" [ref=f1e26]:
+      - generic [ref=f1e27]:
+        - generic [ref=f1e28]:
+          - heading "Free" [level=2] [ref=f1e29]
+          - paragraph [ref=f1e30]:
+            - generic [ref=f1e31]: $0
+            - generic [ref=f1e32]: forever
+          - paragraph [ref=f1e33]: The foundations and the core track, complete. Contests included.
+          - link "Start free" [ref=f1e34] [cursor=pointer]:
+            - /url: /signup
+        - generic [ref=f1e35]:
+          - heading "Pro" [level=2] [ref=f1e36]
+          - paragraph [ref=f1e37]:
+            - generic [ref=f1e38]: $19
+            - generic [ref=f1e39]: per month
+          - paragraph [ref=f1e40]: Every track, the interview bank, unlimited labs, 28 qubit simulation.
+          - link "Go Pro" [ref=f1e41] [cursor=pointer]:
+            - /url: /signup
+        - generic [ref=f1e42]:
+          - heading "Teams" [level=2] [ref=f1e43]
+          - paragraph [ref=f1e44]:
+            - generic [ref=f1e45]: $39
+            - generic [ref=f1e46]: per seat, per month
+          - paragraph [ref=f1e47]: Everything in Pro, plus instructor tooling and private contests.
+          - link "Start a team" [ref=f1e48] [cursor=pointer]:
+            - /url: /signup
+        - generic [ref=f1e49]:
+          - heading "Campus" [level=2] [ref=f1e50]
+          - paragraph [ref=f1e51]:
+            - generic [ref=f1e52]: Custom
+            - generic [ref=f1e53]: annual licence
+          - paragraph [ref=f1e54]: Institutional licensing with SAML, SCIM and co-branded certificates.
+          - link "Talk to us" [ref=f1e55] [cursor=pointer]:
+            - /url: /contact
+    - region "Feature comparison" [ref=f1e56]:
+      - table [ref=f1e58]:
+        - caption [ref=f1e59]: Feature comparison across plans
+        - rowgroup [ref=f1e60]:
+          - row [ref=f1e61]:
+            - columnheader "Feature" [ref=f1e62]
+            - columnheader "Free" [ref=f1e63]
+            - columnheader "Pro" [ref=f1e64]
+            - columnheader "Teams" [ref=f1e65]
+            - columnheader "Campus" [ref=f1e66]
+        - rowgroup [ref=f1e67]:
+          - row [ref=f1e68]:
+            - rowheader "Learn" [ref=f1e69]
+          - row [ref=f1e70]:
+            - rowheader "Lessons" [ref=f1e71]
+            - cell "T0 and T1" [ref=f1e72]
+            - cell "All 8 tracks" [ref=f1e73]
+            - cell "All 8 tracks" [ref=f1e74]
+            - cell "All 8 tracks" [ref=f1e75]
+          - row [ref=f1e76]:
+            - rowheader "Spaced repetition drills" [ref=f1e77]
+            - cell "Yes" [ref=f1e78]
+            - cell "Yes" [ref=f1e79]
+            - cell "Yes" [ref=f1e80]
+            - cell "Yes" [ref=f1e81]
+          - row [ref=f1e82]:
+            - rowheader "Personalised path" [ref=f1e83]
+            - cell "No" [ref=f1e84]
+            - cell "Yes" [ref=f1e85]
+            - cell "Yes" [ref=f1e86]
+            - cell "Yes" [ref=f1e87]
+        - rowgroup [ref=f1e88]:
+          - row [ref=f1e89]:
+            - rowheader "Build" [ref=f1e90]
+          - row [ref=f1e91]:
+            - rowheader "Labs per month" [ref=f1e92]
+            - cell "40" [ref=f1e93]
+            - cell "Unlimited" [ref=f1e94]
+            - cell "Unlimited" [ref=f1e95]
+            - cell "Unlimited" [ref=f1e96]
+          - row [ref=f1e97]:
+            - rowheader "Max qubits, statevector" [ref=f1e98]
+            - cell "16" [ref=f1e99]
+            - cell "28" [ref=f1e100]
+            - cell "30" [ref=f1e101]
+            - cell "32" [ref=f1e102]
+          - row [ref=f1e103]:
+            - rowheader "Noisy simulation" [ref=f1e104]
+            - cell "No" [ref=f1e105]
+            - cell "Up to 12 qubits" [ref=f1e106]
+            - cell "Up to 14 qubits" [ref=f1e107]
+            - cell "Up to 14 qubits" [ref=f1e108]
+          - row [ref=f1e109]:
+            - rowheader "Simulation credits per month" [ref=f1e110]
+            - cell "500" [ref=f1e111]
+            - cell "20,000" [ref=f1e112]
+            - cell "50,000 per seat" [ref=f1e113]
+            - cell "Negotiated" [ref=f1e114]
+        - rowgroup [ref=f1e115]:
+          - row [ref=f1e116]:
+            - rowheader "Assist" [ref=f1e117]
+          - row [ref=f1e118]:
+            - rowheader "AI tutor messages per day" [ref=f1e119]
+            - cell "15" [ref=f1e120]
+            - cell "300" [ref=f1e121]
+            - cell "300" [ref=f1e122]
+            - cell "300" [ref=f1e123]
+        - rowgroup [ref=f1e124]:
+          - row [ref=f1e125]:
+            - rowheader "Compete" [ref=f1e126]
+          - row [ref=f1e127]:
+            - rowheader "Contests" [ref=f1e128]
+            - cell "Participate" [ref=f1e129]
+            - cell "Rated, with editorials" [ref=f1e130]
+            - cell "Plus private contests" [ref=f1e131]
+            - cell "Plus private contests" [ref=f1e132]
+          - row [ref=f1e133]:
+            - rowheader "Interview bank" [ref=f1e134]
+            - cell "20 questions" [ref=f1e135]
+            - cell "All 240" [ref=f1e136]
+            - cell "All 240" [ref=f1e137]
+            - cell "All 240" [ref=f1e138]
+        - rowgroup [ref=f1e139]:
+          - row [ref=f1e140]:
+            - rowheader "Teach" [ref=f1e141]
+          - row [ref=f1e142]:
+            - rowheader "Instructor dashboard" [ref=f1e143]
+            - cell "No" [ref=f1e144]
+            - cell "No" [ref=f1e145]
+            - cell "Yes" [ref=f1e146]
+            - cell "Yes" [ref=f1e147]
+          - row [ref=f1e148]:
+            - rowheader "Certificates" [ref=f1e149]
+            - cell "No" [ref=f1e150]
+            - cell "Yes" [ref=f1e151]
+            - cell "Yes" [ref=f1e152]
+            - cell "Co-branded" [ref=f1e153]
+        - rowgroup [ref=f1e154]:
+          - row [ref=f1e155]:
+            - rowheader "Account" [ref=f1e156]
+          - row [ref=f1e157]:
+            - rowheader "Single sign on" [ref=f1e158]
+            - cell "Google, GitHub" [ref=f1e159]
+            - cell "Plus Microsoft, ORCID" [ref=f1e160]
+            - cell "Plus SAML" [ref=f1e161]
+            - cell "SAML and SCIM" [ref=f1e162]
+      - paragraph [ref=f1e163]: A simulation credit is one server side simulation unit, priced as ceil(2^(n-16)) times shots over 1024, times a backend multiplier. Anything that runs in your browser costs nothing, which is why the browser engine handles up to 14 qubits.
+  - contentinfo [ref=f1e164]:
+    - generic [ref=f1e165]:
+      - generic [ref=f1e166]:
+        - heading "Learn" [level=2] [ref=f1e167]
+        - list [ref=f1e168]:
+          - listitem [ref=f1e169]:
+            - link "Curriculum" [ref=f1e170] [cursor=pointer]:
+              - /url: /curriculum
+          - listitem [ref=f1e171]:
+            - link "Roadmaps" [ref=f1e172] [cursor=pointer]:
+              - /url: /roadmaps
+          - listitem [ref=f1e173]:
+            - link "Placement test" [ref=f1e174] [cursor=pointer]:
+              - /url: /placement
+          - listitem [ref=f1e175]:
+            - link "Glossary" [ref=f1e176] [cursor=pointer]:
+              - /url: /glossary
+      - generic [ref=f1e177]:
+        - heading "Build" [level=2] [ref=f1e178]
+        - list [ref=f1e179]:
+          - listitem [ref=f1e180]:
+            - link "Circuit lab" [ref=f1e181] [cursor=pointer]:
+              - /url: /lab
+          - listitem [ref=f1e182]:
+            - link "Autograded labs" [ref=f1e183] [cursor=pointer]:
+              - /url: /labs
+          - listitem [ref=f1e184]:
+            - link "Algorithm catalogue" [ref=f1e185] [cursor=pointer]:
+              - /url: /algorithms
+      - generic [ref=f1e186]:
+        - heading "Compete" [level=2] [ref=f1e187]
+        - list [ref=f1e188]:
+          - listitem [ref=f1e189]:
+            - link "Weekly contests" [ref=f1e190] [cursor=pointer]:
+              - /url: /contests
+          - listitem [ref=f1e191]:
+            - link "Leaderboard" [ref=f1e192] [cursor=pointer]:
+              - /url: /leaderboard
+          - listitem [ref=f1e193]:
+            - link "Interview bank" [ref=f1e194] [cursor=pointer]:
+              - /url: /interview
+      - generic [ref=f1e195]:
+        - heading "Institutions" [level=2] [ref=f1e196]
+        - list [ref=f1e197]:
+          - listitem [ref=f1e198]:
+            - link "For teams" [ref=f1e199] [cursor=pointer]:
+              - /url: /teams
+          - listitem [ref=f1e200]:
+            - link "For campuses" [ref=f1e201] [cursor=pointer]:
+              - /url: /campus
+          - listitem [ref=f1e202]:
+            - link "Instructor tools" [ref=f1e203] [cursor=pointer]:
+              - /url: /instructors
+    - paragraph [ref=f1e204]: Curriculum benchmarked against 20 published syllabi. Every lesson cites its sources.
+  - alert [ref=f1e205]

@@ -2,7 +2,7 @@
 
 Synthesised from the 20 sources in [01-curriculum-benchmark.md](./01-curriculum-benchmark.md).
 
-**Shape.** 8 tracks, 74 modules, 331 lessons. Every lesson is one of six types:
+**Shape.** 8 tracks, 64 modules, 306 lessons. Every lesson is one of six types:
 
 | Type | What it is | Median time |
 |---|---|---|
@@ -15,13 +15,13 @@ Synthesised from the 20 sources in [01-curriculum-benchmark.md](./01-curriculum-
 
 **Levels.** `L0` curious · `L1` practitioner · `L2` advanced · `L3` research.
 **Gating.** Lessons form a prerequisite DAG, not a list. A learner who passes the
-T0 placement test skips up to 34 lessons. The DAG is the source of truth for
+T0 placement test skips up to 25 lessons. The DAG is the source of truth for
 personalised paths; the AI tutor only ever recommends nodes whose prerequisites
 are already satisfied.
 
 ---
 
-## T0 — Mathematical and Computational Foundations · L0 · 8 modules / 31 lessons
+## T0 — Mathematical and Computational Foundations · L0 · 8 modules / 26 lessons
 
 The track every other syllabus assumes you already have. Skippable by placement test.
 
@@ -115,7 +115,7 @@ Sources: 3, 1, 9, 7, 10, 11.
 
 ---
 
-## T5 — Applications · L2 · 4 sub-tracks / 14 modules / 63 lessons
+## T5 — Applications · L2 · 4 sub-tracks / 43 lessons
 
 ### T5A Chemistry and Materials
 Second quantisation · Jordan-Wigner and Bravyi-Kitaev mappings · Building a molecular Hamiltonian · Ansätze: UCCSD and hardware-efficient · Classical optimisers for VQE · Ground-state energy of H₂ · LiH and potential-energy surfaces · Measurement grouping and Pauli twirling · Quantum Krylov methods · Sample-based quantum diagonalisation · Hartree-Fock VQE on hardware · Fermi-Hubbard spin-charge dynamics

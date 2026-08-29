@@ -12,12 +12,14 @@ export * as labsSchema from './labs.js';
 export * as contestSchema from './contest.js';
 export * as billingSchema from './billing.js';
 export * as socialSchema from './social.js';
+export * as instructorSchema from './instructor.js';
 
 export * from './identity.js';
 export * from './catalog.js';
 export * from './progress.js';
 export * from './billing.js';
 export * from './social.js';
+export * from './instructor.js';
 
 export {
   labs,

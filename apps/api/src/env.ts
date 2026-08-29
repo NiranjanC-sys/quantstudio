@@ -57,6 +57,9 @@ const envSchema = z.object({
   /** HMAC key used to pseudonymise IPs and user agents before they are logged. */
   PII_HASH_SECRET: z.string().min(32).default('dev-only-pii-hash-secret-change-me-000000'),
 
+  /** AES-256-GCM key (any length >= 32) protecting stored TOTP seeds. */
+  MFA_ENCRYPTION_KEY: z.string().min(32).default('dev-only-mfa-encryption-key-change-me-000'),
+
   ARGON2_MEMORY_KIB: z.coerce.number().int().positive().default(65_536),
   ARGON2_TIME_COST: z.coerce.number().int().positive().default(3),
   ARGON2_PARALLELISM: z.coerce.number().int().positive().default(4),

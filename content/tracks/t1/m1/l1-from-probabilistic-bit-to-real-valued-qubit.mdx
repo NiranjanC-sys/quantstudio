@@ -1,0 +1,208 @@
+---
+id: t1.m1.l1
+title: From Probabilistic Bit to Real-Valued Qubit
+type: concept
+track: t1
+module: t1.m1
+level: L1
+minutes: 13
+objectives:
+  - Contrast the L1 constraint on a probabilistic bit with the L2 constraint on a qubit
+  - Write a real-valued qubit state as a point on the unit circle in R^2
+  - Explain why negative entries are allowed for amplitudes but not for probabilities
+prerequisites: [t0.m1.l3, t0.m3.l1]
+sources:
+  - label: QWorld QBook101
+    url: https://qworld.net/qbook101/
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+tags: [qubit, states]
+---
+
+A probabilistic bit is a point on a line segment. A qubit is a point on a
+circle. Everything else in this track is bookkeeping around that one change, so
+it is worth watching the segment become a circle in slow motion, with no complex
+numbers anywhere, before the machinery arrives.
+
+## One constraint, replaced
+
+A probabilistic bit is a vector $p = (p_0, p_1)$ with
+
+$$
+p_0 \ge 0, \quad p_1 \ge 0, \qquad p_0 + p_1 = 1 .
+$$
+
+A *real-valued qubit* is a vector $\ket{\psi} = (a_0, a_1)$ in $\R^2$ with
+
+$$
+a_0^2 + a_1^2 = 1 ,
+$$
+
+and no sign condition at all. The numbers $a_0$ and $a_1$ are called
+**amplitudes**. To get from a state to something you can bet on, square:
+
+$$
+\Pr[\text{outcome } 0] = a_0^2, \qquad \Pr[\text{outcome } 1] = a_1^2 .
+$$
+
+Normalisation is exactly the statement that those two probabilities sum to one,
+so the rule is self-consistent by construction and never needs a separate axiom.
+
+<Margin label="Notation">
+$\lVert p \rVert_1 = |p_0| + |p_1|$ is the $\ell_1$ norm and
+$\lVert \psi \rVert_2 = \sqrt{a_0^2 + a_1^2}$ is the $\ell_2$ norm. A
+probabilistic bit is a non-negative vector of $\ell_1$ norm 1; a qubit is any
+vector of $\ell_2$ norm 1.
+</Margin>
+
+Draw both sets in the plane. The probabilistic states are the segment from
+$(1,0)$ to $(0,1)$: one dimension of freedom, two endpoints, nothing outside.
+The qubit states are the full unit circle: still one dimension of freedom, but
+now it closes on itself and it passes through four points on the axes rather
+than two. The two extra axis points are $(-1, 0)$ and $(0, -1)$, and they are
+the first genuinely new objects in the subject.
+
+## Negative amplitudes are not negative probabilities
+
+The vector $(-1, 0)$ has $a_0^2 = 1$, so it produces outcome 0 with certainty,
+exactly as $(1,0)$ does. No single measurement can tell them apart. A reasonable
+first reaction is that the minus sign is therefore meaningless. It is not. The
+rule that squares amplitudes applies at the moment of measurement, and until
+that moment the signs survive and are allowed to cancel.
+
+Compare the two states
+
+$$
+\ket{+} = \begin{pmatrix} \isqrt \\[2pt] \isqrt \end{pmatrix},
+\qquad
+\ket{-} = \begin{pmatrix} \isqrt \\[2pt] -\isqrt \end{pmatrix}.
+$$
+
+Both give outcome 0 with probability $\left(1/\sqrt2\right)^2 = 1/2$ and outcome
+1 with probability $1/2$. As descriptions of what a measurement will do right
+now, they are identical. As descriptions of what the bit will do after one more
+gate, they are opposites, and the next section makes that concrete.
+
+<Callout tone="gotcha" title="Amplitudes are not probabilities">
+A negative probability has no operational meaning: there is no experiment whose
+outcome occurs minus one third of the time. A negative amplitude is ordinary.
+The squaring step is what forces non-negativity, and it happens at readout, not
+at storage.
+</Callout>
+
+## What the extra room buys you
+
+The Hadamard gate is the matrix
+
+$$
+H = \isqrt \begin{pmatrix} 1 & 1 \\ 1 & -1 \end{pmatrix},
+$$
+
+which sends $\ket{0} \mapsto \ket{+}$ and $\ket{1} \mapsto \ket{-}$. Because
+$H$ has orthonormal columns it preserves length, so it maps the unit circle to
+itself, which is the only thing a legal operation is allowed to do.
+
+Apply $H$ twice to $\ket{0}$. The first application spreads the amplitude:
+$\ket{0} \mapsto \left(\tfrac{1}{\sqrt2}, \tfrac{1}{\sqrt2}\right)$. The second
+recombines it:
+
+$$
+H \begin{pmatrix} \isqrt \\[2pt] \isqrt \end{pmatrix}
+= \begin{pmatrix} \tfrac12 + \tfrac12 \\[2pt] \tfrac12 - \tfrac12 \end{pmatrix}
+= \begin{pmatrix} 1 \\ 0 \end{pmatrix} .
+$$
+
+The amplitude on outcome 1 is $\tfrac12 - \tfrac12 = 0$. Two contributions of
+equal size and opposite sign met and cancelled. A probabilistic bit cannot do
+this: a stochastic matrix applied to $(0.5, 0.5)$ can never sharpen it back to
+$(1, 0)$, because mixing only ever destroys information.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="Two Hadamards return |0> exactly. The intermediate state is a fair coin, and the second gate undoes it."
+  ir={{
+    version: 1,
+    name: "h-then-h",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "h2", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+Now insert a sign flip between the two Hadamards. The gate
+$Z = \begin{pmatrix} 1 & 0 \\ 0 & -1 \end{pmatrix}$ leaves $a_0$ alone and
+negates $a_1$, turning $\ket{+}$ into $\ket{-}$. Repeat the second Hadamard:
+
+$$
+H \begin{pmatrix} \isqrt \\[2pt] -\isqrt \end{pmatrix}
+= \begin{pmatrix} \tfrac12 - \tfrac12 \\[2pt] \tfrac12 + \tfrac12 \end{pmatrix}
+= \begin{pmatrix} 0 \\ 1 \end{pmatrix} .
+$$
+
+The cancellation has moved. The outcome is now 1 with certainty.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="H, Z, H on |0> gives |1> with certainty. The only change from the previous circuit is one sign in the middle."
+  ir={{
+    version: 1,
+    name: "h-z-h",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "z1", gate: "z", targets: [0] },
+      { id: "h2", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+Between the two circuits the intermediate probabilities are identical, both
+$(0.5, 0.5)$, and the final probabilities are opposite. A classical simulator
+that tracked only probabilities would have thrown away the sign at the halfway
+point and would predict $(0.5, 0.5)$ at the end of both. That gap is the entire
+resource, and it is called **interference**.
+
+## Reading a point off the circle
+
+Every real-valued qubit state can be written as
+
+$$
+\ket{\psi} = \begin{pmatrix} \cos\theta \\ \sin\theta \end{pmatrix},
+\qquad \theta \in [0, 2\pi),
+$$
+
+since that is what $a_0^2 + a_1^2 = 1$ says. The probability of outcome 0 is
+$\cos^2\theta$, and it depends only on the angle. Four familiar states sit at
+four familiar angles: $\ket{0}$ at $\theta = 0$, $\ket{+}$ at $\pi/4$,
+$\ket{1}$ at $\pi/2$, and $\ket{-}$ at $-\pi/4$, which is the same point as
+$7\pi/4$.
+
+The angle is the single real parameter of a real qubit. A probabilistic bit also
+has one real parameter, $p_0 \in [0,1]$. The difference is not how much you can
+store; it is that the qubit's parameter lives on a closed curve where paths can
+come back and meet, and the probabilistic bit's lives on a segment where they
+cannot.
+
+<Check question="The vectors $(0.6, 0.8)$ and $(0.6, -0.8)$ are both valid real qubit states. Which measurement, if any, distinguishes them?">
+No computational-basis measurement does: both give outcome 0 with probability
+$0.36$ and outcome 1 with probability $0.64$. Apply $H$ first and they separate.
+$H(0.6, 0.8) = \left(\tfrac{1.4}{\sqrt2}, \tfrac{-0.2}{\sqrt2}\right)
+\approx (0.98995, -0.14142)$, giving outcome 0 with probability $0.98$, while
+$H(0.6, -0.8) = \left(\tfrac{-0.2}{\sqrt2}, \tfrac{1.4}{\sqrt2}\right)$, giving
+outcome 0 with probability $0.02$. The sign is invisible until a gate converts
+it into an amplitude difference.
+</Check>
+
+## Where this comes from
+
+- [QWorld QBook101](https://qworld.net/qbook101/) is the only source in our
+  benchmark that teaches real-valued qubits as a stage in their own right rather
+  than as a special case of the complex theory. The segment-to-circle picture,
+  and the decision to postpone $\C$ until T1.M1.L6, come from there.
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses),
+  Basics of quantum information, for the statement of the state-and-squared-
+  amplitude rule in the form used throughout this track.

@@ -29,7 +29,7 @@ Infra: `StatefulSet` `redis-cluster`, 12 pods = 6 shards × 1 replica,
 |---|---|---|
 | `lb:{contest_id}` | Leaderboard ZSET, score = `(points<<32) \| (2^32 - penalty_seconds)` | **Contest-correctness risk. MUST NOT be evicted.** Losing this loses the whole leaderboard for that contest, not just staleness — `ZINCRBY` is the only writer and there is no other live copy. |
 | `sim:{hash}` | Simulation cache, 24h TTL (§4) | Safe to evict — cache miss just means recomputation, no correctness impact, only a latency/cost cost. |
-| `rl:{bucket}` | Rate-limit token buckets (§9) | Likely fails **open** on eviction — see §5.6 below. Minor abuse-surface risk, not a correctness risk. |
+| `rl:{bucket}` | Rate-limit token buckets (§9) | Likely fails **open** on eviction — see §4.7 below. Minor abuse-surface risk, not a correctness risk. |
 | `sess:{sid}` | Sessions, 14d TTL sliding | Forced logout. UX blast radius only, no data loss. |
 | `presence:{lesson_id}` | HyperLogLog of concurrent viewers | Low value, safe to lose. |
 | `ws:contest:{id}`, `ws:user:{id}` pub/sub | Real-time fanout channels | Not persisted data, but active delivery matters — a pub/sub outage breaks real-time updates even if the underlying ZSET is intact. |
@@ -86,7 +86,7 @@ whether `lb:*` keys specifically are being evicted, you need one of:
 
 Be honest with yourself here: without one of the above already wired up,
 you are inferring eviction of protected keys indirectly (via `ZCARD`/`EXISTS`
-checks in §5.5 below), not observing it directly. This is a real
+checks in §4.5 below), not observing it directly. This is a real
 observability gap — flag it as a post-incident follow-up if it slows you
 down.
 

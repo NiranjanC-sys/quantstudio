@@ -1,0 +1,223 @@
+---
+id: t0.m1.l2
+title: Coin-Flipping Games and Probabilistic States
+type: concept
+track: t0
+module: t0.m1
+level: L0
+minutes: 12
+objectives:
+  - Compute the state after a sequence of biased coin flips by repeated matrix-vector products
+  - Explain why a fair coin applied twice returns the uniform distribution regardless of the start
+  - Predict the fixed point of a repeated flip and verify it numerically
+prerequisites: [t0.m1.l1]
+sources:
+  - label: QWorld QBook101
+    url: https://qworld.net/qbook101/
+  - label: O'Donnell, 15-859BB Quantum Computation (CMU)
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+tags: [probability, dynamics]
+---
+
+You are holding a bit you are not certain about, and someone is about to act on
+it: they will flip a biased coin, and if it lands heads they will invert your
+bit. What should you believe afterwards? And if they do it again, and again,
+where does your belief end up? The answers are a matrix-vector product and an
+eigenvalue, in that order, and the whole of quantum dynamics is built on the
+same two moves.
+
+## One round of the game
+
+Write the state before the round as $p = (p_0, p_1)^{T}$. The coin lands heads
+with probability $q$, and heads means "invert". The bit ends up as 0 in two
+disjoint ways: it was 0 and the coin said leave it alone, or it was 1 and the
+coin said invert. Add the two:
+
+$$
+p_0' = (1-q)\,p_0 + q\,p_1, \qquad
+p_1' = q\,p_0 + (1-q)\,p_1 .
+$$
+
+Both new coordinates are linear in the old ones, so the round is a matrix:
+
+$$
+B_q = \begin{pmatrix} 1-q & q \\ q & 1-q \end{pmatrix},
+\qquad p' = B_q\, p .
+$$
+
+<Margin label="Reading a column">
+Column $j$ of $B_q$ is the distribution you end up with if you *start* certain
+that the bit is $j$. That is the rule for every operator in this module: columns
+are conditional distributions, so they are non-negative and each sums to 1.
+</Margin>
+
+Take $q = 0.3$ and start from the certain state $\ket{0} = (1,0)^{T}$. One round
+gives
+
+$$
+B_{0.3}\begin{pmatrix} 1 \\ 0 \end{pmatrix}
+= \begin{pmatrix} 0.7 \\ 0.3 \end{pmatrix},
+$$
+
+which is just the first column. A second round is the same matrix again:
+
+$$
+B_{0.3}\begin{pmatrix} 0.7 \\ 0.3 \end{pmatrix}
+= \begin{pmatrix} 0.7 \cdot 0.7 + 0.3 \cdot 0.3 \\ 0.3 \cdot 0.7 + 0.7 \cdot 0.3 \end{pmatrix}
+= \begin{pmatrix} 0.58 \\ 0.42 \end{pmatrix} .
+$$
+
+A third gives $(0.532, 0.468)$, a fourth $(0.5128, 0.4872)$, a fifth
+$(0.50512, 0.49488)$. The state is crawling toward $(0.5, 0.5)$ and the size of
+each step is shrinking by a constant factor. That factor is worth naming.
+
+## The bias is what decays
+
+Instead of tracking two numbers subject to a constraint, track the one number
+that is actually free. Let
+
+$$
+d = p_0 - p_1 .
+$$
+
+Since $p_0 + p_1 = 1$, the pair $(p_0, p_1)$ is recovered from $d$ by
+$p_0 = \tfrac{1+d}{2}$ and $p_1 = \tfrac{1-d}{2}$. Now subtract the two update
+equations:
+
+$$
+d' = p_0' - p_1'
+   = \big[(1-q)p_0 + q p_1\big] - \big[q p_0 + (1-q) p_1\big]
+   = (1 - 2q)\,(p_0 - p_1)
+   = (1-2q)\, d .
+$$
+
+One line, and the dynamics are solved. After $k$ rounds,
+
+$$
+d_k = (1-2q)^k d_0,
+\qquad
+p^{(k)} = \left( \tfrac{1 + (1-2q)^k d_0}{2}, \; \tfrac{1 - (1-2q)^k d_0}{2} \right).
+$$
+
+Check it against the arithmetic above. With $q = 0.3$ the factor is
+$1 - 2q = 0.4$, and starting from $d_0 = 1$ we get $d_1 = 0.4$ so
+$p_0 = 0.7$; $d_2 = 0.16$ so $p_0 = 0.58$; $d_3 = 0.064$ so $p_0 = 0.532$;
+$d_4 = 0.0256$ so $p_0 = 0.5128$. Every value matches.
+
+The number $1-2q$ is an eigenvalue of $B_q$, with eigenvector $(1,-1)^{T}$. The
+other eigenvalue is 1, with eigenvector $(1,1)^{T}$, which is twice the uniform
+distribution. Any honest starting state decomposes into "uniform, which never
+moves" plus "bias, which is multiplied by $1-2q$ every round". For
+$0 < q < 1$ we have $|1-2q| < 1$, the bias dies, and the uniform distribution is
+the unique fixed point.
+
+## The fair coin is not gentle, it is total
+
+Set $q = \tfrac12$. Then $1 - 2q = 0$, and the bias is not merely damped, it is
+annihilated in a single application:
+
+$$
+F = \begin{pmatrix} \half & \half \\ \half & \half \end{pmatrix},
+\qquad
+F \begin{pmatrix} p_0 \\ p_1 \end{pmatrix}
+= \begin{pmatrix} \half(p_0+p_1) \\ \half(p_0+p_1) \end{pmatrix}
+= \begin{pmatrix} \half \\ \half \end{pmatrix}.
+$$
+
+The output does not depend on the input at all. So $F^2 = F$: flipping a fair
+coin twice is exactly as informative as flipping it once, which is to say, not
+at all. That idempotence is the classical fact that the next lesson's quantum
+analogue violates.
+
+## The same experiment on hardware
+
+The Hadamard gate is often introduced as "the quantum fair coin", and one
+application does look like one: measure and you get 0 or 1 with probability
+$\half$ each. Apply it twice and the analogy collapses.
+
+<Simulate
+  show={['probabilities', 'amplitudes']}
+  caption="Two Hadamards in a row. The classical fair coin is idempotent; this is not."
+  ir={{
+    version: 1,
+    name: "double-hadamard",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "h2", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $0$ | $1.000000$ |
+| $1$ | $0.000000$ |
+
+</Simulate>
+
+Two fair coins in a row leave you at $(0.5, 0.5)$. Two Hadamards in a row leave
+you at $(1, 0)$, certain again. The reason is exactly the quantity we tracked:
+after one Hadamard the two entries are $+\isqrt$ and $+\isqrt$, and the second
+Hadamard produces $\isqrt(\isqrt + \isqrt) = 1$ for the 0 entry and
+$\isqrt(\isqrt - \isqrt) = 0$ for the 1 entry. The minus sign is the whole
+story. A stochastic matrix has no minus signs available, so the bias can only
+shrink. A unitary matrix does, so the bias can be destroyed and then rebuilt.
+
+<Callout tone="gotcha" title="Half and half is not the same state twice">
+After one fair coin the bit is genuinely random. After one Hadamard the qubit is
+in a definite state that merely *measures* as random. Two systems can agree on
+every single-shot probability and still behave differently under further
+operations, which is why the state, not the measurement statistics, is the thing
+you carry forward.
+</Callout>
+
+## An unfair game with an unfair fixed point
+
+Nothing forces the two conditional distributions to be mirror images. Suppose a
+0 flips to 1 with probability $a = 0.3$, and a 1 flips to 0 with probability
+$b = 0.2$. The operator is
+
+$$
+M = \begin{pmatrix} 1-a & b \\ a & 1-b \end{pmatrix}
+  = \begin{pmatrix} 0.7 & 0.2 \\ 0.3 & 0.8 \end{pmatrix} .
+$$
+
+Track $p_1$ alone, using $p_0 = 1 - p_1$:
+
+$$
+p_1' = a\,p_0 + (1-b)\,p_1 = a(1 - p_1) + (1-b)p_1 = a + (1 - a - b)\,p_1 .
+$$
+
+A fixed point $\pi_1$ satisfies $\pi_1 = a + (1-a-b)\pi_1$, so
+$\pi_1 (a + b) = a$ and
+
+$$
+\pi = \left( \frac{b}{a+b}, \; \frac{a}{a+b} \right) = (0.4, \; 0.6).
+$$
+
+Subtracting the fixed-point equation from the update equation gives
+$p_1' - \pi_1 = (1-a-b)(p_1 - \pi_1)$, so the deviation decays by
+$1 - a - b = 0.5$ per round. Starting from $\ket{0}$, the deviation is
+$-0.6$, and the sequence of $p_1$ values is $0.3$, $0.45$, $0.525$, $0.5625$,
+$0.58125$, converging on $0.6$ by halving the gap each time. The uniform
+distribution has no special status here; the fixed point is whatever the
+asymmetry says it is.
+
+<Check question="A biased coin with $q = 0.1$ acts on the certain state $\ket{1}$. What is $p_0$ after three rounds, and what is the limit as the number of rounds grows?">
+Start with $d_0 = p_0 - p_1 = -1$ and multiply by $1 - 2q = 0.8$ three times:
+$d_3 = -0.512$, so $p_0 = \tfrac{1 - 0.512}{2} = 0.244$ and $p_1 = 0.756$.
+Since $|0.8| < 1$, $d_k \to 0$ and the state converges to $(0.5, 0.5)$. A weak
+coin takes longer, but as long as $0 < q < 1$ the destination is the same.
+</Check>
+
+## Where this comes from
+
+- [QWorld QBook101](https://qworld.net/qbook101/), which teaches coin-flipping
+  games as the bridge from a static distribution to an evolving one, before any
+  quantum object appears.
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), for the
+  habit of solving a two-state chain by tracking the one free parameter rather
+  than pushing the matrix around.

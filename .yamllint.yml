@@ -1,0 +1,59 @@
+# yamllint configuration for RedQuant infrastructure YAML.
+#
+# Scope: infra/ and .github/. Run with:
+#   yamllint infra .github
+#
+# Rationale for the relaxations below. The default yamllint profile is tuned
+# for hand-written application config, not for Kubernetes manifests, GitHub
+# Actions workflows and Prometheus rule files. Applying it unmodified to this
+# tree produces ~530 findings, of which every single one is cosmetic:
+#
+#   408  line-length            PromQL expressions, image digests and SHA-pinned
+#                               `uses:` lines cannot be wrapped without breaking
+#                               them. 120 is enforced instead of 80.
+#   119  document-start         A leading `---` adds nothing to single-document
+#                               manifests; multi-document files still use it as
+#                               a separator, which this config still allows.
+#     7  comments-indentation   Deliberate left-aligned block comments that
+#                               introduce a following stanza.
+#     5  truthy                 GitHub Actions' `on:` key. YAML 1.1 reads it as
+#                               a boolean; it is a required Actions keyword and
+#                               cannot be quoted or renamed.
+#
+# Everything that indicates a real defect stays at error level and unmodified:
+# syntax errors, key-duplicates, trailing-spaces, empty-values, octal-values,
+# indentation consistency and new-line-at-end-of-file.
+
+extends: default
+
+ignore: |
+  node_modules/
+  .git/
+
+rules:
+  # PromQL, SHA-pinned action references and long image digests do not wrap.
+  line-length:
+    max: 120
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
+
+  # `---` is optional for single-document files, still permitted as a separator.
+  document-start: disable
+
+  # Left-aligned block comments introducing the stanza below them are intentional.
+  comments-indentation: disable
+
+  # GitHub Actions requires the literal key `on:`; YAML 1.1 truthiness does not
+  # apply to it. Keys are exempted, values are still checked.
+  truthy:
+    check-keys: false
+
+  # Real-defect rules, kept explicit so a future `extends:` change cannot
+  # silently weaken them.
+  key-duplicates: enable
+  trailing-spaces: enable
+  empty-values: enable
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+  new-line-at-end-of-file: enable

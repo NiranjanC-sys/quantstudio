@@ -6,16 +6,16 @@ import { SiteFooter } from '@/components/layout/SiteFooter';
 
 export const metadata: Metadata = {
   description:
-    'A 331 lesson quantum computing curriculum benchmarked against 20 university syllabi, a circuit builder that simulates as you type, autograded labs, and weekly rated contests.',
+    'A 306 lesson quantum computing curriculum benchmarked against 20 university syllabi, a circuit builder that simulates as you type, autograded labs, and weekly rated contests.',
 };
 
 const TRACKS = [
-  { id: 'T0', name: 'Mathematical and Computational Foundations', level: 'L0', lessons: 31, blurb: 'The linear algebra, probability and reversible computation every other course assumes you already have.' },
+  { id: 'T0', name: 'Mathematical and Computational Foundations', level: 'L0', lessons: 26, blurb: 'The linear algebra, probability and reversible computation every other course assumes you already have.' },
   { id: 'T1', name: 'Quantum Computing Core', level: 'L1', lessons: 61, blurb: 'Qubits, measurement, entanglement, nonlocality, the circuit model, and your first four algorithms.' },
   { id: 'T2', name: 'Quantum Algorithms and Complexity', level: 'L2', lessons: 48, blurb: 'Grover, the Fourier transform, phase estimation, Shor, hidden subgroups, walks, simulation, lower bounds.' },
   { id: 'T3', name: 'Quantum Software Engineering', level: 'L1', lessons: 41, blurb: 'Five SDKs, OpenQASM 3, transpilation, resource estimation, testing quantum code, benchmarking, mitigation.' },
   { id: 'T4', name: 'Noise, Error Correction and Fault Tolerance', level: 'L2', lessons: 42, blurb: 'Density matrices, channels, stabilizers, surface codes, decoding, magic states, the threshold theorem.' },
-  { id: 'T5', name: 'Applications', level: 'L2', lessons: 63, blurb: 'Chemistry and VQE, optimisation and QAOA, quantum machine learning, cryptography and the migration to PQC.' },
+  { id: 'T5', name: 'Applications', level: 'L2', lessons: 43, blurb: 'Chemistry and VQE, optimisation and QAOA, quantum machine learning, cryptography and the migration to PQC.' },
   { id: 'T6', name: 'Hardware and Systems', level: 'L2', lessons: 30, blurb: 'Transmons, ions, photons, neutral atoms, spins. Coherence, calibration, cryogenics, cloud QPU systems.' },
   { id: 'T7', name: 'Career and Research', level: 'L1', lessons: 15, blurb: 'Reading papers, thirty recurring interview patterns, twenty employer briefings, a defended capstone.' },
 ];
@@ -37,7 +37,7 @@ export default function HomePage() {
           <div className="rq-hero-copy">
             <h1 className="rq-display">Learn quantum computing by building it.</h1>
             <p className="rq-lead">
-              A 331 lesson curriculum benchmarked against 20 university syllabi, a circuit builder
+              A 306 lesson curriculum benchmarked against 20 university syllabi, a circuit builder
               that simulates as you type, and weekly rated contests.
             </p>
             <div className="rq-hero-cta">
@@ -86,7 +86,7 @@ export default function HomePage() {
         </section>
 
         <section className="rq-section" aria-labelledby="curriculum">
-          <h2 id="curriculum" className="rq-h2">Eight tracks, 74 modules, 331 lessons.</h2>
+          <h2 id="curriculum" className="rq-h2">Eight tracks, 64 modules, 306 lessons.</h2>
           <p className="rq-section-sub">
             Arranged as a prerequisite graph, not a playlist. The placement test writes straight into
             it, so you start where you actually are.

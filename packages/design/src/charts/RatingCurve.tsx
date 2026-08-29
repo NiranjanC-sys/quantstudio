@@ -70,7 +70,7 @@ export const RatingCurve = forwardRef<HTMLDivElement, RatingCurveProps>(function
     ? ''
     : `M ${points.map((point, index) => `${x(index).toFixed(2)},${y(point.rating + (point.deviation ?? 0)).toFixed(2)}`).join(' L ')} L ${points
         .map(
-          (point, index) =>
+          (_point, index) =>
             `${x(points.length - 1 - index).toFixed(2)},${y(
               (points[points.length - 1 - index]?.rating ?? 0) -
                 (points[points.length - 1 - index]?.deviation ?? 0),

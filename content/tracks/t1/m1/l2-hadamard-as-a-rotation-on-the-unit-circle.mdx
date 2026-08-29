@@ -1,0 +1,186 @@
+---
+id: t1.m1.l2
+title: Hadamard as a Rotation on the Unit Circle
+type: concept
+track: t1
+module: t1.m1
+level: L1
+minutes: 12
+objectives:
+  - Compute the action of H on |0>, |1>, |+> and |-> by hand
+  - Show that H is a reflection, not a rotation, and identify the mirror line
+  - Prove that H squared is the identity
+prerequisites: [t1.m1.l1]
+sources:
+  - label: QWorld QBook101
+    url: https://qworld.net/qbook101/
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+tags: [qubit, gates]
+---
+
+Every operation on a real-valued qubit has to map the unit circle to itself, and
+there are only two ways to do that with a linear map: turn the circle, or flip
+it. Which one is the Hadamard gate? The answer matters, because a rotation
+composed with itself moves you further round while a flip composed with itself
+brings you home, and $H$ is famously its own inverse.
+
+## The four values you should know cold
+
+$$
+H = \isqrt \begin{pmatrix} 1 & 1 \\ 1 & -1 \end{pmatrix}
+$$
+
+acts on a column vector by taking sums and differences and dividing by
+$\sqrt 2$. On the four states you meet most often:
+
+$$
+H\ket{0} = \isqrt \begin{pmatrix} 1 \\ 1 \end{pmatrix} = \ket{+},
+\qquad
+H\ket{1} = \isqrt \begin{pmatrix} 1 \\ -1 \end{pmatrix} = \ket{-},
+$$
+
+$$
+H\ket{+} = \isqrt \begin{pmatrix} \isqrt + \isqrt \\[2pt] \isqrt - \isqrt \end{pmatrix}
+= \begin{pmatrix} 1 \\ 0 \end{pmatrix} = \ket{0},
+\qquad
+H\ket{-} = \ket{1} .
+$$
+
+Read those four as two swaps: $H$ exchanges $\ket{0}$ with $\ket{+}$ and
+exchanges $\ket{1}$ with $\ket{-}$. Nothing is left in a new place after two
+applications.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="X then H prepares |->. Its amplitudes are equal in size and opposite in sign, and its probabilities are the same as those of |+>."
+  ir={{
+    version: 1,
+    name: "prepare-minus",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "x1", gate: "x", targets: [0] },
+      { id: "h1", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+## H squared is the identity
+
+Multiply the matrix by itself, keeping the $1/\sqrt2$ factors outside:
+
+$$
+H^2 = \tfrac12 \begin{pmatrix} 1 & 1 \\ 1 & -1 \end{pmatrix}
+\begin{pmatrix} 1 & 1 \\ 1 & -1 \end{pmatrix}
+= \tfrac12 \begin{pmatrix} 1 + 1 & 1 - 1 \\ 1 - 1 & 1 + 1 \end{pmatrix}
+= \begin{pmatrix} 1 & 0 \\ 0 & 1 \end{pmatrix} .
+$$
+
+So $H^{-1} = H$: the gate is an **involution**. That is already suspicious for a
+rotation. A rotation by angle $\varphi$ squares to a rotation by $2\varphi$, and
+the only rotations that square to the identity are by $0$ and by $\pi$, that is
+the identity itself and $-I$. $H$ is neither, since $H\ket{0} \ne \pm\ket{0}$.
+
+<Margin label="Definition">
+An **involution** is a map $f$ with $f \circ f = \mathrm{id}$. Among
+length-preserving maps of the plane, the involutions are the identity, the point
+reflection $-I$, and the reflections in a line through the origin.
+</Margin>
+
+## The mirror line
+
+A reflection of $\R^2$ in the line through the origin at angle $\varphi$ has
+matrix
+
+$$
+R_\varphi = \begin{pmatrix} \cos 2\varphi & \sin 2\varphi \\
+\sin 2\varphi & -\cos 2\varphi \end{pmatrix} .
+$$
+
+Match it against $H$ entry by entry. We need $\cos 2\varphi = 1/\sqrt2$ and
+$\sin 2\varphi = 1/\sqrt2$, so $2\varphi = \pi/4$ and
+
+$$
+\varphi = \frac{\pi}{8} = 22.5^\circ .
+$$
+
+$H$ is the reflection in the line at $22.5$ degrees. Two independent checks
+confirm it. First the determinant: $\det H = \tfrac12(-1 - 1) = -1$, and every
+rotation has determinant $+1$ while every reflection has determinant $-1$.
+Second the fixed vector. A reflection fixes every vector along its mirror, so
+the state at angle $\pi/8$,
+
+$$
+\ket{m} = \begin{pmatrix} \cos(\pi/8) \\ \sin(\pi/8) \end{pmatrix}
+\approx \begin{pmatrix} 0.923880 \\ 0.382683 \end{pmatrix},
+$$
+
+should be untouched by $H$. The gate $R_y(\pi/4)$ prepares exactly that state,
+because $R_y(\theta)\ket{0} = \cos(\theta/2)\ket{0} + \sin(\theta/2)\ket{1}$.
+
+<Simulate
+  show="amplitudes"
+  caption="Ry(pi/4) puts the state on the mirror line at 22.5 degrees; the Hadamard that follows changes nothing."
+  ir={{
+    version: 1,
+    name: "mirror-fixed",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "r1", gate: "ry", targets: [0], params: [0.7853981633974483] },
+      { id: "h1", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+The amplitudes come back as $0.9239$ and $0.3827$, which are $\cos(\pi/8)$ and
+$\sin(\pi/8)$: the state went in and came out unchanged. The perpendicular
+direction, at angle $\pi/8 + \pi/2 = 5\pi/8$, is prepared by
+$R_y(5\pi/4)$ and gives amplitudes $(-0.382683,\, 0.923880)$; after $H$ it
+becomes $(0.382683,\, -0.923880)$, the same vector with both signs reversed.
+Fixed along the mirror, negated across it, which is the definition of a
+reflection.
+
+<Callout tone="gotcha" title="Why people still say rotation">
+On the Bloch sphere of T1.M1.L8, $H$ is a rotation by $\pi$ about the axis
+halfway between $x$ and $z$. That is a genuine rotation in three dimensions, and
+it restricts to a reflection on the real circle sitting inside the sphere. Both
+statements are correct; they describe different spaces. A rotation by $\pi$ is
+its own inverse, which is why $H^2 = I$ either way.
+</Callout>
+
+## Why the mirror sits at 22.5 degrees
+
+The mirror line is the bisector of the pair it swaps. $H$ exchanges $\ket{0}$ at
+angle $0$ with $\ket{+}$ at angle $\pi/4$, and a reflection that swaps two
+directions must fix the line halfway between them, at $\pi/8$. The same
+reasoning applies to the other swapped pair: $\ket{1}$ sits at $\pi/2$ and
+$\ket{-}$ at $-\pi/4$, whose bisector is at $\pi/8$ as well, this time
+approached from the other side.
+
+This also explains the sign asymmetry that beginners find arbitrary.
+$H\ket{1} = \ket{-}$ rather than $\ket{+}$ because reflecting the point at
+$\pi/2$ in the line at $\pi/8$ lands at $2(\pi/8) - \pi/2 = -\pi/4$, and the
+state at $-\pi/4$ is $\left(\tfrac{1}{\sqrt2}, -\tfrac{1}{\sqrt2}\right)$. The
+minus sign in the bottom right of the matrix is not a convention someone chose;
+it is where the geometry puts it.
+
+<Check question="A gate $G$ acts on real qubit states, satisfies $G^2 = I$, and sends $\ket{0}$ to the state at angle $\pi/3$. Is $G$ a rotation or a reflection, and where is its mirror?">
+A reflection. The only rotations squaring to the identity are $I$ and $-I$, and
+neither sends $\ket{0}$ to angle $\pi/3$. Since a reflection swaps $\ket{0}$ at
+angle 0 with the state at angle $\pi/3$, the mirror is the bisector, the line at
+$\pi/6$. Its matrix is
+$\begin{pmatrix} \cos(\pi/3) & \sin(\pi/3) \\ \sin(\pi/3) & -\cos(\pi/3)\end{pmatrix}
+= \begin{pmatrix} 0.5 & 0.866025 \\ 0.866025 & -0.5 \end{pmatrix}$.
+</Check>
+
+## Where this comes from
+
+- [QWorld QBook101](https://qworld.net/qbook101/) develops the whole of
+  single-qubit behaviour on the real unit circle first, which is what makes the
+  reflection reading available at all. In the complex picture the question
+  "rotation or reflection" cannot even be posed in this form.
+- [PennyLane Codebook](https://pennylane.ai/codebook), the single-qubit gate
+  modules, for the habit of checking a claimed identity such as $H^2 = I$ by
+  running it rather than by trusting the algebra.
