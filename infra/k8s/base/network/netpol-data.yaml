@@ -1,0 +1,127 @@
+# Ingress-side least privilege for the data tier itself: who is allowed to open a
+# connection to Postgres, the PgBouncer poolers, and the Redis cluster. Combined with
+# the egress rules in netpol-api.yaml / netpol-kernel.yaml / netpol-grader.yaml /
+# netpol-ai-tutor.yaml, both sides of each allowed path must agree or the connection
+# is dropped by the namespace's default-deny baseline.
+#
+# Three separate NetworkPolicy objects because CNPG's Postgres pods, Pooler pods and
+# the Redis StatefulSet pods carry three different label sets.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-policy
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: redquant-pg
+  policyTypes:
+    - Ingress
+  ingress:
+    # Only the pooler pods talk to Postgres directly -- everything else routes
+    # through PgBouncer (§5).
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: cnpg.io/poolerName
+                operator: In
+                values:
+                  - redquant-pg-rw
+                  - redquant-pg-ro
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Streaming replication between the primary and its 3 replicas.
+    - from:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: redquant-pg
+      ports:
+        - protocol: TCP
+          port: 5432
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9187
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pgbouncer-policy
+spec:
+  podSelector:
+    matchExpressions:
+      - key: cnpg.io/poolerName
+        operator: In
+        values:
+          - redquant-pg-rw
+          - redquant-pg-ro
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - api
+                  - quantum-kernel
+                  - quantum-kernel-heavy
+                  - grader
+      ports:
+        - protocol: TCP
+          port: 5432
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9127
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: redis-cluster
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - api
+                  - quantum-kernel
+                  - quantum-kernel-heavy
+                  - grader
+                  - ai-tutor
+      ports:
+        - protocol: TCP
+          port: 6379
+    # Intra-cluster gossip/replication bus, plus client port between shard members.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis-cluster
+      ports:
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 16379
+    # The one-shot cluster-formation Job also dials in over the client port.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis-cluster-init
+      ports:
+        - protocol: TCP
+          port: 6379

@@ -1,0 +1,104 @@
+# syntax=docker/dockerfile:1.7
+#
+# RedQuant `web` image -- Next.js 15 RSC/SSR frontend (docs/architecture/
+# system-design.md §3). Hosts the T-A client-side statevector simulator
+# (@redquant/qir, §4) in the browser; the server side is pure SSR/RSC and
+# never talks to Postgres directly.
+#
+# Build context MUST be the monorepo root:
+#   docker build -f infra/docker/Dockerfile.web -t redquant/web:<sha> .
+#
+# NOTE ON APP LAYOUT: at the time this Dockerfile was authored, apps/web/ had
+# not been scaffolded yet (no package.json). This Dockerfile assumes the
+# standard turborepo/Next.js conventions used by every other package in this
+# monorepo (packages/api, content, design, qir all publish as "@redquant/*"),
+# i.e. a package named "@redquant/web" with `next build` configured for
+# `output: 'standalone'`. Update PRUNE_SCOPE (build arg below) if the real
+# name differs once the app lands.
+
+ARG NODE_VERSION=22-alpine
+ARG PNPM_VERSION=11.21.0
+ARG TURBO_VERSION=2.3.3
+ARG PRUNE_SCOPE=@redquant/web
+
+########################################################################
+# base -- shared OS + toolchain layer
+########################################################################
+FROM node:${NODE_VERSION} AS base
+RUN apk add --no-cache libc6-compat tini
+ARG PNPM_VERSION
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+WORKDIR /app
+
+########################################################################
+# pruner -- compute the minimal workspace slice needed to build `web`
+# (helper stage feeding `deps`; keeps `deps` cache-friendly since it only
+# ever sees pruned package.json files, not the whole monorepo's source)
+########################################################################
+FROM base AS pruner
+ARG TURBO_VERSION
+ARG PRUNE_SCOPE
+# Only lockfile + package.json files are needed for this step; everything
+# else is excluded via Dockerfile.web.dockerignore.
+COPY . .
+RUN pnpm dlx turbo@${TURBO_VERSION} prune ${PRUNE_SCOPE} --docker
+
+########################################################################
+# deps -- install production+dev deps for the pruned slice only, with a
+# persistent pnpm store cache mount so repeat builds are fast
+########################################################################
+FROM base AS deps
+COPY --from=pruner /app/out/json/ .
+RUN --mount=type=cache,id=pnpm-store-web,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile
+
+########################################################################
+# build
+########################################################################
+FROM deps AS build
+ARG PRUNE_SCOPE
+COPY --from=pruner /app/out/full/ .
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    NODE_ENV=production
+RUN pnpm turbo run build --filter=${PRUNE_SCOPE}...
+
+########################################################################
+# runner -- minimal, non-root, read-only-rootfs-friendly runtime
+########################################################################
+FROM node:${NODE_VERSION} AS runner
+RUN apk add --no-cache tini
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
+
+RUN addgroup -g 10001 redquant \
+    && adduser -D -H -u 10001 -G redquant redquant
+
+WORKDIR /app
+COPY --from=build --chown=redquant:redquant /app/apps/web/public ./apps/web/public
+COPY --from=build --chown=redquant:redquant /app/apps/web/.next/standalone ./
+COPY --from=build --chown=redquant:redquant /app/apps/web/.next/static ./apps/web/.next/static
+
+USER redquant:redquant
+
+EXPOSE 3000
+
+# Writable dirs required when the container is run with a read-only root
+# filesystem (see docker-compose.prod.yml `read_only: true` + tmpfs mounts):
+#   /tmp                       - Node/Next scratch space
+#   /app/apps/web/.next/cache  - ISR / on-demand image optimisation cache
+VOLUME ["/tmp", "/app/apps/web/.next/cache"]
+
+# busybox wget ships in node:alpine by default -- no extra package needed.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
+  CMD wget -q -O- --tries=1 http://127.0.0.1:3000/api/health || exit 1
+
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "apps/web/server.js"]
+
+LABEL org.opencontainers.image.title="redquant-web" \
+      org.opencontainers.image.description="RedQuant Next.js 15 SSR/RSC web frontend" \
+      org.opencontainers.image.source="https://github.com/redquant/redquant" \
+      org.opencontainers.image.vendor="RedQuant" \
+      org.opencontainers.image.licenses="UNLICENSED"

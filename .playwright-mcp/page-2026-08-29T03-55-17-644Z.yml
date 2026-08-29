@@ -1,0 +1,241 @@
+- generic [active] [ref=f6e1]:
+  - banner [ref=f6e2]:
+    - link "Skip to content" [ref=f6e3] [cursor=pointer]:
+      - /url: "#main"
+    - link "RedQuant home" [ref=f6e4] [cursor=pointer]:
+      - /url: /
+      - text: RedQuant
+    - navigation "Main" [ref=f6e6]:
+      - list [ref=f6e7]:
+        - listitem [ref=f6e8]:
+          - link "Curriculum" [ref=f6e9] [cursor=pointer]:
+            - /url: /curriculum
+        - listitem [ref=f6e10]:
+          - link "Lab" [ref=f6e11] [cursor=pointer]:
+            - /url: /lab
+        - listitem [ref=f6e12]:
+          - link "Contests" [ref=f6e13] [cursor=pointer]:
+            - /url: /contests
+        - listitem [ref=f6e14]:
+          - link "Interview" [ref=f6e15] [cursor=pointer]:
+            - /url: /interview
+        - listitem [ref=f6e16]:
+          - link "Pricing" [ref=f6e17] [cursor=pointer]:
+            - /url: /pricing
+    - generic [ref=f6e18]:
+      - 'button "Theme: System. Switch to Dark." [ref=f6e19] [cursor=pointer]': System
+      - link "Sign in" [ref=f6e20] [cursor=pointer]:
+        - /url: /login
+      - link "Start free" [ref=f6e21] [cursor=pointer]:
+        - /url: /signup
+  - main [ref=f6e22]:
+    - generic [ref=f6e23]:
+      - generic [ref=f6e24]:
+        - heading "Learn quantum computing by building it." [level=1] [ref=f6e25]
+        - paragraph [ref=f6e26]: A 331 lesson curriculum benchmarked against 20 university syllabi, a circuit builder that simulates as you type, and weekly rated contests.
+        - generic [ref=f6e27]:
+          - link "Open the lab" [ref=f6e28] [cursor=pointer]:
+            - /url: /lab
+          - link "See the curriculum" [ref=f6e29] [cursor=pointer]:
+            - /url: /curriculum
+      - generic [ref=f6e30]:
+        - tablist "Walk through the state" [ref=f6e31]:
+          - tab "q0 in |0>" [ref=f6e32] [cursor=pointer]
+          - tab "H q0" [selected] [ref=f6e33] [cursor=pointer]
+          - tab "H, then S" [ref=f6e34] [cursor=pointer]
+          - tab "entangle" [ref=f6e35] [cursor=pointer]
+        - generic [ref=f6e36]:
+          - img "Bloch vector x 1.000, y 0.000, z 0.000" [ref=f6e37]
+          - table [ref=f6e42]:
+            - caption [ref=f6e43]: Live amplitudes
+            - rowgroup [ref=f6e44]:
+              - row [ref=f6e45]:
+                - columnheader "state" [ref=f6e46]
+                - columnheader "amplitude" [ref=f6e47]
+                - columnheader "probability" [ref=f6e48]
+            - rowgroup [ref=f6e49]:
+              - row [ref=f6e50]:
+                - rowheader "|00⟩" [ref=f6e51]
+                - cell "0.707 + 0.000i" [ref=f6e52]
+                - cell "50.0%" [ref=f6e53]
+              - row [ref=f6e57]:
+                - rowheader "|10⟩" [ref=f6e58]
+                - cell "0.707 + 0.000i" [ref=f6e59]
+                - cell "50.0%" [ref=f6e60]
+        - paragraph [ref=f6e64]: A Hadamard rotates it onto the equator. Equal weight on 0 and 1, and a definite phase.
+    - region [ref=f6e65]:
+      - generic [ref=f6e66]:
+        - heading "Reading about superposition is not the same as steering it." [level=2] [ref=f6e68]
+        - generic [ref=f6e69]:
+          - paragraph [ref=f6e70]: We read twenty syllabi from Caltech, MIT, Berkeley, Stanford, CMU, Oxford, Waterloo, Delft, IBM, Google, Microsoft and Xanadu before writing a single lesson. Five gaps repeated almost everywhere, and each one became a product requirement.
+          - generic [ref=f6e71]:
+            - generic [ref=f6e72]:
+              - term [ref=f6e73]: The linear algebra cliff
+              - definition [ref=f6e74]: Most courses assume it and lose people in week two. Ours builds up from probabilistic bits and real-valued qubits, and the placement test lets you skip what you already know.
+            - generic [ref=f6e75]:
+              - term [ref=f6e76]: Theory and code in different buildings
+              - definition [ref=f6e77]: Proof-driven courses ship nothing runnable. Exercise platforms are thin on why. Every lesson here carries a circuit you can run, and every claim has a simulation that confirms it numerically.
+            - generic [ref=f6e78]:
+              - term [ref=f6e79]: Nothing is retained
+              - definition [ref=f6e80]: Spaced repetition drills are generated from every module, not bolted on afterwards.
+            - generic [ref=f6e81]:
+              - term [ref=f6e82]: No competitive practice
+              - definition [ref=f6e83]: Quantum hiring asks for exactly the muscle that timed problems build. Contests run weekly and are rated.
+            - generic [ref=f6e84]:
+              - term [ref=f6e85]: Noise taught last
+              - definition [ref=f6e86]: Every practitioner meets noise on day one of touching hardware, so we introduce it as an observable phenomenon in the core track and formalise it later.
+    - region [ref=f6e87]:
+      - heading "Eight tracks, 74 modules, 331 lessons." [level=2] [ref=f6e88]
+      - paragraph [ref=f6e89]: Arranged as a prerequisite graph, not a playlist. The placement test writes straight into it, so you start where you actually are.
+      - list [ref=f6e90]:
+        - listitem [ref=f6e91]:
+          - generic [ref=f6e92]: T0
+          - generic [ref=f6e93]:
+            - heading "Mathematical and Computational Foundations" [level=3] [ref=f6e94]
+            - paragraph [ref=f6e95]: The linear algebra, probability and reversible computation every other course assumes you already have.
+          - generic [ref=f6e96]: L0
+          - generic [ref=f6e97]: 31 lessons
+        - listitem [ref=f6e98]:
+          - generic [ref=f6e99]: T1
+          - generic [ref=f6e100]:
+            - heading "Quantum Computing Core" [level=3] [ref=f6e101]
+            - paragraph [ref=f6e102]: Qubits, measurement, entanglement, nonlocality, the circuit model, and your first four algorithms.
+          - generic [ref=f6e103]: L1
+          - generic [ref=f6e104]: 61 lessons
+        - listitem [ref=f6e105]:
+          - generic [ref=f6e106]: T2
+          - generic [ref=f6e107]:
+            - heading "Quantum Algorithms and Complexity" [level=3] [ref=f6e108]
+            - paragraph [ref=f6e109]: Grover, the Fourier transform, phase estimation, Shor, hidden subgroups, walks, simulation, lower bounds.
+          - generic [ref=f6e110]: L2
+          - generic [ref=f6e111]: 48 lessons
+        - listitem [ref=f6e112]:
+          - generic [ref=f6e113]: T3
+          - generic [ref=f6e114]:
+            - heading "Quantum Software Engineering" [level=3] [ref=f6e115]
+            - paragraph [ref=f6e116]: Five SDKs, OpenQASM 3, transpilation, resource estimation, testing quantum code, benchmarking, mitigation.
+          - generic [ref=f6e117]: L1
+          - generic [ref=f6e118]: 41 lessons
+        - listitem [ref=f6e119]:
+          - generic [ref=f6e120]: T4
+          - generic [ref=f6e121]:
+            - heading "Noise, Error Correction and Fault Tolerance" [level=3] [ref=f6e122]
+            - paragraph [ref=f6e123]: Density matrices, channels, stabilizers, surface codes, decoding, magic states, the threshold theorem.
+          - generic [ref=f6e124]: L2
+          - generic [ref=f6e125]: 42 lessons
+        - listitem [ref=f6e126]:
+          - generic [ref=f6e127]: T5
+          - generic [ref=f6e128]:
+            - heading "Applications" [level=3] [ref=f6e129]
+            - paragraph [ref=f6e130]: Chemistry and VQE, optimisation and QAOA, quantum machine learning, cryptography and the migration to PQC.
+          - generic [ref=f6e131]: L2
+          - generic [ref=f6e132]: 63 lessons
+        - listitem [ref=f6e133]:
+          - generic [ref=f6e134]: T6
+          - generic [ref=f6e135]:
+            - heading "Hardware and Systems" [level=3] [ref=f6e136]
+            - paragraph [ref=f6e137]: Transmons, ions, photons, neutral atoms, spins. Coherence, calibration, cryogenics, cloud QPU systems.
+          - generic [ref=f6e138]: L2
+          - generic [ref=f6e139]: 30 lessons
+        - listitem [ref=f6e140]:
+          - generic [ref=f6e141]: T7
+          - generic [ref=f6e142]:
+            - heading "Career and Research" [level=3] [ref=f6e143]
+            - paragraph [ref=f6e144]: Reading papers, thirty recurring interview patterns, twenty employer briefings, a defended capstone.
+          - generic [ref=f6e145]: L1
+          - generic [ref=f6e146]: 15 lessons
+    - region [ref=f6e147]:
+      - heading "Where the curriculum comes from." [level=2] [ref=f6e148]
+      - paragraph [ref=f6e149]: Every topic traces to at least two of these. Each lesson cites its sources at the foot of the page, with links.
+      - list [ref=f6e150]:
+        - listitem [ref=f6e151]: Caltech Ph219
+        - listitem [ref=f6e152]: CMU 15-859BB
+        - listitem [ref=f6e153]: MIT 8.370x and 8.371x
+        - listitem [ref=f6e154]: Berkeley C191A
+        - listitem [ref=f6e155]: Stanford CS269Q
+        - listitem [ref=f6e156]: Oxford Quantum Processes
+        - listitem [ref=f6e157]: Waterloo QIC 710
+        - listitem [ref=f6e158]: IBM Quantum Learning
+        - listitem [ref=f6e159]: PennyLane Codebook
+        - listitem [ref=f6e160]: Microsoft Quantum Katas
+        - listitem [ref=f6e161]: QWorld QBook101
+        - listitem [ref=f6e162]: Quantum Algorithm Zoo
+        - listitem [ref=f6e163]: Quantum Country
+        - listitem [ref=f6e164]: Google Cirq and ReCirq
+        - listitem [ref=f6e165]: TU Delft QuTech Academy
+        - listitem [ref=f6e166]: Nielsen and Chuang
+    - region [ref=f6e167]:
+      - generic [ref=f6e168]:
+        - generic [ref=f6e169]:
+          - heading "The lab simulates as you type." [level=2] [ref=f6e170]
+          - paragraph [ref=f6e171]: Up to fourteen qubits runs in your browser, so the Bloch sphere and the amplitude table move at frame rate with no round trip. Past that it goes to the server, and the interface says so rather than quietly stalling.
+          - paragraph [ref=f6e172]: Drag gates onto wires or write OpenQASM 3. Both are views of one circuit representation, so editing either changes the other. Export to Qiskit, Cirq or PennyLane in one click.
+          - link "Open the lab" [ref=f6e173] [cursor=pointer]:
+            - /url: /lab
+        - list [ref=f6e175]:
+          - listitem [ref=f6e176]:
+            - generic [ref=f6e177]: 42 gates
+            - generic [ref=f6e178]: including parameterised rotations, arbitrary controls, mid-circuit measurement, reset and classical conditions
+          - listitem [ref=f6e179]:
+            - generic [ref=f6e180]: 4 dialects
+            - generic [ref=f6e181]: OpenQASM 3 round trips into the builder; Qiskit, Cirq and PennyLane are export targets
+          - listitem [ref=f6e182]:
+            - generic [ref=f6e183]: Real noise
+            - generic [ref=f6e184]: depolarising, amplitude and phase damping, readout error, and device-derived models
+          - listitem [ref=f6e185]:
+            - generic [ref=f6e186]: Honest numbers
+            - generic [ref=f6e187]: depth, two-qubit count, T-count, Clifford status and shot-noise error bars, on every run
+  - contentinfo [ref=f6e188]:
+    - generic [ref=f6e189]:
+      - generic [ref=f6e190]:
+        - heading "Learn" [level=2] [ref=f6e191]
+        - list [ref=f6e192]:
+          - listitem [ref=f6e193]:
+            - link "Curriculum" [ref=f6e194] [cursor=pointer]:
+              - /url: /curriculum
+          - listitem [ref=f6e195]:
+            - link "Roadmaps" [ref=f6e196] [cursor=pointer]:
+              - /url: /roadmaps
+          - listitem [ref=f6e197]:
+            - link "Placement test" [ref=f6e198] [cursor=pointer]:
+              - /url: /placement
+          - listitem [ref=f6e199]:
+            - link "Glossary" [ref=f6e200] [cursor=pointer]:
+              - /url: /glossary
+      - generic [ref=f6e201]:
+        - heading "Build" [level=2] [ref=f6e202]
+        - list [ref=f6e203]:
+          - listitem [ref=f6e204]:
+            - link "Circuit lab" [ref=f6e205] [cursor=pointer]:
+              - /url: /lab
+          - listitem [ref=f6e206]:
+            - link "Autograded labs" [ref=f6e207] [cursor=pointer]:
+              - /url: /labs
+          - listitem [ref=f6e208]:
+            - link "Algorithm catalogue" [ref=f6e209] [cursor=pointer]:
+              - /url: /algorithms
+      - generic [ref=f6e210]:
+        - heading "Compete" [level=2] [ref=f6e211]
+        - list [ref=f6e212]:
+          - listitem [ref=f6e213]:
+            - link "Weekly contests" [ref=f6e214] [cursor=pointer]:
+              - /url: /contests
+          - listitem [ref=f6e215]:
+            - link "Leaderboard" [ref=f6e216] [cursor=pointer]:
+              - /url: /leaderboard
+          - listitem [ref=f6e217]:
+            - link "Interview bank" [ref=f6e218] [cursor=pointer]:
+              - /url: /interview
+      - generic [ref=f6e219]:
+        - heading "Institutions" [level=2] [ref=f6e220]
+        - list [ref=f6e221]:
+          - listitem [ref=f6e222]:
+            - link "For teams" [ref=f6e223] [cursor=pointer]:
+              - /url: /teams
+          - listitem [ref=f6e224]:
+            - link "For campuses" [ref=f6e225] [cursor=pointer]:
+              - /url: /campus
+          - listitem [ref=f6e226]:
+            - link "Instructor tools" [ref=f6e227] [cursor=pointer]:
+              - /url: /instructors
+    - paragraph [ref=f6e228]: Curriculum benchmarked against 20 published syllabi. Every lesson cites its sources.

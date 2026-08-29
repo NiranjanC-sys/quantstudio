@@ -1,0 +1,191 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - cell-config.yaml
+labels:
+  - pairs:
+      redquant.io/deployment-unit: cell
+    includeSelectors: false
+commonAnnotations:
+  redquant.io/deployment-unit: cell
+patches:
+  - target:
+      kind: Deployment
+      name: web
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: web
+      spec:
+        replicas: 3
+  - target:
+      kind: Deployment
+      name: api
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: api
+      spec:
+        replicas: 4
+  - target:
+      kind: Deployment
+      name: quantum-kernel
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: quantum-kernel
+      spec:
+        replicas: 6
+  - target:
+      kind: Deployment
+      name: quantum-kernel-heavy
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: quantum-kernel-heavy
+      spec:
+        replicas: 0
+  - target:
+      kind: Deployment
+      name: sandbox-runner
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: sandbox-runner
+      spec:
+        replicas: 5
+  - target:
+      kind: Deployment
+      name: grader
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: grader
+      spec:
+        replicas: 2
+  - target:
+      kind: Deployment
+      name: ai-tutor
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: ai-tutor
+      spec:
+        replicas: 2
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: web
+    patch: |-
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: web
+      spec:
+        minReplicas: 3
+        maxReplicas: 10
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: api
+    patch: |-
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: api
+      spec:
+        minReplicas: 4
+        maxReplicas: 15
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: quantum-kernel
+    patch: |-
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: quantum-kernel
+      spec:
+        minReplicas: 6
+        maxReplicas: 30
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: ai-tutor
+    patch: |-
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: ai-tutor
+      spec:
+        minReplicas: 2
+        maxReplicas: 6
+  - target:
+      kind: ScaledObject
+      name: grader
+    patch: |-
+      apiVersion: keda.sh/v1alpha1
+      kind: ScaledObject
+      metadata:
+        name: grader
+      spec:
+        minReplicaCount: 2
+        maxReplicaCount: 10
+  - target:
+      kind: ScaledObject
+      name: quantum-kernel-heavy
+    patch: |-
+      apiVersion: keda.sh/v1alpha1
+      kind: ScaledObject
+      metadata:
+        name: quantum-kernel-heavy
+      spec:
+        minReplicaCount: 0
+        maxReplicaCount: 3
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: CELL_ID
+          valueFrom:
+            configMapKeyRef:
+              name: cell-id
+              key: CELL_ID
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: CELL_COUNT
+          valueFrom:
+            configMapKeyRef:
+              name: cell-config
+              key: CELL_COUNT
+      - op: add
+        path: /spec/template/spec/affinity/nodeAffinity
+        value:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 50
+              preference:
+                matchExpressions:
+                  - key: redquant.io/cell
+                    operator: In
+                    values:
+                      - "__CELL_ID__"
+  # sandbox-runner KEDA bounds scaled for this environment. The base ScaledObject
+  # is 20->100 (§1 fleet table); keeping that here would pin a full production
+  # runner tier in a non-production namespace.
+  - target:
+      kind: ScaledObject
+      name: sandbox-runner
+    patch: |-
+      apiVersion: keda.sh/v1alpha1
+      kind: ScaledObject
+      metadata:
+        name: sandbox-runner
+      spec:
+        minReplicaCount: 5
+        maxReplicaCount: 25

@@ -1,0 +1,12 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: quantum-kernel-heavy
+  labels:
+    app.kubernetes.io/name: quantum-kernel-heavy
+    app.kubernetes.io/component: quantum-kernel-heavy
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: quantum-kernel-heavy

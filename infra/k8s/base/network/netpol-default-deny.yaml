@@ -1,0 +1,11 @@
+# Baseline: every pod in the namespace starts with zero network access. Every other
+# NetworkPolicy in this directory is a narrow, additive exception to this default.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress

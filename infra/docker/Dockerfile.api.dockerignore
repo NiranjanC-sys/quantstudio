@@ -1,0 +1,55 @@
+# Applies to `docker build -f infra/docker/Dockerfile.api <repo-root>`.
+# BuildKit picks this up automatically because it sits next to the Dockerfile
+# and is named "<dockerfile-basename>.dockerignore" -- the repo-root
+# infra/docker/.dockerignore alone is NOT enough since the build context here
+# is the monorepo root, not infra/docker/.
+
+# VCS / editor / OS cruft
+.git
+.gitignore
+.github
+.vscode
+.idea
+*.DS_Store
+
+# Node
+**/node_modules
+**/.pnpm-store
+**/.turbo
+**/coverage
+**/playwright-report
+**/test-results
+
+# Build outputs (rebuilt fresh inside the image; any local leftovers here
+# would only cause a stale/inconsistent COPY into the builder stage)
+**/.next
+**/dist
+**/build
+**/out
+**/*.tsbuildinfo
+
+# Python (irrelevant to node images, still excluded for a lean context)
+**/__pycache__
+**/*.pyc
+**/.venv
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+
+# Docs, infra, and anything else that never belongs in an image layer
+docs
+infra/loadtest
+infra/loadtest/results
+infra/k8s
+infra/observability
+infra/ci
+DESIGN.md
+*.log
+
+# Local env files (never bake secrets into an image)
+.env
+.env.*
+!.env.example
+infra/docker/.env
+infra/docker/.env.*
+!infra/docker/.env.example

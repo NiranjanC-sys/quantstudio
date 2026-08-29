@@ -1,0 +1,801 @@
+questions:
+  - id: iq-021
+    title: Group Pauli terms into commuting families to cut measurement circuits
+    kind: coding
+    prompt: |
+      A VQE Hamiltonian is a weighted sum of Pauli strings. Measuring each term
+      in its own circuit is wasteful. Write the classical preprocessing pass that
+      partitions the terms into qubit-wise commuting families, one measurement
+      basis per family, and emit the basis-change circuit for each family. Run it
+      on the 15-term Jordan-Wigner Hamiltonian for H2 in a minimal basis and
+      report how many circuits you end up with.
+    difficulty: easy
+    pattern: Hybrid classical preprocessing
+    topics: [vqe, pauli-grouping, measurement-reduction, graph-colouring]
+    companies: [IBM, Quantinuum, Google Quantum AI, Multiverse Computing]
+    modelAnswer: |
+      Two Pauli strings commute qubit-wise when, on every qubit, either they
+      carry the same letter or at least one of them carries the identity. That is
+      the condition for a single product basis to diagonalise both, so one
+      circuit and one set of shots serve every member of the family.
+
+      ```python
+      def qwc(a: str, b: str) -> bool:
+          return all(x == y or x == "I" or y == "I" for x, y in zip(a, b))
+
+      def group(terms):
+          families = []
+          for t in sorted(terms, key=lambda s: s.count("I")):
+              for fam in families:
+                  if all(qwc(t, u) for u in fam):
+                      fam.append(t); break
+              else:
+                  families.append([t])
+          return families
+
+      def basis_change(fam, n):
+          qc = QuantumCircuit(n)
+          for q in range(n):
+              letter = next((t[q] for t in fam if t[q] != "I"), "I")
+              if letter == "X": qc.h(q)
+              elif letter == "Y": qc.sdg(q); qc.h(q)
+          return qc
+      ```
+
+      The H2 Hamiltonian in the standard Jordan-Wigner encoding has 15 terms:
+      the identity, four single-Z terms, six ZZ terms, and the four exchange
+      terms XXYY, XYYX, YXXY and YYXX. Running the greedy grouper gives 5
+      families: all eleven identity-and-Z terms fall into one family measured in
+      the computational basis, and each of the four exchange terms needs its own
+      basis because no two of them agree letter by letter on every qubit. So 15
+      circuits become 5, a factor of three.
+
+      The problem is graph colouring: build a graph with one vertex per term and
+      an edge between terms that do not commute qubit-wise, then colour it. Exact
+      minimum colouring is NP-hard, so use a greedy heuristic; largest-first
+      ordering, which is what sorting by identity count approximates here, is a
+      good default and typically lands within a term or two of optimal on
+      chemistry Hamiltonians.
+
+      Two refinements worth mentioning in the interview. First, general
+      commutation is weaker than qubit-wise commutation and gives fewer groups:
+      the same 15 terms fall into just 2 general-commuting families. The price is
+      that the diagonalising circuit is a Clifford circuit with entangling gates
+      rather than a layer of single-qubit rotations, which costs depth and adds
+      noise, so the trade is not automatic. Second, grouping changes the variance
+      structure: terms inside one family are estimated from correlated samples,
+      so the total variance is not the sum of the individual variances and must
+      be computed from the joint distribution if you are budgeting shots.
+    followUps:
+      - What does general commutation buy over qubit-wise commutation, and what does the diagonalising circuit cost?
+      - How do you allocate shots across families once the terms inside a family are correlated?
+      - Why is optimal grouping NP-hard, and which heuristic would you pick for a 500-term Hamiltonian?
+    commonMistakes:
+      - Testing full operator commutation when the code only builds a single-qubit basis change, which produces families the basis change cannot actually diagonalise.
+      - Treating the variance of a grouped estimate as the sum of individual term variances, ignoring the covariance inside the family.
+      - Forgetting the S-dagger before the Hadamard when rotating a Y measurement into the Z basis, which measures X instead and gives a plausible wrong energy.
+    references:
+      - label: IBM Quantum Learning courses
+        url: https://quantum.cloud.ibm.com/learning/en/courses
+      - label: Gokhale et al., Minimizing state preparations in VQE by partitioning into commuting families
+        url: https://arxiv.org/abs/1907.13623
+
+  - id: iq-022
+    title: Scale and pad classical features before they reach a rotation gate
+    kind: coding
+    prompt: |
+      You are given a tabular dataset with mixed feature scales: one column in
+      the range 0 to 1, one in the thousands, and one categorical column encoded
+      as small integers. It feeds an angle-encoded variational classifier on 8
+      qubits. Write the preprocessing pipeline, justify every transform, and
+      explain the specific failure each transform prevents on a rotation gate.
+    difficulty: easy
+    pattern: Hybrid classical preprocessing
+    topics: [qml, feature-scaling, angle-encoding, data-leakage, preprocessing]
+    companies: [Xanadu, IBM, Multiverse Computing, Terra Quantum]
+    modelAnswer: |
+      Rotations are periodic, so scale is not a nuisance here the way it is in a
+      classical linear model. It is a correctness issue.
+
+      ```python
+      from sklearn.pipeline import Pipeline
+      from sklearn.compose import ColumnTransformer
+      from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, QuantileTransformer
+      import numpy as np
+
+      pre = ColumnTransformer([
+          ("num", Pipeline([("rank", QuantileTransformer(output_distribution="uniform")),
+                            ("scale", MinMaxScaler(feature_range=(0, np.pi)))]),
+           ["unit_col", "thousands_col"]),
+          ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False),
+           ["category_col"]),
+      ])
+      ```
+
+      Transform by transform.
+
+      Range mapping to [0, pi]. Ry(theta) is 2*pi-periodic and its expectation
+      value under Z is cos(theta), which is injective only on an interval of
+      length pi. A raw feature of 4200 and one of 4200 + 2*pi encode to the same
+      state, so the model cannot separate them, and a feature spanning thousands
+      of radians wraps many times and looks like noise. Mapping to [0, pi] makes
+      the encoding injective.
+
+      Rank or quantile transform before the range map. A single outlier of 10^6
+      would compress every other value of that column into a sliver near 0 after
+      min-max scaling, wasting the whole rotation range. Quantile ranking spends
+      the available angle where the data actually is.
+
+      One-hot for the categorical column. Encoding categories 0, 1, 2 as angles
+      0, pi/2, pi tells the model category 1 is between category 0 and category
+      2, which is a false ordering, and the rotation geometry makes that ordering
+      structurally meaningful.
+
+      Fit on train only. `pre.fit(X_train)` then `pre.transform(X_test)`. Fitting
+      the scaler on the union leaks test-set range into training and inflates
+      reported accuracy, and it is the single most common reason a QML result
+      does not reproduce.
+
+      Clip at inference. A test value outside the training range maps outside
+      [0, pi] and wraps, so an extreme input silently lands next to a typical
+      one. `np.clip(theta, 0, np.pi)` turns a silent corruption into a saturation,
+      which is the failure mode you want.
+
+      Dimension check last. After one-hot expansion the feature count changes.
+      With 8 qubits and one Ry per qubit per layer you have 8 slots per layer, so
+      if the transformed width is 11 you need two layers and a documented
+      assignment of features to qubits, not an implicit truncation.
+    followUps:
+      - Why does mapping to [0, 2*pi] rather than [0, pi] hurt an Ry encoding, and when would [0, 2*pi] be right?
+      - How would you choose between one rotation layer with re-uploading and several distinct feature layers?
+      - What test would catch a scaler accidentally fitted on the full dataset?
+    commonMistakes:
+      - Fitting the scaler on the combined train and test data, leaking the test distribution into training.
+      - Encoding an unordered categorical column as an angle, which asserts a metric ordering between categories that does not exist.
+      - Leaving features unclipped at inference, so an out-of-range test point wraps around the rotation period and encodes as a typical point.
+    references:
+      - label: PennyLane Codebook
+        url: https://pennylane.ai/codebook
+      - label: PennyLane documentation
+        url: https://pennylane.ai/
+
+  - id: iq-023
+    title: Transpile once and bind many for a variational loop
+    kind: coding
+    prompt: |
+      A VQE loop runs 400 optimiser iterations against a 20-qubit ansatz with 96
+      parameters and a 60-term Hamiltonian grouped into 12 measurement bases.
+      Naive code transpiles a fresh circuit every iteration. Restructure the
+      pipeline so transpilation happens once, explain exactly what may and may
+      not be cached, and estimate the classical time you save.
+    difficulty: easy
+    pattern: Hybrid classical preprocessing
+    topics: [transpilation, parameterised-circuits, caching, hybrid-loop]
+    companies: [IBM, Rigetti, AWS Braket, Q-CTRL]
+    modelAnswer: |
+      Transpilation depends only on the circuit structure, the coupling map, the
+      basis gates and the optimisation level. It does not depend on the numerical
+      values of the rotation angles. So build the ansatz once with symbolic
+      Parameter objects, transpile that once per measurement basis, and thereafter
+      only bind numbers.
+
+      ```python
+      from qiskit.circuit import Parameter, QuantumCircuit
+      from qiskit import transpile
+
+      theta = [Parameter(f"t{i}") for i in range(96)]
+      ansatz = build_ansatz(theta)                      # symbolic, untranspiled
+
+      isa = []
+      for basis_circ in measurement_bases:              # 12 of them
+          full = ansatz.compose(basis_circ)
+          isa.append(transpile(full, backend=backend, optimization_level=3))
+
+      for _ in range(400):
+          bound = [c.assign_parameters(dict(zip(theta, x))) for c in isa]
+          results = backend.run(bound, shots=shots).result()
+          x = optimiser.step(energy_from(results))
+      ```
+
+      What may be cached: the layout, the routing, the basis translation and all
+      structural optimisation passes. Binding a Parameter to a float rewrites
+      only the angle field of an already-placed gate, which is O(number of
+      parameterised gates), not a recompilation.
+
+      What may not be cached: any pass that inspects concrete angles. Rotation
+      merging and the peephole optimisations that cancel an Rz(0) or fuse two
+      adjacent Rz into one behave differently for different values, so a
+      transpiler run at optimisation level 3 on a bound circuit may produce a
+      shorter circuit than the parameterised one. That is a real but usually
+      small win, and it is not worth 400 recompilations. Also not cacheable
+      across calibration boundaries: if the backend recalibrates and the error
+      map changes, the chosen layout may no longer be the best one, so refresh
+      the transpiled circuits when the backend properties timestamp moves.
+
+      Time saved. Transpiling a 20-qubit, few-hundred-gate circuit at level 3
+      costs on the order of one second of CPU. The naive loop does
+      400 iterations times 12 bases, that is 4800 transpilations, roughly 80
+      minutes of pure classical overhead. The restructured loop does 12, about 12
+      seconds. On a device where each batch of 12 circuits takes a few seconds of
+      queue and execution, the naive version spends the majority of its wall
+      clock inside the transpiler rather than on the QPU, which is a common and
+      embarrassing finding when you first profile a variational loop.
+
+      One further step: submit all 12 bound circuits as a single job rather than
+      12 jobs. Per-job overhead, queueing and result serialisation typically
+      dominate the actual pulse time at this circuit size.
+    followUps:
+      - Which transpiler passes are angle-dependent, and how much extra depth do you give up by not rerunning them?
+      - How would you detect that a backend recalibration has invalidated your cached layout?
+      - Where does batching all 12 bases into one job help, and where does it hurt?
+    commonMistakes:
+      - Calling transpile inside the optimiser loop, so the majority of wall-clock time is classical compilation rather than circuit execution.
+      - Caching a transpiled circuit across a backend recalibration, so the layout is optimal for an error map that no longer applies.
+      - Submitting one job per measurement basis per iteration, paying per-job overhead 4800 times instead of 400.
+    references:
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+      - label: qBraid documentation
+        url: https://docs.qbraid.com/
+
+  - id: iq-024
+    title: Implement analytic gradients with the parameter-shift rule
+    kind: coding
+    prompt: |
+      Implement the gradient of an expectation value with respect to the
+      parameters of a variational circuit using the parameter-shift rule, not
+      finite differences. State the shift constants and the conditions under
+      which the rule is exact, give the circuit count for P parameters, and
+      verify your implementation numerically against a central difference.
+    difficulty: medium
+    pattern: Hybrid classical preprocessing
+    topics: [parameter-shift, gradients, variational-algorithms, autodiff]
+    companies: [Xanadu, IBM, Google Quantum AI, Rigetti]
+    modelAnswer: |
+      Let the parameter enter through a gate exp(-i*theta*G/2) where the
+      generator G has exactly two distinct eigenvalues, normalised to +1 and -1,
+      which covers Rx, Ry, Rz and any single Pauli-string rotation because
+      P^2 = I. Then the expectation value as a function of that parameter is a
+      pure sinusoid of period 2*pi:
+      f(theta) = A + B*cos(theta + C). Differentiating a sinusoid needs only two
+      samples half a period apart:
+
+          df/dtheta = [ f(theta + pi/2) - f(theta - pi/2) ] / 2
+
+      This is exact, not an approximation. The two shifted evaluations use the
+      same circuit with one angle changed, so they run on hardware without any
+      new compilation.
+
+      ```python
+      import numpy as np
+
+      def grad(f, x, shift=np.pi / 2):
+          g = np.zeros_like(x)
+          for i in range(len(x)):
+              xp = x.copy(); xp[i] += shift
+              xm = x.copy(); xm[i] -= shift
+              g[i] = (f(xp) - f(xm)) / 2
+          return g
+      ```
+
+      Verification on a two-rotation circuit with observable Z: at theta = 0.42
+      the shift rule returns 0.077629168 and a central difference with step 1e-6
+      returns 0.077629167, agreeing to eight digits, which is the accuracy the
+      finite difference can reach at that step size, not the accuracy of the
+      shift rule.
+
+      Cost: 2 circuits per parameter, so 2P circuits for a full gradient, and
+      each is the same depth as the original. Finite differences also cost 2P but
+      carry a step-size dilemma that the shift rule does not: too large a step
+      and truncation error dominates, too small and shot noise divided by h
+      explodes. With N shots per circuit the finite-difference gradient has
+      standard error of order 1/(h*sqrt(N)) while the shift rule has order
+      1/sqrt(N), so at h = 0.01 the shift rule is a hundred times more
+      shot-efficient for the same budget.
+
+      Conditions and extensions. The two-eigenvalue condition fails for a general
+      controlled rotation, whose generator has eigenvalues 0, 0, 0 and 1; there
+      the four-term rule with shifts of plus or minus pi/2 and plus or minus
+      3*pi/2 applies, with coefficients derived from the two frequencies present.
+      For a gate exp(-i*theta*H) with H having eigenvalue gaps r, the general
+      rule uses shift pi/(4r) and prefactor r. And if one parameter is shared by
+      several gates, differentiate each occurrence and sum, which is the product
+      rule and costs 2 circuits per occurrence, not per parameter.
+    followUps:
+      - Derive the four-term rule for a controlled rotation and give its circuit count.
+      - How does the shot noise of the gradient compare with a central difference at step 0.01 and 1000 shots?
+      - What happens to the parameter-shift gradient in a barren plateau, and does the rule help or hurt?
+    commonMistakes:
+      - Dividing by 2*shift as if it were a finite difference. The parameter-shift denominator is 2, independent of the shift size.
+      - Applying the two-term rule to a controlled rotation, whose generator has more than two distinct eigenvalues, giving a systematically wrong gradient.
+      - Shifting only one occurrence of a parameter that is reused across several gates, which drops the other terms of the product rule.
+    references:
+      - label: Schuld et al., Evaluating analytic gradients on quantum hardware
+        url: https://arxiv.org/abs/1811.11184
+      - label: PennyLane Codebook
+        url: https://pennylane.ai/codebook
+
+  - id: iq-025
+    title: Build a QAOA cost Hamiltonian from a MaxCut instance
+    kind: coding
+    prompt: |
+      Given an undirected graph, produce the QAOA circuit for MaxCut at depth p:
+      construct the cost Hamiltonian, emit the phase separator and mixer layers,
+      and wire the classical optimiser. Report the two-qubit gate count per
+      layer, and give the depth-1 expectation value your implementation reaches
+      on the 4-cycle so the interviewer can check your work.
+    difficulty: medium
+    pattern: Hybrid classical preprocessing
+    topics: [qaoa, maxcut, ising, optimisation, cost-hamiltonian]
+    companies: [Google Quantum AI, IBM, Rigetti, D-Wave, Multiverse Computing]
+    modelAnswer: |
+      MaxCut wants to maximise the number of edges whose endpoints get different
+      labels. Encode label of vertex v as the Z eigenvalue of qubit v, so the
+      cut value operator is
+
+          C = sum over edges (u, v) of (1 - Z_u Z_v) / 2
+
+      Its eigenvalue on a computational basis state is exactly the cut size of
+      the corresponding bipartition. The QAOA state at depth p is
+
+          |gamma, beta> = prod over layers of [ exp(-i*beta_k*B) exp(-i*gamma_k*C) ]
+                          applied to the uniform superposition,
+
+      with mixer B = sum over vertices of X_v.
+
+      ```python
+      import numpy as np, networkx as nx
+      from qiskit import QuantumCircuit
+      from qiskit.circuit import ParameterVector
+
+      def qaoa_maxcut(G, p):
+          n = G.number_of_nodes()
+          g = ParameterVector("g", p); b = ParameterVector("b", p)
+          qc = QuantumCircuit(n)
+          qc.h(range(n))
+          for k in range(p):
+              for u, v in G.edges():
+                  qc.cx(u, v); qc.rz(2 * g[k], v); qc.cx(u, v)
+              for v in G.nodes():
+                  qc.rx(2 * b[k], v)
+          return qc, g, b
+      ```
+
+      The constant term of C contributes only a global phase and is dropped from
+      the circuit, then added back classically when reporting the cut value.
+      Each edge costs one CX, one Rz and one CX, so 2|E| two-qubit gates per
+      layer and 2p|E| in total. On hardware with native ZZ interaction, for
+      instance an Rzz pulse or an ion-trap Molmer-Sorensen gate, each edge is a
+      single two-qubit operation, halving the count.
+
+      Checkable number: on the 4-cycle, whose maximum cut is 4, a depth-1 QAOA
+      optimised over gamma and beta reaches expectation value exactly 3.000000,
+      an approximation ratio of 0.75, at gamma about 5.4978 and beta about
+      1.1781. If your implementation reports more than 3 at p = 1 on the 4-cycle,
+      you have a factor-of-two error in an angle convention.
+
+      Classical side. Optimise gamma and beta with a gradient-free method such as
+      COBYLA or Nelder-Mead at low p, since the landscape is smooth and only
+      2p-dimensional. Two preprocessing steps pay for themselves: decompose the
+      graph into connected components and solve each independently, since the
+      Hamiltonian is block diagonal, and iteratively remove degree-1 vertices,
+      whose single edge can always be cut for free by fixing the leaf opposite
+      its neighbour. Both shrink the qubit count with no loss of optimality.
+    followUps:
+      - Why does concentration of optimal angles across instances let you warm-start gamma and beta from a smaller graph?
+      - What changes if the graph is weighted, and how do the weights interact with the periodicity of gamma?
+      - How would you map a graph with edges the coupling map does not have, and what does the routing cost per layer?
+    commonMistakes:
+      - Using Rz(gamma) instead of Rz(2*gamma) for the ZZ phase, which halves every angle and makes the depth-1 optimum unreachable.
+      - Keeping the constant term of C inside the circuit as a global phase and then double-counting it in the reported cut value.
+      - Applying the mixer before the phase separator in the first layer, which leaves the uniform superposition unchanged by the mixer and wastes the layer.
+    references:
+      - label: Farhi, Goldstone and Gutmann, A quantum approximate optimization algorithm
+        url: https://arxiv.org/abs/1411.4028
+      - label: Cirq experiments and ReCirq
+        url: https://quantumai.google/cirq/experiments
+
+  - id: iq-026
+    title: Allocate a shot budget across Pauli terms to minimise variance
+    kind: coding
+    prompt: |
+      You have a total budget of N shots and a Hamiltonian sum of c_i * P_i. You
+      must estimate the energy to a target standard error. Derive the optimal
+      allocation of shots across terms, implement it, and quantify the
+      improvement over uniform allocation on a concrete three-term example.
+      Say what you would use as the variance estimate on iteration one.
+    difficulty: medium
+    pattern: Hybrid classical preprocessing
+    topics: [shot-allocation, variance, vqe, estimation, lagrange-multipliers]
+    companies: [IBM, Quantinuum, Google Quantum AI, Q-CTRL]
+    modelAnswer: |
+      Estimating <H> = sum_i c_i <P_i> from independent samples of each term
+      gives total variance
+
+          Var = sum_i c_i^2 * sigma_i^2 / N_i
+
+      where sigma_i^2 is the single-shot variance of P_i, at most 1 since P_i has
+      eigenvalues plus and minus one. Minimise subject to sum N_i = N with a
+      Lagrange multiplier: differentiate Var + lambda * (sum N_i - N) with
+      respect to N_i to get -c_i^2 sigma_i^2 / N_i^2 + lambda = 0, so
+      N_i is proportional to |c_i| * sigma_i. Normalising,
+
+          N_i = N * |c_i| * sigma_i / sum_j |c_j| * sigma_j
+
+      and the minimised variance is (sum_j |c_j| sigma_j)^2 / N. This is the
+      allocation used in the Wecker-Hastings-Troyer analysis of VQE shot budgets,
+      and it is one of the highest-return classical preprocessing steps in the
+      whole loop because it costs nothing to compute.
+
+      ```python
+      import numpy as np
+
+      def allocate(coeffs, sigmas, N):
+          w = np.abs(np.asarray(coeffs, float)) * np.asarray(sigmas, float)
+          n = np.floor(N * w / w.sum()).astype(int)
+          n[np.argmax(w)] += N - n.sum()      # give the remainder to the biggest term
+          return np.maximum(n, 1)
+      ```
+
+      Concrete example: coefficients 0.5, 1.2 and 0.3 with single-shot standard
+      deviations 1.0, 0.8 and 0.9 and N = 10000. The optimal allocation is 2890,
+      5549 and 1561 shots, giving total variance 2.9929e-4 against 3.7335e-4 for
+      the uniform split of 3333 each. That is a factor of 1.247 in variance,
+      equivalently the uniform scheme needs 25 percent more shots to match. On
+      real chemistry Hamiltonians, where coefficients span three or four orders
+      of magnitude, the factor is routinely 5 to 10.
+
+      Bootstrapping sigma. On the first iteration you have no variance estimate.
+      Three options, in increasing order of effort. Use the trivial bound
+      sigma_i = 1, which reduces the rule to N_i proportional to |c_i| and
+      already captures most of the gain because the coefficients vary far more
+      than the variances. Spend a small pilot fraction of the budget, say 5
+      percent, uniformly and estimate sigma from it. Or reuse the sigma
+      estimates from the previous optimiser iteration, since the ansatz
+      parameters move slowly and the variances are nearly constant between
+      neighbouring iterations; this is what production VQE code does, with a
+      floor on sigma so a term never starves.
+
+      Two cautions. Never allocate zero shots to a term, since its contribution
+      then has undefined variance and an unbounded bias if the coefficient is
+      not truly negligible. And once terms are grouped into commuting families,
+      the allocation is per family, and the family variance must account for
+      covariance between its members rather than summing individual variances.
+    followUps:
+      - How does the allocation change once terms are grouped into commuting families with correlated estimates?
+      - What is the total shot cost to reach chemical accuracy, 1.6 millihartree, for a Hamiltonian with sum of |c_i| equal to 20?
+      - When is it better to spend the budget on more optimiser iterations rather than lower variance per iteration?
+    commonMistakes:
+      - Allocating shots proportional to c_i^2 rather than to |c_i| * sigma_i, which is the answer to a different optimisation and over-weights large terms.
+      - Assigning zero shots to small-coefficient terms, introducing an unbounded and unmonitored bias.
+      - Recomputing sigma from scratch every iteration with a large pilot sample, spending more on measuring the variance than the allocation saves.
+    references:
+      - label: Wecker, Hastings and Troyer, Progress towards practical quantum variational algorithms
+        url: https://arxiv.org/abs/1507.08969
+      - label: IBM Quantum Learning courses
+        url: https://quantum.cloud.ibm.com/learning/en/courses
+
+  - id: iq-027
+    title: Halve the circuit count for a quantum kernel Gram matrix
+    kind: coding
+    prompt: |
+      A quantum kernel method needs the Gram matrix K[i][j] = |<phi(x_i)|phi(x_j)>|^2
+      for a training set of m samples. Write the driver that evaluates it. Exploit
+      every structural property you can to reduce the number of circuits, report
+      the exact count for m = 1024, and explain what you must do to the estimated
+      matrix before handing it to an SVM.
+    difficulty: medium
+    pattern: Hybrid classical preprocessing
+    topics: [quantum-kernels, gram-matrix, svm, positive-semidefinite, batching]
+    companies: [IBM, Xanadu, Terra Quantum, Multiverse Computing]
+    modelAnswer: |
+      Structural properties, in the order they save work.
+
+      Symmetry. K[i][j] = K[j][i] because the fidelity is symmetric in its
+      arguments. Evaluate only the strict upper triangle.
+
+      Diagonal. K[i][i] = |<phi(x_i)|phi(x_i)>|^2 = 1 exactly, by normalisation.
+      Never spend a circuit on it. This is also a free diagnostic: run a handful
+      of diagonal circuits anyway on hardware, and the deviation from 1 measures
+      your device error directly.
+
+      Count. m(m-1)/2 circuits. For m = 1024 that is 523776 distinct entries,
+      versus 1048576 for the full matrix, so the two properties together cut the
+      work by slightly more than half.
+
+      ```python
+      import numpy as np
+      from itertools import combinations
+
+      def gram(X, feature_map, backend, shots=1000):
+          m = len(X)
+          circuits, pairs = [], []
+          for i, j in combinations(range(m), 2):
+              qc = feature_map(X[i]).compose(feature_map(X[j]).inverse())
+              qc.measure_all()
+              circuits.append(qc); pairs.append((i, j))
+          counts = backend.run(circuits, shots=shots).result().get_counts()
+          K = np.eye(m)
+          for (i, j), c in zip(pairs, counts):
+              p0 = c.get("0" * qc.num_qubits, 0) / shots
+              K[i, j] = K[j, i] = p0
+          return K
+      ```
+
+      The compute-uncompute trick is what makes each entry one circuit: prepare
+      phi(x_i), apply the inverse of the phi(x_j) preparation, and measure the
+      probability of the all-zero string, which is exactly the squared overlap.
+      Note the depth is twice the feature map, which is why the swap test, at
+      twice the width and an extra ancilla, is usually the worse choice.
+
+      Post-processing before the SVM. Shot noise and device error make the
+      estimated matrix non-positive-semidefinite, and most SVM solvers either
+      fail or silently produce a meaningless dual solution. Two fixes: project
+      onto the PSD cone by eigendecomposing, clipping negative eigenvalues to
+      zero and reassembling, or add a small ridge, K + epsilon*I with epsilon a
+      little above the most negative eigenvalue. Also enforce the symmetry
+      explicitly with (K + K.T)/2 before the eigendecomposition, since floating
+      point and independent estimation can leave the two triangles slightly
+      different. Finally, clip entries into [0, 1] since they are probabilities.
+
+      The number that ends most discussions: 523776 circuits at 1000 shots is
+      5.2e8 shots. At a few thousand shots per second that is days of device
+      time, which is why practical work subsamples the training set, uses a
+      Nystrom approximation from a few hundred landmark points, or abandons the
+      full kernel for a variational classifier.
+    followUps:
+      - Why does the compute-uncompute overlap beat the swap test in both width and depth?
+      - How would a Nystrom approximation with 200 landmarks change the circuit count and the error?
+      - What is the effect of shot noise on the SVM decision boundary, and how would you measure it?
+    commonMistakes:
+      - Evaluating the full m by m matrix including the diagonal, roughly doubling the circuit count for entries you already know.
+      - Handing the raw estimated matrix to an SVM without projecting it back onto the positive semidefinite cone.
+      - Reading the wrong counts key for the all-zero outcome, since Qiskit keys are ordered with qubit 0 rightmost and may include a space when classical registers are split.
+    references:
+      - label: Havlicek et al., Supervised learning with quantum-enhanced feature spaces
+        url: https://arxiv.org/abs/1804.11326
+      - label: Schuld and Killoran, Quantum machine learning in feature Hilbert spaces
+        url: https://arxiv.org/abs/1803.07128
+
+  - id: iq-028
+    title: Taper qubits off a Hamiltonian using its Z2 symmetries
+    kind: coding
+    prompt: |
+      A fermionic Hamiltonian mapped to qubits carries Z2 symmetries coming from
+      particle number and spin conservation. Write the classical preprocessing
+      that finds those symmetries and removes the corresponding qubits. Explain
+      how you find the symmetry generators from the Pauli terms, how you choose
+      the sector, and what you must check afterwards to know the reduction was
+      valid.
+    difficulty: hard
+    pattern: Hybrid classical preprocessing
+    topics: [qubit-tapering, z2-symmetry, stabilizers, symplectic-algebra, vqe]
+    companies: [IBM, Quantinuum, Google Quantum AI, Classiq]
+    modelAnswer: |
+      Represent each Pauli term as a length-2n binary vector (x | z), the
+      symplectic form, where x_q and z_q record whether the term has an X or a Z
+      component on qubit q; Y is x = z = 1. Two Paulis commute exactly when their
+      symplectic inner product x1.z2 + z1.x2 vanishes mod 2.
+
+      Finding the symmetries. Stack the binary vectors of all Hamiltonian terms
+      into a matrix over GF(2) and compute the kernel of its symplectic form.
+      Every kernel vector is a Pauli that commutes with every term, and a basis
+      of that kernel gives k independent Z2 symmetry generators tau_1 .. tau_k.
+      For a fermionic Hamiltonian these come out as the parity operators, and
+      under the parity or Bravyi-Kitaev mapping they are single-qubit Z operators
+      on specific qubits, which is exactly why those mappings are preferred here
+      over Jordan-Wigner.
+
+      ```python
+      import numpy as np
+
+      def symplectic_kernel(rows_x, rows_z):
+          # rows over GF(2); solve [Z | X] v = 0 for the symplectic pairing
+          A = np.hstack([rows_z, rows_x]) % 2
+          return gf2_nullspace(A)          # standard Gaussian elimination mod 2
+      ```
+
+      Tapering. For each generator find a Clifford U_i that maps tau_i to a
+      single-qubit Pauli X on some qubit q_i not used by another generator. The
+      standard choice is U_i = (tau_i + X_{q_i})/sqrt(2), which is Clifford and
+      self-inverse. Conjugating the Hamiltonian by all the U_i leaves every term
+      either free of qubit q_i or carrying exactly X on it. Since the symmetry
+      commutes with H, that qubit is now a constant of motion: replace X_{q_i} by
+      its eigenvalue, plus or minus one, and delete the qubit. Each generator
+      removes one qubit.
+
+      Choosing the sector. The eigenvalue signs are not free; they encode the
+      particle number and spin sector you want. Determine them by evaluating the
+      symmetry generators on a reference state you know is in the right sector,
+      typically the Hartree-Fock determinant, before tapering. Getting the sign
+      wrong yields a perfectly well-formed smaller Hamiltonian whose ground state
+      is the lowest state of a different sector, for instance the wrong charge,
+      and the energy is simply wrong with no error raised.
+
+      Concrete scale: H2 in a minimal basis is 4 spin orbitals, 4 qubits under
+      Jordan-Wigner. Under the parity mapping, particle-number and spin parity
+      give two Z2 symmetries, and tapering removes 2 qubits, leaving a 2-qubit
+      Hamiltonian whose ground state energy matches the full 4-qubit answer to
+      machine precision. The saving compounds: on larger molecules tapering
+      typically removes 2 to 4 qubits and, more valuably, deletes a large number
+      of Pauli terms.
+
+      What to check afterwards. Verify that the tapered Hamiltonian's lowest
+      eigenvalue equals the full Hamiltonian's lowest eigenvalue restricted to
+      the chosen sector, on a small instance you can diagonalise exactly. Verify
+      the number of terms fell and no term acquired a complex coefficient, which
+      would signal a non-Clifford conjugation. And confirm the ansatz you intend
+      to use is expressible after tapering, since some excitation operators do
+      not survive the qubit removal and must be re-derived in the tapered space.
+    followUps:
+      - Why is the parity mapping more convenient than Jordan-Wigner for tapering, and what does Bravyi-Kitaev buy?
+      - How do you re-express a UCCSD ansatz in the tapered space?
+      - What goes wrong if you pick the sector signs by minimising energy rather than from a reference determinant?
+    commonMistakes:
+      - Choosing the symmetry sector by taking whichever sign gives the lower energy, which lands you in the wrong particle-number sector and reports an energy below the true ground state.
+      - Tapering the Hamiltonian but forgetting to taper the ansatz and the reference state, so the optimiser searches an incompatible space.
+      - Computing the kernel over the integers rather than over GF(2), which produces vectors that are not valid Pauli symmetries.
+    references:
+      - label: Bravyi et al., Tapering off qubits to simulate fermionic Hamiltonians
+        url: https://arxiv.org/abs/1701.08213
+      - label: IBM Quantum Learning courses
+        url: https://quantum.cloud.ibm.com/learning/en/courses
+
+  - id: iq-029
+    title: Budget the latency of a hybrid optimisation loop
+    kind: coding
+    prompt: |
+      A VQE run has 96 parameters, 12 measurement bases, 4000 shots per circuit
+      and needs roughly 300 optimiser iterations. Round-trip latency to the QPU
+      is 800 milliseconds per job and each circuit takes 1 millisecond of device
+      time. Compute the wall-clock time for a parameter-shift gradient loop and
+      for SPSA, and describe every change you would make to the pipeline to bring
+      the number down.
+    difficulty: hard
+    pattern: Hybrid classical preprocessing
+    topics: [latency, spsa, batching, sessions, hybrid-loop, gradients]
+    companies: [IBM, Rigetti, AWS Braket, Q-CTRL, Quantinuum]
+    modelAnswer: |
+      Do the arithmetic before touching the code.
+
+      Parameter shift. Each gradient needs 2 evaluations per parameter, and each
+      evaluation needs all 12 measurement bases. That is
+      2 * 96 * 12 = 2304 circuits per iteration, plus 12 for the energy itself.
+      Device time per iteration is 2316 * 4000 shots * 1 ms, but the shots run
+      inside one circuit execution, so take 2316 circuits at, say, 4 seconds of
+      device time per circuit at 4000 shots. Over 300 iterations that is
+      694800 circuits. If every circuit were its own job, the latency alone is
+      694800 * 0.8 s, about 154 hours. Batched into one job per iteration, the
+      latency drops to 300 * 0.8 s = 240 seconds and the run is device-time
+      bound.
+
+      SPSA. Simultaneous perturbation estimates the gradient from 2 evaluations
+      regardless of the parameter count, by perturbing all 96 parameters at once
+      along a random plus-or-minus-one direction. That is
+      2 * 12 = 24 circuits per iteration plus 12 for the energy. SPSA typically
+      needs more iterations than a full gradient method, call it 2 to 3 times as
+      many, but 24 versus 2304 circuits per iteration is a factor of 96, so even
+      at triple the iteration count SPSA wins by more than an order of magnitude.
+      This is why SPSA, not gradient descent, is the default in production VQE.
+
+      Changes to the pipeline, in order of impact.
+
+      1. Batch. Submit all circuits for one iteration as a single job. This turns
+         2304 round trips into one and is the single largest win.
+      2. Use SPSA or a stochastic-gradient method for the outer loop, and reserve
+         parameter shift for a final polish once you are near the optimum.
+      3. Open a session so the queueing cost is paid once rather than per job,
+         and so the calibration does not drift mid-run.
+      4. Transpile once with symbolic parameters and bind numbers per iteration,
+         as covered separately. On this circuit size the transpiler otherwise
+         eats more wall clock than the QPU.
+      5. Reduce shots early. Run the first 200 iterations at 500 shots and only
+         raise to 4000 for the last 100. The optimiser cannot use precision it
+         does not yet need, and shot count enters the device time linearly.
+      6. Group Pauli terms harder. Moving from 12 bases to 5 is a 2.4 times
+         reduction in everything above.
+      7. Overlap classical and quantum work. While iteration k runs, the
+         classical side should already be preparing iteration k+1's circuits, so
+         the transpile and bind cost does not serialise with the device.
+
+      What not to do: parallelise across parameters by opening 96 concurrent
+      jobs. You are contending for the same device, so the queue serialises them
+      anyway and you pay per-job overhead 96 times over.
+    followUps:
+      - How many iterations does SPSA actually need relative to a full gradient, and how would you measure that on your problem?
+      - Where does the shot count enter the optimiser's convergence rate, and how would you schedule it?
+      - What breaks if the backend recalibrates mid-run, and how does a session change that risk?
+    commonMistakes:
+      - Submitting one job per circuit, so per-job latency dominates and the QPU sits idle most of the run.
+      - Using a full parameter-shift gradient from the first iteration, spending 96 times the circuits for precision the early optimiser cannot exploit.
+      - Holding the shot count fixed at its final value throughout, paying maximum device time during the phase where the gradient direction matters more than its magnitude.
+    references:
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+      - label: CS269Q Elements of Quantum Computer Programming
+        url: https://cs269q.stanford.edu/
+
+  - id: iq-030
+    title: Choose an active space and a reference state before running VQE
+    kind: coding
+    prompt: |
+      A molecule has 20 spin orbitals in your chosen basis set, which is 20
+      qubits under Jordan-Wigner, and your device can run 10 qubits usefully.
+      Write the classical preprocessing that selects an active space, builds the
+      reduced Hamiltonian with the correct frozen-core energy, and prepares the
+      reference determinant. Say how you would defend the active space choice and
+      what error it introduces.
+    difficulty: hard
+    pattern: Hybrid classical preprocessing
+    topics: [active-space, frozen-core, hartree-fock, vqe, quantum-chemistry]
+    companies: [IBM, Quantinuum, Google Quantum AI, Multiverse Computing]
+    modelAnswer: |
+      Run a mean-field calculation first, then keep only the orbitals where
+      correlation actually lives.
+
+      Step 1: Hartree-Fock. Solve the self-consistent field problem classically
+      to get molecular orbitals and their energies. This is cheap, scales
+      polynomially, and gives you both the orbital ordering and the reference
+      determinant. Everything downstream assumes it.
+
+      Step 2: pick the active space. Freeze the deep core orbitals, which are
+      doubly occupied in essentially every configuration and contribute a nearly
+      constant energy, and drop the highest virtual orbitals, which are nearly
+      empty. Keeping 5 spatial orbitals means 10 spin orbitals, which is the 10
+      qubits the device allows. Choose which 5 by natural orbital occupation
+      numbers from a cheap correlated calculation such as MP2: orbitals with
+      occupations far from 0 or 2 are exactly the ones with multireference
+      character and must stay. Selecting purely by orbital energy around the
+      HOMO-LUMO gap is the common shortcut and it fails on stretched bonds and
+      transition metals, which is where the interesting chemistry is.
+
+      Step 3: build the reduced Hamiltonian. The frozen core is not simply
+      deleted. Its electrons contribute a constant energy and a mean-field
+      potential felt by the active electrons, so you must compute the frozen-core
+      energy E_core and fold the core Coulomb and exchange contributions into the
+      one-body integrals of the active space. Skipping that step gives an active
+      space Hamiltonian that is missing the core field, and the resulting energy
+      is wrong by a chemically enormous amount while looking perfectly
+      well-formed.
+
+      ```python
+      from pyscf import gto, scf, mcscf
+      mol = gto.M(atom=geometry, basis="sto-3g")
+      mf = scf.RHF(mol).run()
+      cas = mcscf.CASCI(mf, ncas=5, nelecas=(2, 2))
+      h1e, e_core = cas.get_h1eff()      # core field folded in, E_core returned
+      h2e = cas.get_h2eff()
+      ```
+
+      Step 4: reference state. The Hartree-Fock determinant in the active space
+      is an occupation-number string: under Jordan-Wigner, apply X to each qubit
+      whose spin orbital is occupied, with qubit 0 the most significant bit under
+      our convention, so you must be explicit about whether orbital index 0 maps
+      to qubit 0 or to qubit n-1. Under parity or Bravyi-Kitaev the reference
+      string is not the occupation string and must be transformed; writing the
+      occupation string directly is a frequent and silent error.
+
+      Defending the choice and quantifying the error. The active space
+      approximation truncates the correlation, and the missing part is the
+      dynamic correlation from the frozen and dropped orbitals. Report the
+      classical CASCI energy in the same active space: your VQE result should
+      match it, and the gap between CASCI in the active space and a
+      higher-level classical reference such as CCSD(T) in the full basis is the
+      error your truncation introduced. If that gap exceeds chemical accuracy,
+      1.6 millihartree, then no amount of quantum hardware fixes it, and the
+      honest statement is that the active space, not the device, limits the
+      result. That framing is what an interviewer is looking for: knowing which
+      error is yours to reduce and which is baked into the model.
+    followUps:
+      - How would you use natural orbital occupation numbers from MP2 to rank orbitals for inclusion?
+      - What is the reference string under the Bravyi-Kitaev mapping, and why is it not the occupation string?
+      - If your VQE energy sits below the CASCI energy in the same active space, what has gone wrong?
+    commonMistakes:
+      - Deleting frozen core orbitals without folding their mean-field potential into the active one-body integrals, which omits the core field entirely.
+      - Selecting the active space by orbital energy alone, which misses the multireference orbitals that matter at stretched geometries.
+      - Writing the occupation-number bit string as the reference state under a parity or Bravyi-Kitaev mapping, where the reference string is a different transform of the occupations.
+    references:
+      - label: IBM Quantum Learning courses
+        url: https://quantum.cloud.ibm.com/learning/en/courses
+      - label: Peruzzo et al., A variational eigenvalue solver on a photonic quantum processor
+        url: https://arxiv.org/abs/1304.3061

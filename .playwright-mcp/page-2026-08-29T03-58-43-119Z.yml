@@ -1,0 +1,399 @@
+- generic [active] [ref=f7e1]:
+  - banner [ref=f7e2]:
+    - link "Skip to content" [ref=f7e3] [cursor=pointer]:
+      - /url: "#main"
+    - link "RedQuant home" [ref=f7e4] [cursor=pointer]:
+      - /url: /
+      - text: RedQuant
+    - navigation "Main" [ref=f7e6]:
+      - list [ref=f7e7]:
+        - listitem [ref=f7e8]:
+          - link "Curriculum" [ref=f7e9] [cursor=pointer]:
+            - /url: /curriculum
+        - listitem [ref=f7e10]:
+          - link "Lab" [ref=f7e11] [cursor=pointer]:
+            - /url: /lab
+        - listitem [ref=f7e12]:
+          - link "Contests" [ref=f7e13] [cursor=pointer]:
+            - /url: /contests
+        - listitem [ref=f7e14]:
+          - link "Interview" [ref=f7e15] [cursor=pointer]:
+            - /url: /interview
+        - listitem [ref=f7e16]:
+          - link "Pricing" [ref=f7e17] [cursor=pointer]:
+            - /url: /pricing
+    - generic [ref=f7e18]:
+      - 'button "Theme: System. Switch to Dark." [ref=f7e19] [cursor=pointer]': System
+      - link "Sign in" [ref=f7e20] [cursor=pointer]:
+        - /url: /login
+      - link "Start free" [ref=f7e21] [cursor=pointer]:
+        - /url: /signup
+  - article [ref=f7e23]:
+    - generic [ref=f7e24]:
+      - paragraph [ref=f7e25]: concept · L1 · 12 min
+      - heading "Phase kickback, and why interference is the whole trick" [level=1] [ref=f7e26]
+      - region "What you will be able to do" [ref=f7e27]:
+        - heading "By the end you can" [level=2] [ref=f7e28]
+        - list [ref=f7e29]:
+          - listitem [ref=f7e30]: State what phase kickback does to a control qubit
+          - listitem [ref=f7e31]: Read a relative phase off an amplitude table
+          - listitem [ref=f7e32]: Explain why Deutsch's algorithm needs only one query
+    - generic [ref=f7e33]:
+      - paragraph [ref=f7e34]: "Every quantum speedup in this curriculum is the same move performed with different bookkeeping: spread amplitude across many basis states, arrange for the wrong answers to cancel, and read out what survives. Phase kickback is the mechanism that lets a controlled operation write into the control instead of the target, and it is where that cancellation is set up."
+      - complementary [ref=f7e35]:
+        - generic [ref=f7e36]: Notation
+        - paragraph [ref=f7e37]: A relative phase is a phase difference between basis states. A global phase multiplies every amplitude and is unobservable.
+      - heading "The one line of algebra" [level=2] [ref=f7e38]
+      - paragraph [ref=f7e39]:
+        - text: Suppose
+        - generic [ref=f7e40]:
+          - math [ref=f7e42]:
+            - generic [ref=f7e44]:
+              - generic [ref=f7e45]: U
+              - generic [ref=f7e46]: ∣
+              - generic [ref=f7e47]: ψ
+              - generic [ref=f7e48]: ⟩
+              - generic [ref=f7e49]: =
+              - generic [ref=f7e50]:
+                - generic [ref=f7e51]: e
+                - generic [ref=f7e52]:
+                  - generic [ref=f7e53]: i
+                  - generic [ref=f7e54]: φ
+              - generic [ref=f7e55]: ∣
+              - generic [ref=f7e56]: ψ
+              - generic [ref=f7e57]: ⟩
+          - generic [ref=f7e58]:
+            - generic [ref=f7e59]: U∣ψ⟩ =
+            - generic [ref=f7e60]:
+              - generic [ref=f7e61]:
+                - text: e
+                - generic [ref=f7e62]: iφ
+              - text: ∣ψ⟩
+        - text: ", so"
+        - generic [ref=f7e68]:
+          - math [ref=f7e70]:
+            - generic [ref=f7e72]:
+              - generic [ref=f7e73]: ∣
+              - generic [ref=f7e74]: ψ
+              - generic [ref=f7e75]: ⟩
+          - generic [ref=f7e76]: ∣ψ⟩
+        - text: is an eigenvector of
+        - generic [ref=f7e78]:
+          - math [ref=f7e80]:
+            - generic [ref=f7e81]: U
+          - generic [ref=f7e84]: U
+        - text: with eigenvalue
+        - generic [ref=f7e86]:
+          - math [ref=f7e88]:
+            - generic [ref=f7e91]:
+              - generic [ref=f7e92]: e
+              - generic [ref=f7e93]:
+                - generic [ref=f7e94]: i
+                - generic [ref=f7e95]: φ
+          - generic [ref=f7e98]:
+            - text: e
+            - generic [ref=f7e99]: iφ
+        - text: . Apply a controlled-
+        - generic [ref=f7e105]:
+          - math [ref=f7e107]:
+            - generic [ref=f7e108]: U
+          - generic [ref=f7e111]: U
+        - text: with the control in
+        - generic [ref=f7e113]:
+          - math [ref=f7e115]:
+            - generic [ref=f7e117]:
+              - generic [ref=f7e118]: ∣
+              - generic [ref=f7e119]: +
+              - generic [ref=f7e120]: ⟩
+          - generic [ref=f7e121]: ∣+⟩
+        - text: ":"
+      - generic [ref=f7e124]:
+        - math [ref=f7e126]:
+          - generic [ref=f7e128]:
+            - generic [ref=f7e129]: C
+            - generic [ref=f7e130]: U
+            - generic [ref=f7e131]: ∣
+            - generic [ref=f7e132]: +
+            - generic [ref=f7e133]: ⟩
+            - generic [ref=f7e134]: ∣
+            - generic [ref=f7e135]: ψ
+            - generic [ref=f7e136]: ⟩
+            - generic [ref=f7e137]: =
+            - generic [ref=f7e139]:
+              - generic [ref=f7e140]: "1"
+              - generic [ref=f7e141]: "2"
+            - generic [ref=f7e143]:
+              - generic [ref=f7e144]: (
+              - generic [ref=f7e145]: ∣
+              - generic [ref=f7e146]: "0"
+              - generic [ref=f7e147]: ⟩
+              - generic [ref=f7e148]: ∣
+              - generic [ref=f7e149]: ψ
+              - generic [ref=f7e150]: ⟩
+              - generic [ref=f7e151]: +
+              - generic [ref=f7e152]: ∣
+              - generic [ref=f7e153]: "1"
+              - generic [ref=f7e154]: ⟩
+              - generic [ref=f7e155]: U
+              - generic [ref=f7e156]: ∣
+              - generic [ref=f7e157]: ψ
+              - generic [ref=f7e158]: ⟩
+              - generic [ref=f7e159]: )
+            - generic [ref=f7e160]: =
+            - generic [ref=f7e162]:
+              - generic [ref=f7e163]: "1"
+              - generic [ref=f7e164]: "2"
+            - generic [ref=f7e166]:
+              - generic [ref=f7e167]: (
+              - generic [ref=f7e168]: ∣
+              - generic [ref=f7e169]: "0"
+              - generic [ref=f7e170]: ⟩
+              - generic [ref=f7e171]: +
+              - generic [ref=f7e172]:
+                - generic [ref=f7e173]: e
+                - generic [ref=f7e174]:
+                  - generic [ref=f7e175]: i
+                  - generic [ref=f7e176]: φ
+              - generic [ref=f7e177]: ∣
+              - generic [ref=f7e178]: "1"
+              - generic [ref=f7e179]: ⟩
+              - generic [ref=f7e180]: )
+            - generic [ref=f7e181]: ∣
+            - generic [ref=f7e182]: ψ
+            - generic [ref=f7e183]: ⟩
+            - generic [ref=f7e184]: .
+        - generic [ref=f7e185]:
+          - generic [ref=f7e186]: CU ∣+⟩∣ψ⟩ =
+          - generic [ref=f7e187]:
+            - generic [ref=f7e192]:
+              - generic [ref=f7e193]: "2"
+              - generic [ref=f7e207]: "1"
+            - generic [ref=f7e212]: (∣0⟩∣ψ⟩ + ∣1⟩U∣ψ⟩)
+            - text: =
+          - generic [ref=f7e213]:
+            - generic [ref=f7e218]:
+              - generic [ref=f7e219]: "2"
+              - generic [ref=f7e233]: "1"
+            - generic [ref=f7e238]:
+              - generic [ref=f7e239]: (
+              - text: ∣0⟩ +
+              - generic [ref=f7e240]:
+                - text: e
+                - generic [ref=f7e241]: iφ
+              - text: ∣1⟩
+              - generic [ref=f7e247]: )
+            - text: ∣ψ⟩.
+      - paragraph [ref=f7e248]: The target came out unchanged. The phase landed on the control. That is the whole of phase estimation, compressed into one line.
+      - generic [ref=f7e249]:
+        - paragraph [ref=f7e250]: The usual confusion
+        - paragraph [ref=f7e251]: Nothing was measured and nothing moved. The eigenvalue was already there. What the controlled gate does is convert an unobservable global phase on the target into an observable relative phase on the control.
+      - heading "Seeing it" [level=2] [ref=f7e252]
+      - paragraph [ref=f7e253]:
+        - text: Take
+        - generic [ref=f7e254]:
+          - math [ref=f7e256]:
+            - generic [ref=f7e258]:
+              - generic [ref=f7e259]: U
+              - generic [ref=f7e260]: =
+              - generic [ref=f7e261]: Z
+          - generic [ref=f7e262]:
+            - generic [ref=f7e263]: U =
+            - generic [ref=f7e264]: Z
+        - text: ", whose eigenvector for eigenvalue"
+        - generic [ref=f7e265]:
+          - math [ref=f7e267]:
+            - generic [ref=f7e269]:
+              - generic [ref=f7e270]: −
+              - generic [ref=f7e271]: "1"
+          - generic [ref=f7e272]: −1
+        - text: is
+        - generic [ref=f7e274]:
+          - math [ref=f7e276]:
+            - generic [ref=f7e278]:
+              - generic [ref=f7e279]: ∣
+              - generic [ref=f7e280]: "1"
+              - generic [ref=f7e281]: ⟩
+          - generic [ref=f7e282]: ∣1⟩
+        - text: . Put the control in
+        - generic [ref=f7e284]:
+          - math [ref=f7e286]:
+            - generic [ref=f7e288]:
+              - generic [ref=f7e289]: ∣
+              - generic [ref=f7e290]: +
+              - generic [ref=f7e291]: ⟩
+          - generic [ref=f7e292]: ∣+⟩
+        - text: ", the target in"
+        - generic [ref=f7e294]:
+          - math [ref=f7e296]:
+            - generic [ref=f7e298]:
+              - generic [ref=f7e299]: ∣
+              - generic [ref=f7e300]: "1"
+              - generic [ref=f7e301]: ⟩
+          - generic [ref=f7e302]: ∣1⟩
+        - text: ", and apply CZ. The control should end up in"
+        - generic [ref=f7e304]:
+          - math [ref=f7e306]:
+            - generic [ref=f7e308]:
+              - generic [ref=f7e309]: ∣
+              - generic [ref=f7e310]: −
+              - generic [ref=f7e311]: ⟩
+          - generic [ref=f7e312]: ∣−⟩
+        - text: .
+      - figure "Control in |+>, target in |1>, then CZ. The minus sign appears on the control." [ref=f7e314]:
+        - generic [ref=f7e315]:
+          - generic [ref=f7e316]: phase-kickback
+          - tablist "Figure view" [ref=f7e317]:
+            - tab "amplitudes" [selected] [ref=f7e318] [cursor=pointer]
+            - tab "bloch" [ref=f7e319] [cursor=pointer]
+            - tab "qasm" [ref=f7e320] [cursor=pointer]
+        - table [ref=f7e322]:
+          - rowgroup [ref=f7e323]:
+            - row [ref=f7e324]:
+              - columnheader "state" [ref=f7e325]
+              - columnheader "amplitude" [ref=f7e326]
+              - columnheader "probability" [ref=f7e327]
+              - columnheader "phase" [ref=f7e328]
+          - rowgroup [ref=f7e329]:
+            - row "|01⟩ 0.7071 + 0.0000i 50.00%" [ref=f7e330]:
+              - rowheader "|01⟩" [ref=f7e331]
+              - cell "0.7071 + 0.0000i" [ref=f7e332]
+              - cell "50.00%" [ref=f7e333]
+              - cell [ref=f7e337]
+            - row "|11⟩ -0.7071 + 0.0000i 50.00%" [ref=f7e340]:
+              - rowheader "|11⟩" [ref=f7e341]
+              - cell "-0.7071 + 0.0000i" [ref=f7e342]
+              - cell "50.00%" [ref=f7e343]
+              - cell [ref=f7e347]
+        - generic [ref=f7e350]:
+          - generic [ref=f7e351]: 2 qubits
+          - generic [ref=f7e352]: depth 2
+          - generic [ref=f7e353]: 3 gates
+          - generic [ref=f7e354]: 1 two qubit
+      - paragraph [ref=f7e356]:
+        - text: Read the amplitude table. The two surviving basis states are
+        - generic [ref=f7e357]:
+          - math [ref=f7e359]:
+            - generic [ref=f7e361]:
+              - generic [ref=f7e362]: ∣
+              - generic [ref=f7e363]: "01"
+              - generic [ref=f7e364]: ⟩
+          - generic [ref=f7e365]: ∣01⟩
+        - text: and
+        - generic [ref=f7e367]:
+          - math [ref=f7e369]:
+            - generic [ref=f7e371]:
+              - generic [ref=f7e372]: ∣
+              - generic [ref=f7e373]: "11"
+              - generic [ref=f7e374]: ⟩
+          - generic [ref=f7e375]: ∣11⟩
+        - text: ", with amplitudes"
+        - generic [ref=f7e377]:
+          - math [ref=f7e379]:
+            - generic [ref=f7e381]:
+              - generic [ref=f7e382]: +
+              - generic [ref=f7e383]: "1"
+              - generic [ref=f7e384]: /
+              - generic [ref=f7e385]: "2"
+          - generic [ref=f7e388]:
+            - text: +1/
+            - generic [ref=f7e389]: "2"
+        - text: and
+        - generic [ref=f7e400]:
+          - math [ref=f7e402]:
+            - generic [ref=f7e404]:
+              - generic [ref=f7e405]: −
+              - generic [ref=f7e406]: "1"
+              - generic [ref=f7e407]: /
+              - generic [ref=f7e408]: "2"
+          - generic [ref=f7e411]:
+            - text: −1/
+            - generic [ref=f7e412]: "2"
+        - text: . The control is in
+        - generic [ref=f7e423]:
+          - math [ref=f7e425]:
+            - generic [ref=f7e427]:
+              - generic [ref=f7e428]: ∣
+              - generic [ref=f7e429]: −
+              - generic [ref=f7e430]: ⟩
+          - generic [ref=f7e431]: ∣−⟩
+        - text: and the target is untouched in
+        - generic [ref=f7e433]:
+          - math [ref=f7e435]:
+            - generic [ref=f7e437]:
+              - generic [ref=f7e438]: ∣
+              - generic [ref=f7e439]: "1"
+              - generic [ref=f7e440]: ⟩
+          - generic [ref=f7e441]: ∣1⟩
+        - text: .
+      - table [ref=f7e444]:
+        - rowgroup [ref=f7e445]:
+          - row [ref=f7e446]:
+            - columnheader "control before" [ref=f7e447]
+            - columnheader "target" [ref=f7e448]
+            - columnheader "control after" [ref=f7e449]
+        - rowgroup [ref=f7e450]:
+          - row [ref=f7e451]:
+            - cell [ref=f7e452]:
+              - generic [ref=f7e453]:
+                - math [ref=f7e455]:
+                  - generic [ref=f7e457]:
+                    - generic [ref=f7e458]: ∣
+                    - generic [ref=f7e459]: +
+                    - generic [ref=f7e460]: ⟩
+                - generic [ref=f7e461]: ∣+⟩
+            - cell [ref=f7e463]:
+              - generic [ref=f7e464]:
+                - math [ref=f7e466]:
+                  - generic [ref=f7e468]:
+                    - generic [ref=f7e469]: ∣
+                    - generic [ref=f7e470]: "0"
+                    - generic [ref=f7e471]: ⟩
+                - generic [ref=f7e472]: ∣0⟩
+            - cell [ref=f7e474]:
+              - generic [ref=f7e475]:
+                - math [ref=f7e477]:
+                  - generic [ref=f7e479]:
+                    - generic [ref=f7e480]: ∣
+                    - generic [ref=f7e481]: +
+                    - generic [ref=f7e482]: ⟩
+                - generic [ref=f7e483]: ∣+⟩
+          - row [ref=f7e485]:
+            - cell [ref=f7e486]:
+              - generic [ref=f7e487]:
+                - math [ref=f7e489]:
+                  - generic [ref=f7e491]:
+                    - generic [ref=f7e492]: ∣
+                    - generic [ref=f7e493]: +
+                    - generic [ref=f7e494]: ⟩
+                - generic [ref=f7e495]: ∣+⟩
+            - cell [ref=f7e497]:
+              - generic [ref=f7e498]:
+                - math [ref=f7e500]:
+                  - generic [ref=f7e502]:
+                    - generic [ref=f7e503]: ∣
+                    - generic [ref=f7e504]: "1"
+                    - generic [ref=f7e505]: ⟩
+                - generic [ref=f7e506]: ∣1⟩
+            - cell [ref=f7e508]:
+              - generic [ref=f7e509]:
+                - math [ref=f7e511]:
+                  - generic [ref=f7e513]:
+                    - generic [ref=f7e514]: ∣
+                    - generic [ref=f7e515]: −
+                    - generic [ref=f7e516]: ⟩
+                - generic [ref=f7e517]: ∣−⟩
+      - paragraph [ref=f7e519]: A Hadamard on the control now turns that phase difference into a measurable bit. That is Deutsch's algorithm.
+      - generic [ref=f7e520]:
+        - paragraph [ref=f7e521]: Why does measuring the control in the computational basis, without the final Hadamard, tell you nothing?
+        - button "Show the answer" [ref=f7e522] [cursor=pointer]
+      - button "Show the solution" [ref=f7e524] [cursor=pointer]
+    - generic [ref=f7e525]:
+      - heading "Where this comes from" [level=2] [ref=f7e526]
+      - list [ref=f7e527]:
+        - listitem [ref=f7e528]:
+          - 'link "CMU 15-859BB, Lecture 2: Rotate, Compute, Rotate" [ref=f7e529] [cursor=pointer]':
+            - /url: https://www.cs.cmu.edu/~odonnell/quantum18/
+        - listitem [ref=f7e530]:
+          - link "IBM Quantum Learning, Fundamentals of quantum algorithms" [ref=f7e531] [cursor=pointer]:
+            - /url: https://quantum.cloud.ibm.com/learning/en/courses
+    - navigation "Lesson navigation" [ref=f7e532]

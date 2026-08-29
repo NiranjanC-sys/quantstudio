@@ -1,0 +1,88 @@
+# RedQuant Grafana datasource provisioning.
+# Wires Prometheus <-> Tempo <-> Loki correlations so a responder can jump
+# from a slow request (Prometheus exemplar) to its trace (Tempo) to its logs
+# (Loki) and back, all keyed on trace_id.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s
+      # link latency exemplars straight to the Tempo trace they came from
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+          urlDisplayLabel: "View trace"
+
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      maxLines: 5000
+      derivedFields:
+        # extract trace_id out of the structured-JSON log line and turn it
+        # into a link into Tempo. §11 requires trace_id on every log line,
+        # this is where that requirement pays off operationally.
+        - datasourceUid: tempo
+          matcherRegex: '"trace_id"\s*:\s*"([0-9a-fA-F]+)"'
+          name: TraceID
+          url: "$${__value.raw}"
+          urlDisplayLabel: "View trace"
+        - datasourceUid: tempo
+          matcherRegex: '"span_id"\s*:\s*"([0-9a-fA-F]+)"'
+          name: SpanID
+          url: "$${__value.raw}"
+          urlDisplayLabel: "View span"
+
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      httpMethod: GET
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+        tags:
+          - key: service.name
+            value: service
+          - key: cell
+          - key: journey
+        filterByTraceID: true
+        filterBySpanID: false
+        customQuery: false
+      tracesToMetrics:
+        datasourceUid: prometheus
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+        tags:
+          - key: service.name
+            value: service
+          - key: journey
+          - key: cell
+        queries:
+          - name: "Request rate"
+            query: 'sum(rate(redquant_calls_total{$$__tags}[5m]))'
+          - name: "Error rate"
+            query: 'sum(rate(redquant_calls_total{$$__tags, status_code="STATUS_CODE_ERROR"}[5m]))'
+          - name: "p99 latency"
+            query: 'histogram_quantile(0.99, sum(rate(redquant_duration_milliseconds_bucket{$$__tags}[5m])) by (le))'
+      lokiSearch:
+        datasourceUid: loki
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
+      search:
+        hide: false

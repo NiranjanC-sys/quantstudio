@@ -1,0 +1,70 @@
+# Every image must be ghcr.io/redquant/<name>:<gitsha> (or an equally immutable
+# third-party reference) -- never `latest`, plain untagged, or a known floating tag.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Disallow Latest Tag
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Rejects images with no tag at all, and images pinned to a known
+      mutable/floating tag (latest, main, master, dev, stable, edge). Images
+      must be referenced by an immutable tag (e.g. a git sha, as in
+      ghcr.io/redquant/<name>:<gitsha>) or a digest.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-image-tag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+      validate:
+        message: "An explicit image tag or digest is required (no bare `image:name`)."
+        foreach:
+          - list: "request.object.spec.containers"
+            pattern:
+              image: "*:*"
+    - name: disallow-mutable-tags
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+      validate:
+        message: >-
+          Mutable/floating image tags are not allowed. Use an immutable tag
+          (git sha) or a digest.
+        foreach:
+          - list: "request.object.spec.containers"
+            pattern:
+              image: "!*:latest"
+          - list: "request.object.spec.containers"
+            pattern:
+              image: "!*:main"
+          - list: "request.object.spec.containers"
+            pattern:
+              image: "!*:master"
+          - list: "request.object.spec.containers"
+            pattern:
+              image: "!*:dev"
+          - list: "request.object.spec.containers"
+            pattern:
+              image: "!*:stable"
+          - list: "request.object.spec.containers"
+            pattern:
+              image: "!*:edge"

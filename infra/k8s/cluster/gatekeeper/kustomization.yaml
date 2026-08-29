@@ -1,0 +1,14 @@
+# Alternative policy engine, NOT included by cluster/kustomization.yaml by default:
+# Kyverno (../kyverno/) is the default engine for this cluster. This directory exists
+# so an operator who prefers (or already standardises on) OPA Gatekeeper can swap
+# `kyverno` for `gatekeeper` in cluster/kustomization.yaml's resources list. Running
+# both engines' policies at once is redundant -- they enforce the same three checks
+# (non-root, read-only rootfs, no-latest-tag) and would just double every admission
+# review.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - gk-non-root.yaml
+  - gk-readonly-rootfs.yaml
+  - gk-no-latest-tag.yaml

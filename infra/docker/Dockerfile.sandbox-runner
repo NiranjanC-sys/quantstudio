@@ -1,0 +1,105 @@
+# syntax=docker/dockerfile:1.7
+#
+# RedQuant `sandbox-runner` image -- executes untrusted learner code
+# (docs/architecture/system-design.md §10). This image is intentionally
+# minimal and carries NO network client tools (no curl/wget/netcat/openssh
+# etc.) -- the runtime isolation model assumes there is nothing inside the
+# container worth reaching out with, let alone letting an escapee use.
+#
+# Runtime isolation (enforced OUTSIDE this image, by the orchestrator -- not
+# something a Dockerfile can express, noted here for context):
+#   - Scheduled under the gVisor (`runsc`) RuntimeClass: one intercepted
+#     syscall boundary per pod, seccomp-filtered to the ~60 calls CPython +
+#     NumPy need.
+#   - Empty network namespace: no interface at all (not a firewall rule --
+#     there is nothing to route through). No DNS, no sockets, no egress.
+#   - A 64 MiB tmpfs scratch volume for the actual per-submission execution
+#     (mounted by the orchestrator, not baked into the image).
+#   - Read-only root filesystem; 2s CPU / 10s for projects; 512 MiB RSS;
+#     64 processes; 4 MiB stdout; wall-clock kill at 3x the CPU limit.
+#   - The import loader (application-level, in apps/quantum-kernel) allows
+#     only numpy, qiskit, cirq, pennylane, scipy, math, itertools, typing --
+#     denies os, sys, subprocess, socket, ctypes outright.
+#   - The pod itself is single-use: recycled after N=50 executions (§10),
+#     which is why this image has no need for long-lived caches or self-update
+#     machinery -- a fresh container replaces it instead.
+#
+# apps/quantum-kernel has no requirements.txt/pyproject.toml yet; this image
+# reuses infra/docker/requirements-kernel.txt (same source tree as
+# Dockerfile.quantum-kernel / Dockerfile.grader -- see that file's header).
+#
+# Build context MUST be the monorepo root:
+#   docker build -f infra/docker/Dockerfile.sandbox-runner -t redquant/sandbox-runner:<sha> .
+
+ARG PYTHON_VERSION=3.12-slim
+
+########################################################################
+# builder -- compile-time deps + venv (build-essential never reaches runtime)
+########################################################################
+FROM python:${PYTHON_VERSION} AS builder
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python -m venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+
+WORKDIR /build
+COPY infra/docker/requirements-kernel.txt ./requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -r requirements.txt
+
+########################################################################
+# runtime -- copies /opt/venv only, no build toolchain, no network tools
+########################################################################
+FROM python:${PYTHON_VERSION} AS runtime
+
+# tini only -- deliberately no curl/wget/netcat/iproute2/openssh-client etc.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tini \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -g 10001 redquant \
+    && useradd -u 10001 -g redquant -M -s /usr/sbin/nologin redquant
+
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+# NOTE: apps/quantum-kernel/app/ does not exist in the repo yet. This
+# assumes a `runner` entrypoint module alongside the FastAPI `main` module
+# referenced by the kernel:dev script (uvicorn app.main:app).
+COPY --chown=redquant:redquant apps/quantum-kernel/app ./app
+
+USER redquant:redquant
+
+# No EXPOSE: this service has an empty network namespace by design (§10) --
+# it is invoked by the grader/kernel over a local IPC/queue mechanism, never
+# over HTTP, and accepts no inbound connections.
+
+# HEALTHCHECK deliberately does NOT use HTTP or any socket: the whole point
+# of this image is that it has no network namespace to speak over. Liveness
+# is instead a file-based heartbeat -- the runner entrypoint is expected to
+# touch /tmp/heartbeat on every poll/dequeue cycle; we consider it live if
+# that file was touched within the last 30s. If your orchestrator's liveness
+# probe already restarts on process exit (e.g. a Kubernetes `exec` probe
+# with restartPolicy, or this being recycled after N=50 executions per §10),
+# it is also reasonable to omit this HEALTHCHECK entirely -- it is kept here
+# for local `docker compose` parity with every other service.
+HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
+  CMD python -c "\
+import os, sys, time; \
+p = '/tmp/heartbeat'; \
+sys.exit(0 if os.path.exists(p) and (time.time() - os.path.getmtime(p)) < 30 else 1)"
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["python", "-m", "app.runner"]
+
+LABEL org.opencontainers.image.title="redquant-sandbox-runner" \
+      org.opencontainers.image.description="RedQuant untrusted learner-code execution runner (gVisor jail, no network)" \
+      org.opencontainers.image.source="https://github.com/redquant/redquant" \
+      org.opencontainers.image.vendor="RedQuant" \
+      org.opencontainers.image.licenses="UNLICENSED"

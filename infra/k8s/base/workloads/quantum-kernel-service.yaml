@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: quantum-kernel
+  labels:
+    app.kubernetes.io/name: quantum-kernel
+    app.kubernetes.io/component: quantum-kernel
+spec:
+  selector:
+    app.kubernetes.io/name: quantum-kernel
+  ports:
+    - name: http
+      port: 8100
+      targetPort: 8100
+      protocol: TCP

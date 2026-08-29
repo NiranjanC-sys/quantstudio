@@ -1,0 +1,166 @@
+# Precomputed SLI ratios that back the multi-window multi-burn-rate alerts in
+# prometheusrule-slo.yaml (§9), plus per-journey latency quantiles for the
+# one-dashboard-per-journey layout (§11).
+#
+# Instrumentation contract this assumes (api-gateway / web / quantum-kernel emit):
+#   redquant_http_requests_total{route_class, code}                       counter
+#   redquant_http_request_duration_seconds_bucket{route_class, journey,le} histogram
+#   redquant_submissions_accepted_total / redquant_submissions_committed_total  counters
+#     (§6: "accepted" = the 202 written after the INSERT; "committed" = grader wrote
+#     submission_results. durability SLI = committed / accepted.)
+#
+# The read-latency SLO (p99 < 300ms) is converted to an event-ratio SLI -- "fraction
+# of read requests served under 300ms must be >= 99%" -- because burn-rate math
+# needs a good/total ratio, not a raw quantile. This is the standard Google SRE
+# workbook technique for turning a latency objective into something burn-rate alerts
+# can consume.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: redquant-sli-recording-rules
+  labels:
+    app.kubernetes.io/part-of: redquant
+    prometheus: redquant
+    role: recording-rules
+spec:
+  groups:
+    - name: redquant.sli.read-availability
+      interval: 30s
+      rules:
+        - record: redquant:read_availability:ratio_rate5m
+          expr: |
+            sum(rate(redquant_http_requests_total{route_class="read",code!~"5.."}[5m]))
+            /
+            sum(rate(redquant_http_requests_total{route_class="read"}[5m]))
+        - record: redquant:read_availability:ratio_rate30m
+          expr: |
+            sum(rate(redquant_http_requests_total{route_class="read",code!~"5.."}[30m]))
+            /
+            sum(rate(redquant_http_requests_total{route_class="read"}[30m]))
+        - record: redquant:read_availability:ratio_rate1h
+          expr: |
+            sum(rate(redquant_http_requests_total{route_class="read",code!~"5.."}[1h]))
+            /
+            sum(rate(redquant_http_requests_total{route_class="read"}[1h]))
+        - record: redquant:read_availability:ratio_rate2h
+          expr: |
+            sum(rate(redquant_http_requests_total{route_class="read",code!~"5.."}[2h]))
+            /
+            sum(rate(redquant_http_requests_total{route_class="read"}[2h]))
+        - record: redquant:read_availability:ratio_rate6h
+          expr: |
+            sum(rate(redquant_http_requests_total{route_class="read",code!~"5.."}[6h]))
+            /
+            sum(rate(redquant_http_requests_total{route_class="read"}[6h]))
+        - record: redquant:read_availability:ratio_rate1d
+          expr: |
+            sum(rate(redquant_http_requests_total{route_class="read",code!~"5.."}[1d]))
+            /
+            sum(rate(redquant_http_requests_total{route_class="read"}[1d]))
+        - record: redquant:read_availability:ratio_rate3d
+          expr: |
+            sum(rate(redquant_http_requests_total{route_class="read",code!~"5.."}[3d]))
+            /
+            sum(rate(redquant_http_requests_total{route_class="read"}[3d]))
+
+    - name: redquant.sli.submission-durability
+      interval: 30s
+      rules:
+        - record: redquant:submission_durability:ratio_rate5m
+          expr: |
+            sum(rate(redquant_submissions_committed_total[5m]))
+            /
+            sum(rate(redquant_submissions_accepted_total[5m]))
+        - record: redquant:submission_durability:ratio_rate30m
+          expr: |
+            sum(rate(redquant_submissions_committed_total[30m]))
+            /
+            sum(rate(redquant_submissions_accepted_total[30m]))
+        - record: redquant:submission_durability:ratio_rate1h
+          expr: |
+            sum(rate(redquant_submissions_committed_total[1h]))
+            /
+            sum(rate(redquant_submissions_accepted_total[1h]))
+        - record: redquant:submission_durability:ratio_rate2h
+          expr: |
+            sum(rate(redquant_submissions_committed_total[2h]))
+            /
+            sum(rate(redquant_submissions_accepted_total[2h]))
+        - record: redquant:submission_durability:ratio_rate6h
+          expr: |
+            sum(rate(redquant_submissions_committed_total[6h]))
+            /
+            sum(rate(redquant_submissions_accepted_total[6h]))
+        - record: redquant:submission_durability:ratio_rate1d
+          expr: |
+            sum(rate(redquant_submissions_committed_total[1d]))
+            /
+            sum(rate(redquant_submissions_accepted_total[1d]))
+        - record: redquant:submission_durability:ratio_rate3d
+          expr: |
+            sum(rate(redquant_submissions_committed_total[3d]))
+            /
+            sum(rate(redquant_submissions_accepted_total[3d]))
+
+    - name: redquant.sli.read-latency
+      interval: 30s
+      rules:
+        - record: redquant:read_latency_fast:ratio_rate5m
+          expr: |
+            sum(rate(redquant_http_request_duration_seconds_bucket{route_class="read",le="0.3"}[5m]))
+            /
+            sum(rate(redquant_http_request_duration_seconds_count{route_class="read"}[5m]))
+        - record: redquant:read_latency_fast:ratio_rate30m
+          expr: |
+            sum(rate(redquant_http_request_duration_seconds_bucket{route_class="read",le="0.3"}[30m]))
+            /
+            sum(rate(redquant_http_request_duration_seconds_count{route_class="read"}[30m]))
+        - record: redquant:read_latency_fast:ratio_rate1h
+          expr: |
+            sum(rate(redquant_http_request_duration_seconds_bucket{route_class="read",le="0.3"}[1h]))
+            /
+            sum(rate(redquant_http_request_duration_seconds_count{route_class="read"}[1h]))
+        - record: redquant:read_latency_fast:ratio_rate2h
+          expr: |
+            sum(rate(redquant_http_request_duration_seconds_bucket{route_class="read",le="0.3"}[2h]))
+            /
+            sum(rate(redquant_http_request_duration_seconds_count{route_class="read"}[2h]))
+        - record: redquant:read_latency_fast:ratio_rate6h
+          expr: |
+            sum(rate(redquant_http_request_duration_seconds_bucket{route_class="read",le="0.3"}[6h]))
+            /
+            sum(rate(redquant_http_request_duration_seconds_count{route_class="read"}[6h]))
+        - record: redquant:read_latency_fast:ratio_rate1d
+          expr: |
+            sum(rate(redquant_http_request_duration_seconds_bucket{route_class="read",le="0.3"}[1d]))
+            /
+            sum(rate(redquant_http_request_duration_seconds_count{route_class="read"}[1d]))
+        - record: redquant:read_latency_fast:ratio_rate3d
+          expr: |
+            sum(rate(redquant_http_request_duration_seconds_bucket{route_class="read",le="0.3"}[3d]))
+            /
+            sum(rate(redquant_http_request_duration_seconds_count{route_class="read"}[3d]))
+
+    - name: redquant.journey-latency
+      interval: 30s
+      rules:
+        # Per-journey latency quantiles for the "read a lesson / run a lab / join a
+        # contest" dashboards (§11). journey is a label on the duration histogram.
+        - record: redquant:journey_latency:p50_rate5m
+          expr: |
+            histogram_quantile(0.50, sum(rate(redquant_http_request_duration_seconds_bucket[5m])) by (le, journey))
+        - record: redquant:journey_latency:p95_rate5m
+          expr: |
+            histogram_quantile(0.95, sum(rate(redquant_http_request_duration_seconds_bucket[5m])) by (le, journey))
+        - record: redquant:journey_latency:p99_rate5m
+          expr: |
+            histogram_quantile(0.99, sum(rate(redquant_http_request_duration_seconds_bucket[5m])) by (le, journey))
+        - record: redquant:journey_latency:p50_rate1h
+          expr: |
+            histogram_quantile(0.50, sum(rate(redquant_http_request_duration_seconds_bucket[1h])) by (le, journey))
+        - record: redquant:journey_latency:p95_rate1h
+          expr: |
+            histogram_quantile(0.95, sum(rate(redquant_http_request_duration_seconds_bucket[1h])) by (le, journey))
+        - record: redquant:journey_latency:p99_rate1h
+          expr: |
+            histogram_quantile(0.99, sum(rate(redquant_http_request_duration_seconds_bucket[1h])) by (le, journey))

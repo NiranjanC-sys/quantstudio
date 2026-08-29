@@ -1,0 +1,52 @@
+# Two CNPG Poolers fronting redquant-pg: rw for writes + read-your-write reads,
+# ro for the bulk (85%) of replica-served read traffic (§5). Transaction pooling
+# turns 1,200 client connections into 120 server connections on each side.
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: redquant-pg-rw
+  labels:
+    redquant.io/pooler-role: rw
+spec:
+  cluster:
+    name: redquant-pg
+  type: rw
+  instances: 3
+  pgbouncer:
+    poolMode: transaction
+    parameters:
+      max_client_conn: "1200"
+      default_pool_size: "120"
+      reserve_pool_size: "20"
+      reserve_pool_timeout: "3"
+      server_idle_timeout: "600"
+  monitoring:
+    enablePodMonitor: true
+  template:
+    spec:
+      priorityClassName: redquant-critical
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: redquant-pg-ro
+  labels:
+    redquant.io/pooler-role: ro
+spec:
+  cluster:
+    name: redquant-pg
+  type: ro
+  instances: 3
+  pgbouncer:
+    poolMode: transaction
+    parameters:
+      max_client_conn: "1200"
+      default_pool_size: "120"
+      reserve_pool_size: "20"
+      reserve_pool_timeout: "3"
+      server_idle_timeout: "600"
+  monitoring:
+    enablePodMonitor: true
+  template:
+    spec:
+      priorityClassName: redquant-critical

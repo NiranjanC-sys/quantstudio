@@ -1,0 +1,55 @@
+# grader (BullMQ consumer, §3/§6): pulls jobs from Redis, writes results via the RW
+# pooler, and stores artefacts in S3. Never receives inbound user traffic -- the only
+# ingress it needs is Prometheus scraping the worker's metrics endpoint.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: grader-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: grader
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9464
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis-cluster
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: cnpg.io/poolerName
+                operator: In
+                values:
+                  - redquant-pg-rw
+                  - redquant-pg-ro
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+    # S3/object storage for submission artefacts is off-cluster; restricted to HTTPS.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443

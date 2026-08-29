@@ -1,0 +1,41 @@
+# Every workload's convention (SPEC.md): runAsNonRoot: true, runAsUser: 10001.
+# Enforced here so a future manifest can't silently regress it.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-non-root
+  annotations:
+    policies.kyverno.io/title: Require Non-Root
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Requires runAsNonRoot: true at the pod level (or on every container that
+      does not inherit it from the pod), so no container in the cluster can
+      run as UID 0.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: check-run-as-non-root
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+      validate:
+        message: >-
+          Pods and containers must set securityContext.runAsNonRoot: true
+          (either at pod level, or on every container).
+        anyPattern:
+          - spec:
+              securityContext:
+                runAsNonRoot: true
+          - spec:
+              containers:
+                - securityContext:
+                    runAsNonRoot: true

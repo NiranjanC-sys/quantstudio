@@ -1,0 +1,41 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+  annotations:
+    policies.kyverno.io/title: Require Resource Requests and Limits
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Requires every container to declare cpu/memory requests and limits.
+      Fleet sizing in system-design.md §1 (e.g. "180 rps/pod at 60% CPU")
+      only holds if every pod actually carries the resource spec the HPA/KEDA
+      math assumes.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: check-resource-requests-limits
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+      validate:
+        message: "Every container must declare resources.requests and resources.limits for both cpu and memory."
+        pattern:
+          spec:
+            containers:
+              - name: "*"
+                resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"

@@ -1,0 +1,12 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sandbox-runner
+  labels:
+    app.kubernetes.io/name: sandbox-runner
+    app.kubernetes.io/component: sandbox-runner
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sandbox-runner

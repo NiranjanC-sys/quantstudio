@@ -1,0 +1,76 @@
+# syntax=docker/dockerfile:1.7
+#
+# RedQuant `grader` image -- BullMQ consumer worker (docs/architecture/
+# system-design.md §3/§6). Pulls from the redis-backed `grade` queue,
+# executes submissions in the sandbox, and writes submission_results. Never
+# owns user-facing latency (KEDA-scaled on queue depth, §1).
+#
+# apps/quantum-kernel has no requirements.txt/pyproject.toml yet; this image
+# reuses infra/docker/requirements-kernel.txt (same source tree as
+# Dockerfile.quantum-kernel / Dockerfile.sandbox-runner -- see that file's
+# header, including the bullmq/redis pins this worker needs).
+#
+# Build context MUST be the monorepo root:
+#   docker build -f infra/docker/Dockerfile.grader -t redquant/grader:<sha> .
+
+ARG PYTHON_VERSION=3.12-slim
+
+########################################################################
+# builder -- compile-time deps + venv
+########################################################################
+FROM python:${PYTHON_VERSION} AS builder
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python -m venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+
+WORKDIR /build
+COPY infra/docker/requirements-kernel.txt ./requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -r requirements.txt
+
+########################################################################
+# runtime -- copies /opt/venv only, no build toolchain
+########################################################################
+FROM python:${PYTHON_VERSION} AS runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tini \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -g 10001 redquant \
+    && useradd -u 10001 -g redquant -M -s /usr/sbin/nologin redquant
+
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+# NOTE: apps/quantum-kernel/app/ does not exist in the repo yet. This
+# assumes a `grader` worker entrypoint module alongside the FastAPI `main`
+# module referenced by the kernel:dev script (uvicorn app.main:app).
+COPY --chown=redquant:redquant apps/quantum-kernel/app ./app
+
+USER redquant:redquant
+
+# No inbound HTTP port -- this is a queue consumer, not a request handler.
+# Only the Prometheus metrics port is exposed.
+EXPOSE 9464
+
+VOLUME ["/tmp"]
+
+HEALTHCHECK --interval=15s --timeout=3s --start-period=15s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9464/metrics', timeout=2)" || exit 1
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["python", "-m", "app.grader"]
+
+LABEL org.opencontainers.image.title="redquant-grader" \
+      org.opencontainers.image.description="RedQuant BullMQ grader worker: test harness, scoring, resource-bound checks" \
+      org.opencontainers.image.source="https://github.com/redquant/redquant" \
+      org.opencontainers.image.vendor="RedQuant" \
+      org.opencontainers.image.licenses="UNLICENSED"

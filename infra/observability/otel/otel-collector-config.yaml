@@ -1,0 +1,229 @@
+# RedQuant OpenTelemetry Collector configuration.
+#
+# §11 policy this file implements verbatim:
+#   "Traces: OpenTelemetry end to end, one trace per user action, sampled at
+#    1% baseline and 100% for errors, contest submissions, and payments."
+#   "Logs: structured JSON, Loki, no PII, trace_id on every line."
+#
+# Additionally (per this file's own tail_sampling policy, agreed with the
+# platform team as the concrete reading of "100% for errors/contest/payments"
+# plus the read-latency SLO): 100% for spans over the 300ms read-latency
+# budget (§9), so a slow read is never silently sampled away.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # scrape the collector's own Prometheus-format metrics (also exposed via
+  # telemetry.metrics below on :8888, this second endpoint lets the
+  # collector pull in *other* prometheus-exposition endpoints it wants to
+  # re-emit through the same pipeline, e.g. sidecar exporters).
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: otel-collector-self
+          scrape_interval: 15s
+          static_configs:
+            - targets: ["0.0.0.0:8888"]
+
+  hostmetrics:
+    collection_interval: 30s
+    scrapers:
+      cpu: {}
+      memory: {}
+      disk: {}
+      filesystem: {}
+      network: {}
+      load: {}
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 1536
+    spike_limit_mib: 512
+
+  resourcedetection:
+    detectors: [env, system]
+    system:
+      hostname_sources: [os]
+    timeout: 5s
+    override: false
+
+  # §11: "no PII" in logs, and traces must not carry learner PII either
+  # (emails, raw request bodies, auth tokens). Strip/hash known-sensitive
+  # attribute keys before anything leaves the collector.
+  attributes/scrub_pii:
+    actions:
+      - key: user.email
+        action: delete
+      - key: http.request.header.authorization
+        action: delete
+      - key: http.request.header.cookie
+        action: delete
+      - key: db.statement
+        action: delete
+      - key: user.password
+        action: delete
+      - key: credit_card
+        action: delete
+      - key: user.id
+        action: hash
+      - key: session.id
+        action: hash
+
+  # cluster-mode only: enriches spans/metrics/logs with pod/namespace/node
+  # labels (including the redquant.io/cell label) from the k8s API. No-op
+  # (and safe to leave uncommented) in compose since it degrades gracefully
+  # when it cannot reach the k8s API — but we keep it commented to make the
+  # two modes explicit, matching prometheus.yml's convention.
+  # k8sattributes:
+  #   auth_type: serviceAccount
+  #   passthrough: false
+  #   extract:
+  #     metadata:
+  #       - k8s.pod.name
+  #       - k8s.namespace.name
+  #       - k8s.node.name
+  #       - k8s.deployment.name
+  #     labels:
+  #       - tag_name: cell
+  #         key: redquant.io/cell
+  #         from: pod
+  #       - tag_name: journey
+  #         key: redquant.io/journey
+  #         from: pod
+  #   pod_association:
+  #     - sources:
+  #         - from: resource_attribute
+  #           name: k8s.pod.ip
+  #         - from: connection
+
+  # §11 tail sampling policy, implemented exactly:
+  #   - 1% baseline probabilistic sample of everything else
+  #   - 100% for any span/trace containing an error
+  #   - 100% for contest submissions (span attribute contest.submission=true)
+  #   - 100% for payments (http.route matching /billing, or attribute
+  #     payment=true)
+  #   - 100% for latency above the read SLO (>300ms on reads)
+  # Policies are OR'd together by tail_sampling (a trace is kept if ANY
+  # policy decides to sample it), so ordering here is priority-for-review,
+  # not priority-of-effect.
+  tail_sampling:
+    decision_wait: 10s
+    num_traces: 100000
+    expected_new_traces_per_sec: 2000
+    policies:
+      - name: errors
+        type: status_code
+        status_code:
+          status_codes: [ERROR]
+
+      - name: contest-submissions
+        type: string_attribute
+        string_attribute:
+          key: contest.submission
+          values: ["true"]
+
+      - name: payments-route
+        type: string_attribute
+        string_attribute:
+          key: http.route
+          values: ["/billing.*", "/api/billing.*", "/payments.*"]
+          enabled_regex_matching: true
+
+      - name: payments-attribute
+        type: string_attribute
+        string_attribute:
+          key: payment
+          values: ["true"]
+
+      - name: read-latency-over-slo
+        # §9: p99 read latency budget is 300ms; sample any span slower than
+        # that so a slow read is never lost to the 1% baseline.
+        type: latency
+        latency:
+          threshold_ms: 300
+
+      - name: baseline-probabilistic
+        type: probabilistic
+        probabilistic:
+          sampling_percentage: 1
+
+  batch:
+    timeout: 5s
+    send_batch_size: 2048
+    send_batch_max_size: 4096
+
+connectors:
+  # RED metrics generated directly from span data, independent of the
+  # tail_sampling decision above (spanmetrics sees every span before
+  # sampling drops it), so request-rate/error/duration dashboards stay
+  # accurate even though only a sample of full traces is retained.
+  spanmetrics:
+    namespace: redquant
+    # service.name is already included by default; only list additional
+    # dimensions here.
+    dimensions:
+      - name: journey
+      - name: cell
+      - name: http.route
+      - name: http.status_code
+    histogram:
+      explicit:
+        buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 150ms, 200ms, 300ms, 500ms, 1s, 2s, 5s, 10s]
+    exemplars:
+      enabled: true
+    metrics_flush_interval: 15s
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  prometheusremotewrite:
+    endpoint: http://prometheus:9090/api/v1/write
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+
+  debug:
+    verbosity: basic
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+service:
+  telemetry:
+    logs:
+      level: info
+      encoding: json
+    metrics:
+      level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, attributes/scrub_pii, tail_sampling, batch]
+      exporters: [otlp/tempo, spanmetrics, debug]
+
+    metrics:
+      receivers: [otlp, prometheus, hostmetrics, spanmetrics]
+      processors: [memory_limiter, resourcedetection, batch]
+      exporters: [prometheusremotewrite, debug]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, attributes/scrub_pii, batch]
+      exporters: [otlphttp/loki, debug]

@@ -1,0 +1,87 @@
+# Forward-looking alternative to ingress-nginx.yaml, expressed with the Gateway API.
+# NOT the enabled path today: ingress-nginx.yaml (annotations-driven rate limiting +
+# ModSecurity/OWASP CRS) is what production traffic actually uses. This manifest is
+# kept in the base so it builds and validates continuously; switching to it is a
+# deliberate cutover (install a Gateway API controller e.g. envoy-gateway or istio,
+# point DNS/anycast at the Gateway's address, then remove or disable the Ingress
+# objects in ingress-nginx.yaml -- running both at once is redundant and would
+# double-terminate TLS for the same hosts).
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: redquant-gateway
+spec:
+  gatewayClassName: nginx-gateway  # or envoy-gateway / istio, depending on controller choice
+  listeners:
+    - name: https-web-api
+      protocol: HTTPS
+      port: 443
+      hostname: "*.redquant.io"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: redquant-tls
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: https-apex
+      protocol: HTTPS
+      port: 443
+      hostname: redquant.io
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: redquant-tls
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: redquant-web
+spec:
+  parentRefs:
+    - name: redquant-gateway
+      sectionName: https-apex
+  hostnames:
+    - redquant.io
+  rules:
+    - backendRefs:
+        - name: web
+          port: 3000
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: redquant-api
+spec:
+  parentRefs:
+    - name: redquant-gateway
+      sectionName: https-web-api
+  hostnames:
+    - api.redquant.io
+  rules:
+    - backendRefs:
+        - name: api
+          port: 3001
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: redquant-ws
+spec:
+  parentRefs:
+    - name: redquant-gateway
+      sectionName: https-web-api
+  hostnames:
+    - ws.redquant.io
+  rules:
+    - backendRefs:
+        - name: api
+          port: 3001
+      timeouts:
+        # Long-lived WebSocket upgrades; mirrors ingress-nginx.yaml's ws proxy-read-timeout.
+        request: 3600s

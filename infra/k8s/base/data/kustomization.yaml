@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: redquant
+      app.kubernetes.io/component: data
+    includeSelectors: false
+
+resources:
+  - postgres-cluster.yaml
+  - pgbouncer-pooler.yaml
+  - postgres-externalsecret.yaml
+  - redis-cluster.yaml
+  - redis-externalsecret.yaml

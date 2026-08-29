@@ -1,0 +1,53 @@
+# Fallback .dockerignore. NOT the one that actually governs any of this
+# repo's image builds: the compose build context for every service is the
+# monorepo root (../..), so BuildKit resolves ignore rules from a file named
+# after the Dockerfile in its own directory instead --
+# infra/docker/Dockerfile.<svc>.dockerignore -- per
+# https://docs.docker.com/build/concepts/context/#filename-and-location.
+# This file exists only for tooling that falls back to a plain
+# ".dockerignore" next to the Dockerfile regardless of BuildKit's
+# per-Dockerfile convention (e.g. `docker build` with BuildKit disabled).
+# Keep it in sync with the six Dockerfile.<svc>.dockerignore files.
+
+.git
+.gitignore
+.github
+.vscode
+.idea
+*.DS_Store
+
+**/node_modules
+**/.pnpm-store
+**/.turbo
+**/coverage
+**/playwright-report
+**/test-results
+
+**/.next
+**/dist
+**/build
+**/out
+**/*.tsbuildinfo
+
+**/__pycache__
+**/*.pyc
+**/.venv
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+
+docs
+infra/loadtest
+infra/loadtest/results
+infra/k8s
+infra/observability
+infra/ci
+DESIGN.md
+*.log
+
+.env
+.env.*
+!.env.example
+infra/docker/.env
+infra/docker/.env.*
+!infra/docker/.env.example

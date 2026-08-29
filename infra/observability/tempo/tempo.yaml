@@ -1,0 +1,94 @@
+# RedQuant Tempo configuration — Tempo 2.x, local backend for compose,
+# commented S3 block for prod.
+#
+# metrics_generator feeds the RED / service-graph metrics that back the
+# journey dashboards' latency panels and the Grafana Tempo datasource's
+# tracesToMetrics correlation (see grafana/provisioning/datasources).
+
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9095
+  log_level: info
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  max_block_duration: 5m
+  trace_idle_period: 30s
+
+compactor:
+  compaction:
+    block_retention: 336h  # 14d; matches Loki retention so trace<->log
+    # correlation windows line up.
+    compacted_block_retention: 1h
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/traces
+    wal:
+      path: /var/tempo/wal
+    # --- prod backend (commented): S3-compatible object storage ---
+    # backend: s3
+    # s3:
+    #   bucket: redquant-tempo-traces
+    #   endpoint: s3.us-east-1.amazonaws.com
+    #   region: us-east-1
+    #   access_key: ${TEMPO_S3_ACCESS_KEY}
+    #   secret_key: ${TEMPO_S3_SECRET_KEY}
+    #   forcepathstyle: false
+    #   insecure: false
+    # wal:
+    #   path: /var/tempo/wal
+
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+      cluster: redquant-local
+  storage:
+    path: /var/tempo/generator/wal
+    remote_write:
+      - url: http://prometheus:9090/api/v1/write
+        send_exemplars: true
+  traces_storage:
+    path: /var/tempo/generator/traces
+  processor:
+    service_graphs:
+      max_items: 10000
+      wait: 10s
+      workers: 10
+      histogram_buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
+      dimensions:
+        - journey
+        - cell
+    span_metrics:
+      histogram_buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
+      dimensions:
+        - journey
+        - cell
+        - http.route
+        - http.status_code
+      intrinsic_dimensions:
+        service: true
+        span_name: true
+        span_kind: true
+        status_code: true
+        status_message: false
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics]
+      generate_native_histograms: both
+
+usage_report:
+  reporting_enabled: false

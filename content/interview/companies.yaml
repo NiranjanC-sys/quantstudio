@@ -1,0 +1,581 @@
+# RedQuant employer briefings.
+#
+# One entry per employer, validated against CompanySchema in
+# packages/content/src/schema.ts. Every claim here is either a published,
+# stable fact about the stack or a description of the shape of the work.
+# Where a product name or a process detail could not be confirmed, the entry
+# describes the modality and the general shape instead of naming specifics.
+
+companies:
+  - id: ibm
+    name: IBM
+    modality: Superconducting transmon qubits
+    primarySdk: Qiskit
+    asks:
+      - Build a circuit, transpile it against a fixed heavy-hex coupling map, and justify the resulting SWAP count.
+      - Take a textbook circuit and rewrite it in the device basis, then explain what the pass manager did at each stage.
+      - Explain measurement-error mitigation and say precisely when you stop trusting the mitigated estimate.
+      - Given a Hamiltonian, lay out an estimator workflow and defend your choice of observable grouping and shot budget.
+      - Read a calibration report and decide which qubits you would route through and which you would avoid.
+    roles:
+      - Quantum software engineer
+      - Research scientist, quantum algorithms
+      - Applications engineer, quantum computing
+      - Performance and compiler engineer
+    links:
+      - label: IBM Quantum
+        url: https://www.ibm.com/quantum
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+      - label: IBM Quantum Learning courses
+        url: https://quantum.cloud.ibm.com/learning/en/courses
+    notes: |
+      The stack is the most heavily documented in the field, which cuts both
+      ways: interviewers assume you have already worked through the public
+      material, so knowing Qiskit basics buys you nothing on its own. What
+      separates candidates is fluency with the compilation layer, the primitives
+      and the noise story, meaning transpiler passes, routing on a fixed
+      topology, and honest reasoning about when error mitigation breaks down.
+      Roles span genuine software engineering through to research, so read the
+      posting carefully rather than assuming a physics interview.
+
+  - id: google-quantum-ai
+    name: Google Quantum AI
+    modality: Superconducting transmon qubits
+    primarySdk: Cirq
+    asks:
+      - Construct a circuit in Cirq on a fixed grid device and explain how you scheduled it into moments.
+      - Describe how you would design and analyse a randomised benchmarking or cross-entropy benchmarking experiment.
+      - Explain the surface code threshold argument and what a distance increase actually costs in physical qubits.
+      - Given noisy experimental data, decide whether an observed effect is real or a calibration artefact.
+      - Walk through decoding for a surface code memory experiment and where the decoder becomes the bottleneck.
+    roles:
+      - Research scientist, quantum algorithms
+      - Quantum software engineer
+      - Quantum electronics or hardware engineer
+      - Research engineer, quantum error correction
+    links:
+      - label: Google Quantum AI
+        url: https://quantumai.google/
+      - label: Cirq experiments and ReCirq
+        url: https://quantumai.google/cirq/experiments
+    notes: |
+      This is the most research-weighted employer on the list. Error correction
+      and hardware characterisation dominate the published output, and most
+      openings expect a doctorate or equivalent depth in physics, error
+      correction theory or high performance numerics. Software engineering roles
+      do exist and they are real systems roles, simulation, data pipelines and
+      control software, not notebook work. Come able to reason about
+      experimental statistics as confidently as about gate identities.
+
+  - id: ionq
+    name: IonQ
+    modality: Trapped ions
+    primarySdk: Qiskit plus the IonQ API
+    asks:
+      - Explain why an all-to-all connected ion register changes your circuit mapping strategy versus a fixed lattice.
+      - Given a native gate set built on a two-qubit entangling interaction, decompose a target circuit and count native gates.
+      - Discuss why trapped-ion gates are slow relative to coherence and what that implies for algorithm choice.
+      - Submit and manage jobs against a cloud backend, then explain how you would batch and retry them at scale.
+      - Explain what limits fidelity as you add ions to a chain and how architectures respond to that.
+    roles:
+      - Quantum applications engineer
+      - Software engineer, cloud and platform
+      - Research scientist, quantum algorithms
+      - Systems or controls engineer
+    links:
+      - label: IonQ
+        url: https://ionq.com/
+    notes: |
+      All-to-all connectivity within a register is the single fact that shapes
+      every technical conversation here, because it removes the routing overhead
+      that dominates superconducting compilation and shifts the cost to gate
+      duration and register size. The company sells through the major cloud
+      marketplaces, so a large share of the engineering is ordinary distributed
+      systems work wrapped around a quantum backend. Be ready to talk about job
+      orchestration and API design, not only physics.
+
+  - id: quantinuum
+    name: Quantinuum
+    modality: Trapped ions with a QCCD architecture
+    primarySdk: TKET and the Quantinuum stack
+    asks:
+      - Compile a circuit with TKET for a device with restricted connectivity and explain which passes mattered.
+      - Explain ion transport and shuttling in a QCCD device and what it costs you in circuit time.
+      - Write a circuit that uses mid-circuit measurement and classical feedforward, then explain the control flow.
+      - Given an error-corrected logical qubit demonstration, explain how you would verify the claim from the raw data.
+      - Compare a compiler pass you would write yourself against the stock pass and justify the difference.
+    roles:
+      - Quantum compiler engineer
+      - Research scientist, quantum error correction
+      - Quantum software engineer
+      - Applications scientist, chemistry or optimisation
+    links:
+      - label: Quantinuum
+        url: https://www.quantinuum.com/
+      - label: TKET source repository
+        url: https://github.com/CQCL/tket
+    notes: |
+      Quantinuum sits unusually far to the software side for a hardware company,
+      because the compiler lineage from Cambridge Quantum is a first-class part
+      of the product. Mid-circuit measurement, conditional logic and real
+      error-correction primitives are routine here rather than aspirational, so
+      interviews go deeper on those than most employers can afford to. Compiler
+      engineering candidates should expect genuine C++ and Python systems
+      questions alongside the quantum material.
+
+  - id: rigetti
+    name: Rigetti
+    modality: Superconducting transmon qubits
+    primarySdk: pyQuil and Quil
+    asks:
+      - Write and run a parametric program in pyQuil and explain how parametric compilation avoids recompilation.
+      - Explain a hybrid loop where classical optimisation drives circuit parameters, and where the latency goes.
+      - Decompose a two-qubit gate into the device native set and account for the pulse-level cost.
+      - Explain what calibration data you would need before trusting a result from a given lattice.
+      - Describe how you would benchmark a chip against a competitor's published numbers without overclaiming.
+    roles:
+      - Quantum software engineer
+      - Quantum applications engineer
+      - Hardware or controls engineer
+      - Research scientist, superconducting qubits
+    links:
+      - label: Rigetti Computing
+        url: https://www.rigetti.com/
+      - label: pyQuil source repository
+        url: https://github.com/rigetti/pyquil
+    notes: |
+      Rigetti builds its own chips and its own control stack, so the engineering
+      surface runs from fabrication through to a hybrid programming model, and
+      the interesting software problems are about latency between classical and
+      quantum execution. The public SDK is smaller and less trafficked than
+      Qiskit or Cirq, which means demonstrating you have actually written Quil
+      stands out more than it would elsewhere. Headcount in this part of the
+      industry moves, so treat any specific team structure you read online as
+      provisional.
+
+  - id: psiquantum
+    name: PsiQuantum
+    modality: Photonic, fusion-based, built on silicon photonics manufacturing
+    primarySdk: Python and internal tooling
+    asks:
+      - Explain photon loss as the dominant error channel and how a fusion-based architecture responds to it.
+      - Describe heralding, and quantify what a probabilistic entangling operation costs you in resources.
+      - Work through a resource estimate for a fault-tolerant algorithm and defend every assumption in it.
+      - Explain measurement-based computation on a cluster state and what the classical control has to do in real time.
+      - Given a manufacturing constraint, argue what it implies for the achievable error budget.
+    roles:
+      - Quantum architect or resource estimation scientist
+      - Software engineer, simulation and tooling
+      - Photonics or cryogenics engineer
+      - Research scientist, fault tolerance
+    links:
+      - label: PsiQuantum
+        url: https://www.psiquantum.com/
+    notes: |
+      PsiQuantum is the most closed stack in this set: there is no public SDK to
+      practise against, so preparation means reading the fault tolerance and
+      photonic architecture literature rather than writing library code. That
+      makes the interview skew toward physics and resource estimation, plus
+      serious classical engineering for the people building the simulation and
+      manufacturing tooling. If your only quantum experience is gate-model
+      notebooks, this is a harder jump than the other hardware companies.
+
+  - id: xanadu
+    name: Xanadu
+    modality: Photonic, continuous-variable and measurement-based
+    primarySdk: PennyLane and Strawberry Fields
+    asks:
+      - Implement a variational circuit in PennyLane and explain how the gradient is computed, including parameter shift.
+      - Explain squeezed states and Gaussian operations, and say exactly what makes a continuous-variable circuit non-Gaussian.
+      - Describe Gaussian boson sampling and what a claim about it does and does not establish.
+      - Write a differentiable hybrid model that mixes a quantum node with a classical machine learning framework.
+      - Explain photon loss and detector inefficiency and how you would model them in a simulation.
+    roles:
+      - Quantum software developer
+      - Research scientist, photonic quantum computing
+      - Technical writer or developer advocate
+      - Machine learning research engineer
+    links:
+      - label: Xanadu
+        url: https://www.xanadu.ai/
+      - label: PennyLane
+        url: https://pennylane.ai/
+      - label: Strawberry Fields
+        url: https://strawberryfields.ai/
+    notes: |
+      Xanadu is unusual in that its open-source library is genuinely used across
+      the industry, so PennyLane fluency is portable well beyond this employer.
+      The continuous-variable formalism is the real filter: most candidates
+      arrive comfortable with qubits and unprepared for modes, squeezing and
+      Gaussian states, and that gap shows up fast in an interview. The company
+      also puts unusual weight on documentation and teaching quality, so writing
+      ability counts for more here than it typically does.
+
+  - id: aws-braket
+    name: AWS Braket
+    modality: A cloud service brokering third-party hardware plus simulators
+    primarySdk: The Braket SDK
+    asks:
+      - Write a circuit with the Braket SDK and run it against both a simulator and a hardware backend, explaining the differences.
+      - Design a hybrid job that keeps a classical optimiser close to the device and justify where each part runs.
+      - Explain how you would cost and schedule a large batch of shots across queued backends.
+      - Given a circuit written for one provider, port it to another and enumerate what breaks in translation.
+      - Design the retry, idempotency and result-storage behaviour for a long-running quantum workload.
+    roles:
+      - Software development engineer
+      - Quantum solutions architect or applications scientist
+      - Developer advocate
+      - Research scientist, quantum algorithms
+    links:
+      - label: Amazon Braket
+        url: https://aws.amazon.com/braket/
+      - label: Amazon Braket documentation
+        url: https://docs.aws.amazon.com/braket/
+    notes: |
+      This is an AWS service before it is a quantum job, and the interview
+      reflects that: expect the standard Amazon loop with its behavioural
+      component and real distributed systems questions, with quantum content
+      layered on top. The strongest candidates are competent cloud engineers who
+      also understand what a device-agnostic abstraction has to hide and what it
+      cannot. Because the service brokers other people's hardware, breadth
+      across modalities matters more than depth in any one.
+
+  - id: microsoft-azure-quantum
+    name: Microsoft Azure Quantum
+    modality: A cloud service plus its own topological research programme
+    primarySdk: Q# and the Azure Quantum SDK
+    asks:
+      - Write a Q# operation that uses qubit borrowing or adjoint and controlled functors, and explain the resource saving.
+      - Run a resource estimate for a fault-tolerant algorithm and interpret the physical qubit and runtime outputs.
+      - Explain why Q# separates classical control from quantum operations and what that buys the compiler.
+      - Port a Python-hosted workflow to submit jobs against a chosen backend and handle the asynchronous result.
+      - Explain non-Abelian anyons and braiding at the level needed to read the group's own publications.
+    roles:
+      - Software engineer, quantum platform
+      - Research scientist, quantum computing
+      - Program manager, quantum developer tools
+      - Applied scientist, algorithms and resource estimation
+    links:
+      - label: Azure Quantum documentation
+        url: https://learn.microsoft.com/azure/quantum/
+      - label: Microsoft Quantum Katas
+        url: https://github.com/microsoft/QuantumKatas
+    notes: |
+      Two very different organisations sit behind one name: a cloud platform
+      staffed largely by conventional software engineers, and a long-horizon
+      topological hardware research programme staffed by physicists. Applying to
+      one and preparing for the other is a common and avoidable mistake. The
+      Katas are the single best free preparation resource for the platform side,
+      because they are the company's own idea of what a competent Q# programmer
+      can do.
+
+  - id: quera
+    name: QuEra
+    modality: Neutral atoms with Rydberg interactions
+    primarySdk: Bloqade
+    asks:
+      - Encode a maximum independent set instance into a Rydberg blockade arrangement and explain the atom geometry.
+      - Explain the blockade radius and how it constrains which interaction graphs you can physically realise.
+      - Design an analogue schedule, detuning and Rabi frequency over time, and justify the adiabatic ramp.
+      - Explain the difference between analogue and digital operation on this hardware and when you would choose each.
+      - Describe atom loss and rearrangement and how they affect the statistics of your results.
+    roles:
+      - Quantum applications scientist
+      - Software engineer, quantum tooling
+      - Research scientist, neutral atom quantum computing
+      - Hardware or optics engineer
+    links:
+      - label: QuEra Computing
+        url: https://www.quera.com/
+      - label: QuEra open-source repositories
+        url: https://github.com/QuEraComputing
+    notes: |
+      The mental model that matters here is geometric rather than
+      circuit-theoretic: you place atoms in space and the physics gives you the
+      interaction graph, which is a genuinely different way to think about
+      encoding a problem. Candidates from a pure gate-model background often
+      struggle with analogue schedules and with the idea that layout is the
+      program. Read the Rydberg blockade and independent set material before any
+      interview, because it comes up almost immediately.
+
+  - id: pasqal
+    name: Pasqal
+    modality: Neutral atoms with Rydberg interactions
+    primarySdk: Pulser
+    asks:
+      - Build a register and a pulse sequence in Pulser for a target Hamiltonian and explain each channel choice.
+      - Explain the Ising and XY interaction regimes for Rydberg atoms and which problems suit each.
+      - Map a graph problem onto an atom arrangement and discuss what geometries are not physically realisable.
+      - Simulate a pulse sequence with decoherence included and explain what you would trust in the output.
+      - Explain how you would validate an analogue result when there is no exact classical reference.
+    roles:
+      - Quantum applications scientist
+      - Quantum software engineer
+      - Research scientist, neutral atoms
+      - Field or laser engineer
+    links:
+      - label: Pasqal
+        url: https://www.pasqal.com/
+      - label: Pulser source repository
+        url: https://github.com/pasqal-io/Pulser
+    notes: |
+      Pasqal works at the pulse and register level rather than the gate level,
+      so the practical interview asset is having actually built a sequence in
+      Pulser and reasoned about what the atoms do under it. The company is
+      European and much of its applied work is done with industrial partners,
+      which means applications roles carry real customer-facing weight. Expect
+      more Hamiltonian engineering and less compiler theory than at a gate-model
+      employer.
+
+  - id: alice-and-bob
+    name: Alice & Bob
+    modality: Superconducting cat qubits with biased noise
+    primarySdk: Python and Qiskit
+    asks:
+      - Explain bit-flip and phase-flip asymmetry in a cat qubit and what it changes about code design.
+      - Describe a repetition code that exploits biased noise and justify why the bias makes it viable.
+      - Explain how a two-photon dissipative process stabilises the cat manifold, in your own words.
+      - Given a biased noise model, work out which logical operations are cheap and which are expensive.
+      - Compare the resource overhead of this approach against a standard surface code and state your assumptions.
+    roles:
+      - Quantum research scientist
+      - Quantum software engineer
+      - Superconducting hardware or microwave engineer
+      - Error correction theorist
+    links:
+      - label: Alice & Bob
+        url: https://alice-bob.com/
+    notes: |
+      This is a focused bet on one idea, noise bias, and the interview will
+      establish quickly whether you understand why that bet might pay off.
+      Candidates who can only recite the surface code will struggle, because the
+      whole argument here is about what changes when one error type is
+      suppressed by construction. The public technical surface is thinner than
+      at the large employers, so the company's own published papers are the best
+      preparation available. Roles skew research and hardware over general
+      software engineering.
+
+  - id: classiq
+    name: Classiq
+    modality: Synthesis and compilation software, hardware agnostic
+    primarySdk: The Classiq platform and its Python SDK
+    asks:
+      - Express an algorithm at a functional level and explain what a synthesis engine can optimise that hand-written gates cannot.
+      - Given a width and depth constraint, describe the search over implementations a compiler would perform.
+      - Implement a quantum arithmetic or state preparation block and analyse its ancilla and depth cost.
+      - Explain how you would target the same high-level program at two different hardware backends.
+      - Argue where automated synthesis loses to a human expert, and be specific.
+    roles:
+      - Quantum software engineer
+      - Algorithm researcher
+      - Solutions or applications engineer
+      - Compiler engineer
+    links:
+      - label: Classiq
+        url: https://www.classiq.io/
+    notes: |
+      The pitch is that you should describe what you want computed rather than
+      lay out gates, so interviews probe whether you can think at that level of
+      abstraction and still reason about the resource cost underneath. Classical
+      compiler and optimisation experience transfers unusually well here, more
+      so than at hardware companies. Because the product is the abstraction
+      layer, expect questions about where synthesis helps and where it gets in
+      the way, and answer honestly rather than selling.
+
+  - id: q-ctrl
+    name: Q-CTRL
+    modality: Control and error-suppression software, hardware agnostic
+    primarySdk: Fire Opal and Boulder Opal
+    asks:
+      - Design a pulse shape that suppresses a specified noise spectrum and explain the filter function reasoning.
+      - Explain DRAG and what leakage error it corrects in a weakly anharmonic transmon.
+      - Choose a dynamical decoupling sequence for a given noise environment and justify the choice over alternatives.
+      - Set up a closed-loop optimisation over hardware and describe how you handle noisy, expensive evaluations.
+      - Explain how you would demonstrate that error suppression improved an algorithm, not just a benchmark.
+    roles:
+      - Quantum control engineer
+      - Software engineer, quantum infrastructure
+      - Applications engineer or solutions scientist
+      - Research scientist, quantum control and sensing
+    links:
+      - label: Q-CTRL
+        url: https://q-ctrl.com/
+    notes: |
+      Q-CTRL sits at the pulse layer, so the relevant background is control
+      theory and signal processing more than algorithm design, and candidates
+      from a pure algorithms background often find they are answering the wrong
+      questions. Optimisation under noisy and expensive function evaluations is
+      the recurring practical theme. The company also works in quantum sensing
+      and navigation alongside computing, so read the specific posting rather
+      than assuming every role is about qubits.
+
+  - id: multiverse-computing
+    name: Multiverse Computing
+    modality: Quantum and quantum-inspired software for finance and industry
+    primarySdk: Python
+    asks:
+      - Formulate a portfolio optimisation problem as a QUBO and state every modelling assumption you made.
+      - Explain tensor network methods and when a quantum-inspired method beats reaching for hardware.
+      - Take a client's business constraint and turn it into an objective function, then defend the encoding.
+      - Benchmark a quantum-inspired solver against a strong classical baseline and report the result honestly.
+      - Explain to a non-technical stakeholder what your method does and does not guarantee.
+    roles:
+      - Quantum algorithm developer
+      - Data scientist, quantitative modelling
+      - Software engineer, machine learning
+      - Business or solutions consultant, quantum applications
+    links:
+      - label: Multiverse Computing
+        url: https://multiversecomputing.com/
+    notes: |
+      Much of the work here is quantum-inspired rather than run on quantum
+      hardware, and that is not a criticism, it is the honest description of
+      where near-term value is being found. Tensor networks and classical
+      optimisation carry more weight in interviews than gate-level circuit
+      knowledge. The work is client-facing and domain-heavy, particularly in
+      finance, so being able to explain a method to someone who will not read
+      the maths is a real hiring criterion.
+
+  - id: infleqtion
+    name: Infleqtion
+    modality: Neutral atoms plus atomic clocks and sensing
+    primarySdk: Superstaq and Python
+    asks:
+      - Take a circuit written for one SDK and route it through a cross-platform compiler, explaining what changed.
+      - Explain how device-aware compilation beats a generic transpiler on a specific backend.
+      - Describe optical tweezer trapping and what limits the number and fidelity of atoms you can hold.
+      - Explain an atomic clock or an atom-based sensor at the level of its noise floor and its practical limits.
+      - Given a target backend, argue which optimisations are worth doing and which are wasted effort.
+    roles:
+      - Quantum software engineer
+      - Compiler or applications engineer
+      - Physicist, neutral atoms or atomic sensing
+      - Systems engineer, quantum sensing products
+    links:
+      - label: Infleqtion
+        url: https://infleqtion.com/
+      - label: Superstaq client repository
+        url: https://github.com/Infleqtion/client-superstaq
+    notes: |
+      Infleqtion is broader than a quantum computing company: clocks and sensing
+      are a substantial part of the business, and several roles have nothing to
+      do with running circuits. The compilation work is the most accessible entry
+      point for a software candidate, because Superstaq is public and you can
+      demonstrate real familiarity with it. Check which part of the company a
+      posting belongs to before preparing, since the technical bar is aimed in
+      quite different directions.
+
+  - id: atom-computing
+    name: Atom Computing
+    modality: Neutral atoms
+    primarySdk: Python and the Atom Computing API
+    asks:
+      - Explain how nuclear spin qubits in neutral atoms differ from electronic qubits in coherence terms.
+      - Describe how an array of atoms is loaded and rearranged, and what that costs you per shot.
+      - Explain mid-circuit measurement in a neutral atom array and why it is harder than in other modalities.
+      - Given atom loss during a run, describe how you would post-select or correct without biasing the result.
+      - Discuss what has to be true for a neutral atom array to scale in qubit count without losing fidelity.
+    roles:
+      - Quantum software engineer
+      - Physicist, atomic and optical systems
+      - Controls or laser engineer
+      - Research scientist, quantum computing
+    links:
+      - label: Atom Computing
+        url: https://atom-computing.com/
+    notes: |
+      The public technical surface is thin compared with the larger employers,
+      with no widely used open SDK to practise against, so preparation means
+      the neutral atom literature rather than library code. Expect a strongly
+      hardware-flavoured process in which atomic physics, optics and control
+      electronics dominate, and where software roles exist mainly to serve the
+      instrument. If you cannot discuss trapping and coherence in atoms
+      confidently, the algorithms knowledge will not carry you.
+
+  - id: d-wave
+    name: D-Wave
+    modality: Quantum annealing plus a gate-model programme
+    primarySdk: Ocean SDK
+    asks:
+      - Formulate a constrained optimisation problem as a QUBO or Ising model and handle the constraints with penalties.
+      - Perform a minor embedding onto a fixed sparse graph and explain your chain strength choice and its failure modes.
+      - Diagnose broken chains in returned samples and decide what to change in response.
+      - Design a hybrid workflow that splits a problem too large for the device between classical and quantum solvers.
+      - Benchmark an annealer against a strong classical heuristic and present the comparison without overclaiming.
+    roles:
+      - Quantum applications scientist
+      - Software engineer, Ocean tools and cloud services
+      - Optimisation researcher
+      - Professional services or solutions engineer
+    links:
+      - label: D-Wave
+        url: https://www.dwavequantum.com/
+      - label: Ocean SDK source repository
+        url: https://github.com/dwavesystems/dwave-ocean-sdk
+    notes: |
+      D-Wave has the longest-running commercial deployment story in the field
+      and the interview is correspondingly practical: it is about formulating
+      real optimisation problems, not about gate identities. Minor embedding and
+      chain strength are the two ideas most candidates underestimate, and they
+      come up constantly. The company also runs a gate-model programme, so
+      confirm which side a role belongs to before assuming the interview is
+      entirely about annealing.
+
+  - id: terra-quantum
+    name: Terra Quantum
+    modality: Quantum and quantum-inspired algorithms and services
+    primarySdk: Python
+    asks:
+      - Design a hybrid classical and quantum pipeline for an industrial optimisation problem and justify the split.
+      - Explain a tensor network method and quantify when it stops being tractable.
+      - Describe a quantum machine learning model and say honestly what advantage claim you could defend.
+      - Explain post-quantum or quantum key distribution security at a level a client could act on.
+      - Take a vague industrial requirement and turn it into a specified, benchmarkable problem.
+    roles:
+      - Quantum algorithm researcher
+      - Software engineer, quantum applications
+      - Data scientist or machine learning engineer
+      - Solutions architect, quantum services
+    links:
+      - label: Terra Quantum
+        url: https://terraquantum.swiss/
+      - label: Quantum Algorithm Zoo
+        url: https://quantumalgorithmzoo.org/
+    notes: |
+      The public technical surface here is thinner and more marketing-led than
+      at most employers on this list, so calibrate claims you read carefully and
+      prepare from the general algorithms literature rather than from company
+      material. The work spans quantum-inspired optimisation, machine learning
+      and security services sold to industrial clients, which makes it broad
+      rather than deep in any one modality. Ask directly in interview which
+      parts of a described capability run on hardware today.
+
+  - id: quandela
+    name: Quandela
+    modality: Photonic, single-photon sources
+    primarySdk: Perceval
+    asks:
+      - Build a linear optical circuit in Perceval and compute the output distribution for a given input state.
+      - Explain single-photon source quality in terms of indistinguishability, purity and brightness, and why each matters.
+      - Explain why a two-photon entangling gate in linear optics is probabilistic and what heralding costs you.
+      - Describe boson sampling and state precisely what a sampling experiment does and does not demonstrate.
+      - Model photon loss through a circuit and explain its effect on your success probability.
+    roles:
+      - Quantum software engineer
+      - Photonics research scientist
+      - Applications scientist, photonic algorithms
+      - Optics or semiconductor process engineer
+    links:
+      - label: Quandela
+        url: https://www.quandela.com/
+      - label: Perceval source repository
+        url: https://github.com/Quandela/Perceval
+    notes: |
+      Perceval is open and well suited to self-directed preparation, which makes
+      Quandela one of the more approachable photonics employers for a software
+      candidate. The formalism is the barrier rather than the tooling: linear
+      optics, permanents and indistinguishable-photon statistics are unfamiliar
+      to most people arriving from gate-model work. The company is French and
+      much of its research output is collaborative and academic, so roles lean
+      toward research scientists more than product engineers.

@@ -1,0 +1,114 @@
+# RedQuant Loki configuration — single-binary / filesystem, Loki 3.x.
+#
+# §11: "Logs: structured JSON, Loki, no PII, trace_id on every line."
+# Enforcement of "no PII" and "trace_id on every line" happens upstream, in
+# the application loggers and the otel-collector-config.yaml
+# attributes/scrub_pii processor (logs pipeline) — Loki itself just needs to
+# accept structured JSON lines and index trace_id efficiently, which is what
+# the schema_config (TSDB, v13) and the OTLP ingest path below give us.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: info
+
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+  instance_addr: 127.0.0.1
+
+# Loki 3.x uses this to accept OTLP-native JSON structured logs (what the
+# otel-collector otlphttp/loki exporter sends). Every log record's
+# `trace_id` resource/log attribute is promoted so LogQL can filter/join on
+# it directly (see grafana/provisioning/datasources: Tempo -> Loki
+# tracesToLogsV2, and Loki -> Tempo derivedFields, both keyed on trace_id).
+limits_config:
+  retention_period: 336h  # 14d
+  ingestion_rate_mb: 16
+  ingestion_burst_size_mb: 32
+  per_stream_rate_limit: 8MB
+  per_stream_rate_limit_burst: 16MB
+  max_query_series: 10000
+  max_query_parallelism: 32
+  max_streams_per_user: 20000
+  max_global_streams_per_user: 20000
+  max_entries_limit_per_query: 20000
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  discover_service_name:
+    - service
+    - service.name
+    - k8s.deployment.name
+  otlp_config:
+    resource_attributes:
+      # keep resource-level attrs (service.name, cell, journey, environment)
+      # as index labels for cheap per-service/per-journey filtering
+      attributes_config:
+        - action: index_label
+          attributes:
+            - service.name
+            - service.namespace
+            - cell
+            - journey
+            - environment
+    log_attributes:
+      - action: structured_metadata
+        attributes:
+          - trace_id
+          - span_id
+
+schema_config:
+  configs:
+    - from: "2024-01-01"
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+compactor:
+  working_directory: /loki/compactor
+  compaction_interval: 10m
+  retention_enabled: true
+  retention_delete_delay: 2h
+  retention_delete_worker_count: 150
+  delete_request_store: filesystem
+
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /loki/rules
+  rule_path: /loki/rules-tmp
+  alertmanager_url: http://alertmanager:9093
+  ring:
+    kvstore:
+      store: inmemory
+  enable_api: true
+  enable_alertmanager_v2: true
+
+analytics:
+  reporting_enabled: false
+
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 256
+
+# Retention (336h/14d), per-stream rate limiting (8MB/s, burst 16MB) and
+# max_query_series (10000) above are set conservatively for the local compose
+# stack. In cluster mode, retention and rate limits should be revisited per
+# environment (staging vs prod) and per-tenant if multi-tenancy
+# (auth_enabled: true) is turned on.

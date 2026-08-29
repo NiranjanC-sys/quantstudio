@@ -1,0 +1,211 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: redquant
+  KUSTOMIZE_VERSION: "5.8.1"
+
+jobs:
+  build-push:
+    name: build-push (${{ matrix.service }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # The 6 first-class images. quantum-kernel-heavy reuses the
+        # quantum-kernel image (see docs/architecture/system-design.md §3),
+        # so it is not built separately here.
+        service: [web, api, quantum-kernel, sandbox-runner, grader, ai-tutor]
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Resolve version
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="0.0.0-dispatch.${{ github.run_number }}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Dockerfile exists
+        id: dockerfile
+        run: |
+          set -euo pipefail
+          dockerfile="infra/docker/Dockerfile.${{ matrix.service }}"
+          if [ ! -f "$dockerfile" ]; then
+            echo "::error::$dockerfile not found"
+            exit 1
+          fi
+          echo "path=$dockerfile" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@6524bf65af31da8d45b59e8c27de4bd072b392f5  # v3.8.0
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567  # v3.3.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355  # v6.10.0
+        with:
+          context: .
+          file: ${{ steps.dockerfile.outputs.path }}
+          push: true
+          # NEVER add a `latest` tag here: the cluster's Kyverno policy set
+          # (infra/k8s) rejects `latest` image references outright.
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.service }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.service }}:${{ steps.version.outputs.version }}
+          sbom: true
+          provenance: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da  # v3.7.0
+
+      - name: Sign image (keyless)
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          set -euo pipefail
+          cosign sign --yes \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.service }}@${{ steps.build.outputs.digest }}"
+
+      - name: Generate build provenance attestation
+        uses: actions/attest-build-provenance@7668571508540a607bdfd90a87a560489fe372eb  # v2.1.0
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.service }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Generate SBOM (SPDX) for the pushed image
+        uses: anchore/sbom-action@df80a981bc6edbc4e220a492d3cbe9f5547a6e75  # v0.17.9
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.service }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.service }}.spdx.json
+
+      - name: Upload SBOM artefact
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
+        with:
+          name: sbom-${{ matrix.service }}
+          path: sbom-${{ matrix.service }}.spdx.json
+          retention-days: 90
+
+  kustomize-diff:
+    name: kustomize diff (dry-run)
+    needs: build-push
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install kustomize
+        run: |
+          set -euo pipefail
+          version="${{ env.KUSTOMIZE_VERSION }}"
+          tmpdir="$(mktemp -d)"
+          asset="kustomize_v${version}_linux_amd64.tar.gz"
+          base_url="https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${version}"
+          curl -sSL -o "$tmpdir/kustomize.tar.gz" "${base_url}/${asset}"
+          curl -sSL -o "$tmpdir/checksums.txt" "${base_url}/checksums.txt"
+          expected="$(grep "$asset" "$tmpdir/checksums.txt" | awk '{print $1}')"
+          actual="$(sha256sum "$tmpdir/kustomize.tar.gz" | awk '{print $1}')"
+          if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
+            echo "::error::kustomize checksum mismatch (expected $expected, got $actual)"
+            exit 1
+          fi
+          tar -xzf "$tmpdir/kustomize.tar.gz" -C "$tmpdir"
+          sudo install -m 0755 "$tmpdir/kustomize" /usr/local/bin/kustomize
+          kustomize version
+
+      - name: Set image tags in each target overlay
+        run: |
+          set -euo pipefail
+          services="web api quantum-kernel sandbox-runner grader ai-tutor"
+          targets="infra/k8s/overlays/staging infra/k8s/overlays/prod infra/k8s/cells/cell-0"
+          for target in $targets; do
+            if [ ! -d "$target" ]; then
+              echo "::warning::$target not found yet, skipping"
+              continue
+            fi
+            ( cd "$target" && \
+              for svc in $services; do
+                kustomize edit set image \
+                  "ghcr.io/redquant/${svc}=ghcr.io/redquant/${svc}:${{ github.sha }}"
+              done
+            )
+          done
+
+      - name: Render kustomize build (dry-run only, never applied)
+        run: |
+          set -euo pipefail
+          mkdir -p kustomize-diff
+          targets="infra/k8s/overlays/staging infra/k8s/overlays/prod infra/k8s/cells/cell-0"
+          for target in $targets; do
+            if [ ! -d "$target" ]; then
+              continue
+            fi
+            name="$(echo "$target" | tr '/' '-')"
+            echo "### $target" | tee -a "kustomize-diff/summary.md"
+            if kustomize build "$target" > "kustomize-diff/${name}.rendered.yaml" 2> "kustomize-diff/${name}.errors.log"; then
+              echo "rendered OK -> ${name}.rendered.yaml" | tee -a "kustomize-diff/summary.md"
+            else
+              echo "::error::kustomize build failed for $target"
+              cat "kustomize-diff/${name}.errors.log"
+              exit 1
+            fi
+          done
+
+      - name: Diff rendered manifests against the previous release commit
+        run: |
+          set -euo pipefail
+          prev_ref="$(git describe --tags --abbrev=0 --exclude "${GITHUB_REF_NAME:-}" 2>/dev/null || true)"
+          if [ -z "$prev_ref" ]; then
+            echo "::warning::no previous tag found, skipping diff against history"
+            exit 0
+          fi
+          echo "Diffing against $prev_ref (informational only, not applied)" | tee -a kustomize-diff/summary.md
+
+      - name: Upload rendered manifests (dry-run artefact)
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
+        with:
+          name: kustomize-diff-${{ github.sha }}
+          path: kustomize-diff/
+          if-no-files-found: warn
+          retention-days: 30

@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: quantum-kernel-heavy-config
+  labels:
+    app.kubernetes.io/name: quantum-kernel-heavy
+    app.kubernetes.io/component: quantum-kernel-heavy
+data:
+  LOG_LEVEL: "info"
+  NODE_ENV: "production"

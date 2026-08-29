@@ -1,0 +1,801 @@
+questions:
+  - id: iq-011
+    title: Load an arbitrary single-qubit state from two complex amplitudes
+    kind: coding
+    prompt: |
+      Write a function that takes two complex numbers a0 and a1 with
+      |a0|^2 + |a1|^2 = 1 and returns a circuit preparing a0|0> + a1|1> from |0>.
+      Use only Ry and Rz. State whether your circuit reproduces the target
+      exactly or only up to a global phase, and prove which one it is. Then say
+      how you would test the function so that a wrong relative phase fails the
+      test but a global phase does not.
+    difficulty: easy
+    pattern: Custom state initialisation
+    topics: [state-preparation, bloch-sphere, global-phase, single-qubit]
+    companies: [IBM, IonQ, Xanadu, Rigetti]
+    modelAnswer: |
+      Any normalised single-qubit state can be written in Bloch form as
+      cos(theta/2)|0> + e^(i*phi) sin(theta/2)|1> with theta in [0, pi] and phi
+      in [0, 2*pi). Reading the parameters off the amplitudes:
+
+          theta = 2 * arccos(|a0|)
+          phi   = arg(a1) - arg(a0)
+
+      Then Rz(phi) . Ry(theta) applied to |0> produces the state. It is worth
+      writing out why. Ry(theta)|0> = cos(theta/2)|0> + sin(theta/2)|1>, which is
+      real and correct in magnitude. Rz(phi) = diag(e^(-i*phi/2), e^(i*phi/2)),
+      so the result is
+      e^(-i*phi/2) [ cos(theta/2)|0> + e^(i*phi) sin(theta/2)|1> ].
+      The leading e^(-i*phi/2) is a global phase, so the circuit is correct up to
+      global phase and not exactly. Numerically, for a0 = 0.6 and
+      a1 = 0.8*e^(1.1i) the circuit outputs amplitudes 0.511515 - 0.313612i and
+      0.682020 + 0.418150i, and dividing both by the common factor
+      0.852525 - 0.522687i recovers the target to 1.2e-16.
+
+      ```python
+      import cmath, numpy as np
+      from qiskit import QuantumCircuit
+
+      def load1(a0: complex, a1: complex) -> QuantumCircuit:
+          n = np.hypot(abs(a0), abs(a1))
+          a0, a1 = a0 / n, a1 / n
+          theta = 2 * np.arccos(min(1.0, abs(a0)))
+          phi = cmath.phase(a1) - cmath.phase(a0)
+          qc = QuantumCircuit(1)
+          qc.ry(theta, 0)
+          qc.rz(phi, 0)
+          return qc
+      ```
+
+      If the caller genuinely needs the exact vector including the leading phase,
+      add a global phase of +phi/2, which Qiskit exposes as
+      `qc.global_phase += phi / 2`. That is only observable when the circuit is
+      used as a controlled subroutine, where a global phase becomes a relative
+      phase and stops being unobservable.
+
+      Testing: compare the produced statevector v to the target t by the
+      magnitude of their overlap, `abs(np.vdot(t, v))`, and assert it is within
+      1e-9 of 1. That quantity is invariant under global phase by construction
+      and drops immediately if the relative phase is wrong, because the two
+      components then interfere destructively. Comparing v to t elementwise with
+      allclose is the wrong test: it fails on a correct circuit that carries a
+      harmless global phase, and teams then "fix" the circuit by chasing a phase
+      that never mattered.
+    followUps:
+      - When does the global phase stop being unobservable, and what does that imply for a library that returns phase-sloppy state preparation?
+      - Extend the function to prepare a mixed state with a given Bloch vector of length less than 1.
+      - How would you handle a0 exactly zero without a numerical blow-up in the arg computation?
+    commonMistakes:
+      - Setting theta = arccos(|a0|) rather than 2*arccos(|a0|), which halves every polar angle and gives the right state only at the poles.
+      - Comparing the output statevector to the target with allclose, so a correct circuit fails because of a global phase.
+      - Taking phi = arg(a1) and ignoring arg(a0), which is right only when a0 is real and positive.
+    references:
+      - label: PennyLane Codebook
+        url: https://pennylane.ai/codebook
+      - label: QWorld QBook101
+        url: https://qworld.net/qbook101/
+
+  - id: iq-012
+    title: Initialise a register to a computational basis state given an integer
+    kind: coding
+    prompt: |
+      Write a function that takes n and an integer 0 <= v < 2^n and returns a
+      circuit preparing |v>, where the register is read with qubit 0 as the most
+      significant bit. Then explain precisely what breaks if you hand the same
+      function to a Qiskit user who expects Qiskit's own ordering, and show the
+      concrete disagreement for n = 4 and v = 11.
+    difficulty: easy
+    pattern: Custom state initialisation
+    topics: [basis-encoding, endianness, qubit-ordering, integer-encoding]
+    companies: [IBM, Google Quantum AI, AWS Braket, IonQ]
+    modelAnswer: |
+      Under the RedQuant convention qubit 0 carries weight 2^(n-1), qubit 1
+      carries 2^(n-2), and qubit n-1 carries 2^0. So the bit that qubit q must
+      hold is (v >> (n-1-q)) & 1, and the circuit is just an X on every qubit
+      whose bit is set.
+
+      ```python
+      from qiskit import QuantumCircuit
+
+      def basis_state(n: int, v: int) -> QuantumCircuit:
+          if not 0 <= v < 2 ** n:
+              raise ValueError(f"v={v} does not fit in {n} qubits")
+          qc = QuantumCircuit(n)
+          for q in range(n):
+              if (v >> (n - 1 - q)) & 1:
+                  qc.x(q)
+          return qc
+      ```
+
+      For n = 4 and v = 11, binary 1011, this puts X on qubits 0, 2 and 3 and
+      leaves qubit 1 alone, and the simulator confirms the single nonzero
+      amplitude sits on the label 1011.
+
+      The Qiskit disagreement is exact and worth stating precisely. Qiskit orders
+      its statevector with qubit 0 as the least significant bit, so
+      `Statevector(qc)` for the circuit above reports the nonzero amplitude at
+      index 13, because reading qubits 3,2,1,0 gives 1101. A Qiskit user who
+      asks for "11" and calls `qc.x` on the bits of 11 in Qiskit's own order gets
+      X on qubits 0, 1 and 3, which is the label 1101 in our convention, that is
+      the integer 13. The two functions disagree by bit reversal: 11 maps to 13
+      and 13 maps to 11, and they happen to agree exactly on the bit-palindromic
+      values 0, 5, 10, 15 for n = 4. That partial agreement is why the bug slips
+      through a hand-written test suite that only checks 0 and 15.
+
+      The fix that scales is to make the convention explicit at the boundary
+      rather than in the head of whoever reads the code. Ship one function
+      `to_bits(v, n, msb_first=True)` and have every encoder call it, add the
+      assertion `int(label, 2) == v` on the simulated output, and pick test
+      values that are not palindromic, such as 1, 2, 11 and 13 for n = 4. The
+      same discipline applies to measurement results, where Qiskit's counts keys
+      also come back with qubit 0 rightmost, so a naive `int(key, 2)` reads the
+      register backwards.
+    followUps:
+      - How would you write a decorator or adapter layer so both conventions can coexist in one codebase without silent corruption?
+      - Which n = 4 values are fixed points of the bit reversal, and why does that make naive testing dangerous?
+      - Extend the function to prepare a signed integer in two's complement and say what changes.
+    commonMistakes:
+      - Using (v >> q) & 1 instead of (v >> (n-1-q)) & 1, which prepares the bit-reversed integer.
+      - Testing only on v = 0 and v = 2^n - 1, both of which are invariant under bit reversal, so the ordering bug is invisible.
+      - Reading Qiskit measurement counts keys left to right as qubit 0 upward. Qiskit puts qubit 0 rightmost in the key.
+    references:
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+      - label: Cirq documentation
+        url: https://quantumai.google/cirq
+
+  - id: iq-013
+    title: Validate and normalise an amplitude vector before loading it
+    kind: coding
+    prompt: |
+      You are writing the public entry point of a state-preparation library. It
+      accepts a list of complex amplitudes from a user. Write the validation and
+      normalisation layer: decide what to reject, what to repair, and what to
+      warn about. Cover length, norm, non-finite values, the all-zero vector and
+      dtype. Explain why silently normalising is sometimes the wrong choice and
+      what you would log instead.
+    difficulty: easy
+    pattern: Custom state initialisation
+    topics: [normalisation, input-validation, numerical-robustness, api-design]
+    companies: [IBM, Xanadu, Classiq, AWS Braket]
+    modelAnswer: |
+      The checks, in the order they must run, because each one presumes the
+      previous passed.
+
+      1. Length. len(a) must be a positive power of two, so n = log2(len(a)) is
+         an integer. Reject anything else rather than zero-padding, because
+         padding changes the physics: it silently rescales every amplitude the
+         user gave you.
+      2. Finiteness. Reject NaN and infinity before computing any norm, since a
+         single NaN makes the norm NaN and every downstream comparison return
+         False without raising.
+      3. Zero vector. If the norm is below a floor, roughly 1e-12 relative to the
+         largest magnitude, reject. There is no state to prepare, and dividing
+         by that norm manufactures garbage amplitudes of order 1.
+      4. Norm. If the norm differs from 1 by more than a tolerance, decide
+         between repairing and rejecting; see below.
+      5. Dtype. Cast to complex128 once, at the boundary. Accepting a real array
+         and letting NumPy promote it later leads to a silent downcast if any
+         internal buffer is complex64.
+
+      ```python
+      import numpy as np
+
+      def sanitise(amps, atol: float = 1e-8, strict: bool = False):
+          a = np.asarray(amps, dtype=np.complex128).ravel()
+          if a.size == 0 or a.size & (a.size - 1):
+              raise ValueError(f"length {a.size} is not a power of two")
+          if not np.all(np.isfinite(a)):
+              raise ValueError("amplitudes contain NaN or infinity")
+          nrm = float(np.linalg.norm(a))
+          if nrm < 1e-12:
+              raise ValueError("amplitude vector is numerically zero")
+          if abs(nrm - 1.0) > atol:
+              if strict:
+                  raise ValueError(f"norm {nrm!r} differs from 1 by {abs(nrm-1):.3e}")
+              logging.warning("renormalising input: norm was %.12g", nrm)
+          return a / nrm, a.size.bit_length() - 1
+      ```
+
+      Why silent normalisation is sometimes wrong: the norm is a checksum. If a
+      user assembles amplitudes from a physical model and the norm comes back as
+      0.87, that almost always means terms were dropped, a basis was truncated,
+      or a sign convention flipped. Dividing by 0.87 produces a perfectly valid
+      quantum state that answers a different question, and the run completes with
+      no error. So the default should normalise but log the pre-normalisation
+      norm at warning level with full precision, and a strict mode should refuse
+      anything outside tolerance. Logging the value, not just the fact, is what
+      lets someone recognise 0.87 as "I forgot the two-electron terms" six weeks
+      later.
+
+      One more detail: tolerance must be absolute on the norm, not on individual
+      amplitudes, and it should scale with the vector length, since accumulating
+      2^n squares in float64 costs roughly sqrt(2^n) * 1.1e-16 of relative error.
+      For n = 30 that is about 1.2e-11, so an atol of 1e-8 is safe while 1e-14
+      would produce spurious failures on legitimate input.
+    followUps:
+      - How would you extend this to accept a sparse dictionary of index to amplitude, and what new validation does that need?
+      - What tolerance would you pick for n = 30, and how did you derive it from float64 accumulation error?
+      - Should the library ever reorder amplitudes to match a backend convention, or is that the caller's job?
+    commonMistakes:
+      - Computing the norm before checking for NaN, so the NaN propagates and every subsequent comparison returns False without raising.
+      - Zero-padding a non-power-of-two input, which rescales all amplitudes and answers a different question than the user asked.
+      - Normalising silently with no log line, which turns a dropped-term bug in the caller into a plausible-looking result.
+    references:
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+      - label: PennyLane documentation
+        url: https://pennylane.ai/
+
+  - id: iq-014
+    title: Amplitude-encode a real vector with recursive Ry multiplexers
+    kind: coding
+    prompt: |
+      Given a real vector of length 2^n, build a circuit preparing the normalised
+      amplitude-encoded state sum_k a_k |k>, with qubit 0 as the most significant
+      bit. Use only Ry rotations and CNOTs, derive the rotation angles as a
+      binary tree of conditional probabilities, and give the CNOT count. Work
+      through n = 2 with the vector [1, 2, 3, 4] and give the numeric angles.
+    difficulty: medium
+    pattern: Custom state initialisation
+    topics: [amplitude-encoding, mottonen, binary-tree, multiplexer]
+    companies: [IBM, Classiq, Xanadu, Multiverse Computing]
+    modelAnswer: |
+      Think of |a_k|^2 as a probability distribution over n-bit strings and
+      prepare it by conditioning bit by bit, exactly as you would sample from a
+      distribution with a chain rule.
+
+      At level 0 you need P(qubit 0 = 1), which is the sum of squared amplitudes
+      over the upper half of the vector. Apply Ry(theta) with
+      theta = 2*arcsin(sqrt(P(qubit 0 = 1))). At level 1 you need
+      P(qubit 1 = 1 | qubit 0 = b) for each b, which is a uniformly controlled Ry
+      with one control and two angles. At level j you need a uniformly controlled
+      Ry with j controls and 2^j angles. Because the angles come as an arbitrary
+      vector, each such multiplexer costs 2^j CNOTs, so the total is
+      sum over j from 0 to n-1 of 2^j = 2^n - 1 CNOTs and 2^n - 1 rotations. That
+      is optimal in order: a general real state has 2^n - 1 free parameters after
+      normalisation, and each rotation supplies one.
+
+      Worked example, [1, 2, 3, 4] normalised by sqrt(30) to
+      [0.182574, 0.365148, 0.547723, 0.730297]. Level 0:
+      P(q0 = 1) = (9 + 16)/30 = 5/6, so theta = 2*arcsin(sqrt(5/6)) = 2.300524.
+      Level 1 conditioned on q0 = 0 the sub-vector is [1, 2]/sqrt(5), so
+      theta_0 = 2*arcsin(2/sqrt(5)) = 2.214297; conditioned on q0 = 1 the
+      sub-vector is [3, 4]/5, so theta_1 = 2*arcsin(4/5) = 1.854590.
+
+      ```python
+      import numpy as np
+      from qiskit import QuantumCircuit
+
+      def encode_real(a) -> QuantumCircuit:
+          a = np.asarray(a, dtype=float); a = a / np.linalg.norm(a)
+          n = int(np.log2(a.size))
+          qc = QuantumCircuit(n)
+          # level 0
+          upper = float(np.dot(a[a.size // 2:], a[a.size // 2:]))
+          qc.ry(2 * np.arcsin(np.sqrt(max(0.0, upper))), 0)
+          # level j: uniformly controlled Ry on qubit j with controls 0..j-1
+          for j in range(1, n):
+              blk = a.size >> j
+              thetas = []
+              for b in range(1 << j):
+                  seg = a[b * blk:(b + 1) * blk]
+                  tot = float(np.dot(seg, seg))
+                  hi = float(np.dot(seg[blk // 2:], seg[blk // 2:]))
+                  thetas.append(2 * np.arcsin(np.sqrt(hi / tot)) if tot > 1e-15 else 0.0)
+              qc.compose(ucry(thetas, list(range(j)), j), inplace=True)
+          return qc
+      ```
+
+      where `ucry` is the Gray-code multiplexer with 2^j CNOTs. Running the n = 2
+      case with the three angles above reproduces
+      [0.182574, 0.365148, 0.547723, 0.730297] exactly.
+
+      Two practical notes. Guard the division by a zero sub-norm, which happens
+      whenever a whole subtree of amplitudes vanishes; the angle there is
+      arbitrary, and 0 is the choice that keeps the circuit shallow. And clamp
+      the argument of arcsin into [0, 1] before calling it, since accumulated
+      rounding can push a ratio to 1 + 3e-16 and produce a NaN angle that then
+      silently poisons the whole circuit.
+    followUps:
+      - Extend to complex amplitudes and say what extra gates the phases cost.
+      - Where does the 2^n gate count become the bottleneck in a QML pipeline, and what encoding would you use instead?
+      - Prove that 2^n - 1 rotations is a lower bound for generic real states.
+    commonMistakes:
+      - Using arccos of the conditional probability instead of arcsin of its square root, which mixes up amplitude and probability and gives the wrong tree.
+      - Dividing by a zero sub-norm when an entire subtree of amplitudes vanishes, producing NaN angles rather than a legal arbitrary choice.
+      - Claiming amplitude encoding is a data-loading speedup. The circuit is O(2^n) gates for a generic vector, which cancels the exponential advantage unless the data has structure.
+    references:
+      - label: Möttönen et al., Transformation of quantum states using uniformly controlled rotations
+        url: https://arxiv.org/abs/quant-ph/0407010
+      - label: PennyLane Codebook
+        url: https://pennylane.ai/codebook
+
+  - id: iq-015
+    title: Add complex phases to an amplitude-encoded state
+    kind: coding
+    prompt: |
+      You already have a circuit that prepares the correct magnitudes |a_k| of a
+      target state on n qubits. Add the phases: implement the diagonal unitary
+      diag(e^(i*phi_0), ..., e^(i*phi_{2^n-1})) using only Rz gates and CNOTs.
+      Derive the transform from the phase vector to the rotation angles, give the
+      gate count, and verify your decomposition on a concrete two-qubit example.
+    difficulty: medium
+    pattern: Custom state initialisation
+    topics: [diagonal-unitary, phase-encoding, walsh-hadamard, rz-decomposition]
+    companies: [IBM, Quantinuum, Classiq, Google Quantum AI]
+    modelAnswer: |
+      A diagonal unitary applies phase phi_k to basis state |k>. Expand phi as a
+      function of the bits b_0 .. b_{n-1} of k in the Walsh, that is parity,
+      basis:
+
+          phi(b) = sum over subsets S of {0..n-1} of  c_S * (-1)^(XOR of b_i for i in S)
+
+      There are 2^n subsets and 2^n phases, and the transform between the two
+      coefficient vectors is exactly the Walsh-Hadamard transform, computable in
+      O(2^n * n) classical time. Each term is then one gate family:
+
+      - S empty: a global phase, free.
+      - S = {i}: an Rz on qubit i, since Rz(t) contributes -t/2 * (-1)^(b_i) up
+        to a global phase.
+      - |S| >= 2: a CNOT ladder that computes the parity of the qubits in S into
+        one of them, one Rz there, then the inverted ladder. Cost 2(|S|-1) CNOTs.
+
+      Two-qubit worked example. Take phases
+      phi = [0, 0.4, -1.0, 2.0]. Solving for the Walsh coefficients gives
+      c_empty = (0 + 0.4 - 1.0 + 2.0)/4 = 0.35,
+      c_{q0} = (0 + 0.4 + 1.0 - 2.0)/4 = -0.15,
+      c_{q1} = (0 - 0.4 - 1.0 - 2.0)/4 = -0.85,
+      c_{q0,q1} = (0 - 0.4 + 1.0 + 2.0)/4 = 0.65,
+      and reconstructing phi from these four numbers reproduces the original
+      vector to 2.2e-16. Applying the corresponding Rz on qubit 0, Rz on qubit 1,
+      and CX-Rz-CX pair on top of a magnitude-only preparation reproduces the
+      full complex target
+      [0.3, 0.5 e^(0.4i), 0.6 e^(-1.0i), 0.5385 e^(2.0i)] to 2.8e-16.
+
+      ```python
+      import numpy as np
+      from qiskit import QuantumCircuit
+
+      def diagonal(phases) -> QuantumCircuit:
+          phi = np.asarray(phases, dtype=float)
+          n = int(np.log2(phi.size))
+          # Walsh-Hadamard transform, normalised by 2^n
+          c = phi.copy()
+          h = 1
+          while h < c.size:
+              for i in range(0, c.size, h * 2):
+                  for j in range(i, i + h):
+                      x, y = c[j], c[j + h]
+                      c[j], c[j + h] = x + y, x - y
+              h *= 2
+          c /= c.size
+          qc = QuantumCircuit(n)
+          qc.global_phase += c[0]
+          for mask in range(1, 1 << n):
+              qubits = [q for q in range(n) if (mask >> (n - 1 - q)) & 1]
+              for a, b in zip(qubits, qubits[1:]):
+                  qc.cx(a, b)
+              qc.rz(-2 * c[mask], qubits[-1])
+              for a, b in reversed(list(zip(qubits, qubits[1:]))):
+                  qc.cx(a, b)
+          return qc
+      ```
+
+      Cost: 2^n - 1 Rz gates and sum over nonempty S of 2(|S|-1) CNOTs, which is
+      n*2^n - 2^(n+1) + 2 CNOTs if written naively. Ordering the subsets by a
+      Gray code lets consecutive ladders share most of their CNOTs and brings the
+      count down to 2^n - 2, which is the standard result and the reason diagonal
+      unitaries are considered cheap relative to general ones.
+    followUps:
+      - Order the subsets by Gray code and show why that reduces the CNOT count to 2^n - 2.
+      - If the phase function is a low-degree polynomial in the bits, most Walsh coefficients vanish. What does that buy you?
+      - How does this primitive appear inside QAOA cost layers and inside quantum arithmetic phase kickback?
+    commonMistakes:
+      - Using Rz(c) instead of Rz(-2c), forgetting that Rz(t) contributes a phase of -t/2 on |0> and +t/2 on |1>.
+      - Dropping the global phase term, which is invisible standalone but becomes a relative phase the moment the diagonal is used as a controlled subroutine.
+      - Building the ladder over all n qubits rather than only the qubits in the subset S, which computes the wrong parity.
+    references:
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+      - label: Shende, Bullock and Markov, Synthesis of quantum logic circuits
+        url: https://arxiv.org/abs/quant-ph/0406176
+
+  - id: iq-016
+    title: Choose an encoding for a classical feature vector in a QML model
+    kind: coding
+    prompt: |
+      You have 1024 training samples, each a real feature vector of length 60,
+      and a 12-qubit device. Implement two encodings, angle encoding and
+      amplitude encoding, decide what preprocessing each needs, and state exactly
+      what information each one preserves and destroys. Then argue which you
+      would ship for a kernel method, with a circuit-count estimate.
+    difficulty: medium
+    pattern: Custom state initialisation
+    topics: [qml, angle-encoding, amplitude-encoding, feature-maps, preprocessing]
+    companies: [Xanadu, IBM, Multiverse Computing, Terra Quantum, Classiq]
+    modelAnswer: |
+      Angle encoding puts one feature per rotation. With 60 features and 12
+      qubits you need 5 rotation layers, for instance Ry(x_j) on qubit j mod 12
+      with an entangling ring between layers. Preprocessing: rescale each feature
+      independently to a bounded interval, typically [0, pi], because Ry is
+      2*pi-periodic and an unscaled feature of 7.3 is indistinguishable from
+      7.3 - 2*pi. Use a scaler fitted on the training set only, and clip at
+      inference so an out-of-range test point cannot wrap around. Angle encoding
+      preserves each feature's value modulo the rotation period and destroys
+      nothing else, but the map is nonlinear in a way that flattens: near
+      theta = pi/2 the expectation value is nearly linear in the feature, near
+      0 and pi it saturates, so features whose useful variation sits near the
+      poles lose resolution.
+
+      Amplitude encoding puts the whole vector into one state. Pad 60 up to 64,
+      which needs 6 qubits, and normalise to unit L2 norm. That last step is the
+      catch: amplitude encoding destroys the vector's magnitude, keeping only its
+      direction. If the length of the feature vector is predictive, and for
+      counts or intensities it usually is, you must retain it. The standard fix
+      is to append the norm as an extra feature before normalising, using one
+      more padded slot, so the direction of the augmented vector determines both
+      direction and length of the original.
+
+      ```python
+      import numpy as np
+
+      def amplitude_encode(X):
+          X = np.asarray(X, float)
+          nrm = np.linalg.norm(X, axis=1, keepdims=True)
+          scale = nrm.max()
+          aug = np.hstack([X, np.sqrt(np.maximum(0, scale**2 - nrm**2))])
+          pad = np.zeros((aug.shape[0], 64 - aug.shape[1]))
+          A = np.hstack([aug, pad])
+          return A / np.linalg.norm(A, axis=1, keepdims=True)
+      ```
+
+      What I would ship for a kernel method: angle encoding. The kernel is
+      |<phi(x)|phi(y)>|^2, and for amplitude encoding that is just the squared
+      cosine similarity of the normalised inputs, a classical linear kernel with
+      no quantum content and a 2^n-gate loading circuit to compute it. Angle
+      encoding with entangling layers gives a kernel that is genuinely hard to
+      write down classically, which is the only reason to be on the device.
+
+      Circuit count: the Gram matrix for 1024 samples has 1024*1023/2 = 523776
+      distinct off-diagonal entries, and the diagonal is exactly 1 by
+      construction, so it never needs a circuit. At 1000 shots each that is
+      roughly 5.2e8 shots, which is the number that usually ends the discussion
+      and pushes you towards a subsample or a projected kernel.
+    followUps:
+      - Why is the amplitude-encoded kernel classically simulable, and what does that say about claimed quantum advantage in kernel methods?
+      - How would you fit the feature scaler so that no test-set information leaks into training?
+      - Estimate the shot budget needed for the Gram matrix entries to be accurate enough that the SVM decision boundary is stable.
+    commonMistakes:
+      - Normalising amplitude-encoded inputs without preserving the vector norm, which silently discards a predictive feature.
+      - Fitting the feature scaler on the whole dataset including the test split, leaking information and inflating reported accuracy.
+      - Feeding unscaled features into rotations, so values separated by 2*pi encode identically and the model sees aliased inputs.
+    references:
+      - label: PennyLane Codebook
+        url: https://pennylane.ai/codebook
+      - label: Havlicek et al., Supervised learning with quantum-enhanced feature spaces
+        url: https://arxiv.org/abs/1804.11326
+
+  - id: iq-017
+    title: Prepare the n-qubit W state with a linear cascade
+    kind: coding
+    prompt: |
+      Generalise the three-qubit W state to n qubits: prepare the equal
+      superposition of all n basis states of Hamming weight one, that is
+      (1/sqrt(n)) * sum over j of |e_j>, deterministically and without
+      post-selection. Give the k-th rotation angle in closed form, prove the
+      cascade is correct by induction, and state the depth and two-qubit gate
+      count.
+    difficulty: medium
+    pattern: Custom state initialisation
+    topics: [w-state, dicke-states, cascade, controlled-rotations, induction]
+    companies: [IonQ, Quantinuum, Pasqal, QuEra]
+    modelAnswer: |
+      Move one excitation along the register, splitting off exactly one share of
+      the amplitude at each step. Start with X on qubit 0, so the register holds
+      |10...0> with amplitude 1 and the excitation sits on qubit 0. For
+      k = 0, 1, ..., n-2 apply a controlled rotation that, conditioned on the
+      excitation being on qubit k, moves it to qubit k+1 with probability
+      1/(n-k-1) of staying behind. Concretely apply, controlled on qubit k, the
+      partial swap that takes |10> to cos(alpha_k)|10> + sin(alpha_k)|01> on the
+      pair (k, k+1), with
+
+          alpha_k = arccos( 1 / sqrt(n - k) )
+
+      so that sin^2(alpha_k) = (n-k-1)/(n-k). Each such partial swap is a
+      controlled Ry sandwiched between two CNOTs: CX(k+1, k), then
+      controlled-Ry(2*alpha_k) with control k and target k+1, then CX(k+1, k).
+
+      Induction. Claim: after step k the amplitude still carried on qubits
+      k+1..n-1 is 1/sqrt(n) * sqrt(n-k-1), and each of qubits 0..k already holds
+      amplitude 1/sqrt(n). Base case k = -1 holds trivially with all amplitude on
+      qubit 0. Step: the remaining amplitude sqrt((n-k)/n) is split by the
+      rotation into cos(alpha_k) * sqrt((n-k)/n) = sqrt(1/n) left on qubit k, and
+      sin(alpha_k) * sqrt((n-k)/n) = sqrt((n-k-1)/n) moved forward, which is the
+      hypothesis at k+1. After the last step every qubit holds 1/sqrt(n), and
+      only weight-one strings are ever populated because the cascade only ever
+      moves a single excitation.
+
+      ```python
+      import numpy as np
+      from qiskit import QuantumCircuit
+
+      def w_state(n: int) -> QuantumCircuit:
+          qc = QuantumCircuit(n)
+          qc.x(0)
+          for k in range(n - 1):
+              alpha = np.arccos(1 / np.sqrt(n - k))
+              qc.cx(k + 1, k)
+              qc.cry(2 * alpha, k, k + 1)
+              qc.cx(k + 1, k)
+          return qc
+      ```
+
+      Cost: n-1 stages, each two CNOTs plus one controlled Ry, which itself is
+      two CNOTs and two Ry. So 4(n-1) CNOTs and depth O(n). Every gate acts on a
+      neighbouring pair, so this runs on a line coupling map with no routing
+      overhead, which is the practical reason to prefer the cascade to a
+      divide-and-conquer version on hardware with limited connectivity.
+
+      If depth matters more than connectivity, the Bärtschi-Eidenbenz Dicke state
+      construction prepares |D^n_k>, of which the W state is the k = 1 case, in
+      O(n) gates and O(n) depth deterministically, and a binary-tree variant
+      reaches O(log n) depth on all-to-all hardware.
+    followUps:
+      - Extend to a general Dicke state of Hamming weight k and give the gate count.
+      - How does the W state degrade under single-qubit loss compared with GHZ, and why does that make it useful for some protocols?
+      - Rewrite the cascade so all gates are nearest neighbour on a ring rather than a line.
+    commonMistakes:
+      - Using alpha_k = arccos(1/sqrt(n)) at every step instead of arccos(1/sqrt(n-k)), which leaves the tail of the register underweighted.
+      - Omitting the CNOT sandwich, so the controlled rotation adds a second excitation and populates weight-two strings.
+      - Preparing the state by measuring a Hamming weight and post-selecting, which the prompt forbids and which succeeds with probability that shrinks with n.
+    references:
+      - label: Deterministic preparation of Dicke states
+        url: https://arxiv.org/abs/1904.07358
+      - label: Microsoft Quantum Katas
+        url: https://github.com/microsoft/QuantumKatas
+
+  - id: iq-018
+    title: Prepare a sparse state with d nonzero amplitudes in O(d n) gates
+    kind: coding
+    prompt: |
+      A target state on n qubits has only d nonzero amplitudes, with d far
+      smaller than 2^n, given as a dictionary from integer index to complex
+      amplitude. Generic amplitude encoding costs O(2^n) gates. Give a
+      construction costing O(d * n) instead, argue its correctness, and work the
+      example n = 3 with nonzeros at indices 1, 4 and 7 carrying amplitudes
+      proportional to 1, 2 and 3.
+    difficulty: hard
+    pattern: Custom state initialisation
+    topics: [sparse-state-preparation, permutation, multi-controlled-gates, gate-counting]
+    companies: [IBM, Classiq, Quantinuum, Multiverse Computing]
+    modelAnswer: |
+      Two stages: build a dense state on the low indices, then permute those
+      indices onto the target support.
+
+      Stage 1. Let m = ceil(log2 d). Prepare the dense d-entry state
+      sum_{j<d} c_j |j> on the last m qubits, with the first n-m qubits left in
+      |0>, using the recursive Ry multiplexer construction. That costs
+      O(2^m) = O(d) gates, because the multiplexer count is 2^m - 1 and
+      2^m < 2d.
+
+      Stage 2. Apply a basis-state permutation P with P|j> = |t_j> for
+      j = 0..d-1, where t_j are the target indices in any fixed order, and P
+      arbitrary elsewhere. A permutation that only has to be correct on d
+      specified inputs can be assembled from d transpositions, and a single
+      transposition of two n-bit strings costs O(n) gates: X gates to turn the
+      source pattern into the all-ones pattern, one multi-controlled X per
+      differing bit, and the X gates back. So the whole permutation is O(d * n)
+      multi-controlled gates, giving O(d * n) in gate count and O(d * n * n) or
+      better once each multi-controlled X is expanded with ancillas.
+
+      Worked example. Amplitudes proportional to 1, 2, 3 normalise by sqrt(14) to
+      0.267261, 0.534522 and 0.801784. Stage 1 puts these on |000>, |001> and
+      |010> with |011> zero, using two Ry levels on qubits 1 and 2 while qubit 0
+      stays |0>. Stage 2 applies the permutation 0 -> 1, 1 -> 4, 2 -> 7, so the
+      final state carries 0.267261 on |001>, 0.534522 on |100> and 0.801784 on
+      |111>, with qubit 0 the most significant bit.
+
+      ```python
+      def sparse_prep(n, entries):          # entries: {index: amplitude}
+          idx = sorted(entries)
+          amps = np.array([entries[i] for i in idx], dtype=complex)
+          amps = amps / np.linalg.norm(amps)
+          m = max(1, math.ceil(math.log2(len(idx))))
+          dense = np.zeros(1 << m, dtype=complex)
+          dense[:len(idx)] = amps
+          qc = QuantumCircuit(n)
+          qc.compose(encode_dense(dense), qubits=list(range(n - m, n)), inplace=True)
+          for j, target in enumerate(idx):
+              qc.compose(transposition(n, j, target), inplace=True)
+          return qc
+      ```
+
+      Ordering matters and is the easy place to get this wrong. Applying the
+      transpositions in an arbitrary order can move an already-placed amplitude
+      a second time. Sort the target indices and apply the transpositions so that
+      each newly written index is never touched again, or track the induced
+      permutation explicitly and compose transpositions in the standard
+      cycle-decomposition order.
+
+      The win is real only when d is genuinely small. At d around 2^n / n the
+      O(d n) bound stops beating the O(2^n) dense construction, and below that
+      the constants in the multi-controlled X expansion decide the outcome, so
+      benchmark before claiming the improvement.
+    followUps:
+      - How do you handle two target indices whose transpositions interfere, and what ordering guarantees correctness?
+      - What is the ancilla cost once each multi-controlled X is expanded, and can you reuse one ancilla register across all d transpositions?
+      - At what value of d relative to 2^n does the sparse method stop winning?
+    commonMistakes:
+      - Applying the transpositions in arbitrary order, so an already-placed amplitude is moved a second time and the final support is wrong.
+      - Counting each multi-controlled X as one gate when reporting hardware cost, hiding an O(n) or O(n^2) expansion inside the claim.
+      - Forgetting to normalise the d amplitudes before loading, which produces a sub-normalised state that a simulator will accept and hardware will not.
+    references:
+      - label: Shende, Bullock and Markov, Synthesis of quantum logic circuits
+        url: https://arxiv.org/abs/quant-ph/0406176
+      - label: Barenco et al., Elementary gates for quantum computation
+        url: https://arxiv.org/abs/quant-ph/9503016
+
+  - id: iq-019
+    title: Load a probability distribution with the Grover-Rudolph procedure
+    kind: coding
+    prompt: |
+      Implement Grover-Rudolph state preparation: given a probability density on
+      an interval, discretised to 2^n bins, prepare sum_k sqrt(p_k) |k>. Give the
+      recursion, implement it for n = 2 with p = [0.1, 0.2, 0.3, 0.4] including
+      the numeric angles, and then explain the caveat that makes this procedure
+      not an efficient loading routine for general distributions.
+    difficulty: hard
+    pattern: Custom state initialisation
+    topics: [grover-rudolph, distribution-loading, integrability, quantum-finance]
+    companies: [IBM, Multiverse Computing, Terra Quantum, Quantinuum]
+    modelAnswer: |
+      The recursion is the chain rule on the bits of k. At level j, conditioned
+      on the first j bits reading b, define
+
+          f(b) = P(bit j = 1 | first j bits = b)
+               = integral of p over the upper half of region b
+                 divided by the integral of p over region b
+
+      and apply a uniformly controlled Ry with j controls and angle
+      2*arcsin(sqrt(f(b))) for each b. After n levels the amplitude on |k> is the
+      product of the conditional square roots along its path, which telescopes to
+      sqrt(p_k). Gate count is 2^n - 1 rotations, the same as generic amplitude
+      encoding.
+
+      Worked n = 2 example with p = [0.1, 0.2, 0.3, 0.4]:
+      level 0 needs P(bit 0 = 1) = 0.3 + 0.4 = 0.7, so
+      theta = 2*arcsin(sqrt(0.7)) = 1.982313. Level 1 conditioned on bit 0 = 0
+      needs 0.2/0.3, so theta_0 = 2*arcsin(sqrt(2/3)) = 1.910633; conditioned on
+      bit 0 = 1 it needs 0.4/0.7, so theta_1 = 2*arcsin(sqrt(4/7)) = 1.714144.
+      Running the circuit gives amplitudes
+      [0.316228, 0.447214, 0.547723, 0.632456], which are sqrt(0.1), sqrt(0.2),
+      sqrt(0.3) and sqrt(0.4) to six places.
+
+      ```python
+      def grover_rudolph(p) -> QuantumCircuit:
+          p = np.asarray(p, float); p = p / p.sum()
+          n = int(np.log2(p.size))
+          qc = QuantumCircuit(n)
+          for j in range(n):
+              blk = p.size >> j
+              thetas = []
+              for b in range(1 << j):
+                  seg = p[b * blk:(b + 1) * blk]
+                  tot = seg.sum()
+                  hi = seg[blk // 2:].sum()
+                  thetas.append(2 * np.arcsin(np.sqrt(np.clip(hi / tot, 0, 1)))
+                                if tot > 1e-15 else 0.0)
+              qc.compose(ucry(thetas, list(range(j)), j) if j else ry_only(thetas[0]),
+                         inplace=True)
+          return qc
+      ```
+
+      The caveat. Grover and Rudolph's paper assumes the conditional integrals
+      f(b) can be computed efficiently. That holds for log-concave densities in
+      one dimension, where the partial integrals have closed forms, and for
+      anything you can integrate analytically. It does not hold in general: for
+      an arbitrary density in d dimensions computing those partial integrals is
+      exactly the problem of numerical integration in high dimension, which is
+      classically hard, and the usual efficient solution is Monte Carlo. The
+      pointed observation, made explicitly in later work on quantum Monte Carlo
+      pricing, is that if you can already sample the distribution well enough to
+      estimate the conditional integrals, you can often just do the classical
+      Monte Carlo estimate you wanted and skip the quantum computer. So
+      Grover-Rudolph is a correct circuit construction and not, by itself, an
+      efficient data loader, and any speedup claim that leans on it must say
+      which distribution class makes the integrals cheap.
+    followUps:
+      - For which density classes are the conditional integrals cheap, and what does that leave of the claimed quadratic speedup in derivative pricing?
+      - How would you truncate the tails of an unbounded density and bound the error introduced?
+      - Compare against loading via a quantum GAN or a variational loader, and say what guarantee you lose.
+    commonMistakes:
+      - Rotating by 2*arcsin of the conditional probability rather than of its square root, confusing amplitudes with probabilities.
+      - Assuming the procedure is efficient for any distribution, ignoring that computing the conditional integrals is the hard part.
+      - Dividing by a zero bin total in a sparse or truncated histogram, producing NaN angles instead of the legal arbitrary choice.
+    references:
+      - label: Grover and Rudolph, Creating superpositions that correspond to efficiently integrable probability distributions
+        url: https://arxiv.org/abs/quant-ph/0208112
+      - label: Quantum Algorithm Zoo
+        url: https://quantumalgorithmzoo.org/
+
+  - id: iq-020
+    title: Use the Schmidt decomposition to cut the cost of bipartite state preparation
+    kind: coding
+    prompt: |
+      A target state lives on 2m qubits, split into register A of m qubits and
+      register B of m qubits, and its Schmidt rank across that cut is r, with r
+      much smaller than 2^m. Design a preparation circuit whose cost scales with
+      r rather than with 2^(2m). Give the construction, the entangling gate
+      count, and say how you would compute r numerically and robustly from the
+      amplitude vector.
+    difficulty: hard
+    pattern: Custom state initialisation
+    topics: [schmidt-decomposition, svd, bipartite-entanglement, state-preparation]
+    companies: [IBM, Xanadu, Classiq, Quantinuum]
+    modelAnswer: |
+      Reshape the 2^(2m)-length amplitude vector into a 2^m by 2^m matrix M whose
+      row index is register A and column index is register B, with qubit 0 the
+      most significant bit of A and qubit m the most significant bit of B. The
+      singular value decomposition M = U S V-dagger gives the Schmidt form
+
+          |psi> = sum over i of s_i |u_i>_A |v_i>_B
+
+      with s_i the singular values, sum of s_i^2 equal to 1, and the Schmidt rank
+      r equal to the number of nonzero s_i.
+
+      The circuit follows the decomposition directly:
+
+      1. On the top ceil(log2 r) qubits of A, prepare sum_i s_i |i>. This is an
+         amplitude encoding of an r-entry vector, cost O(r) gates.
+      2. Copy that index into B in the computational basis with ceil(log2 r)
+         CNOTs, one per index qubit, producing sum_i s_i |i>_A |i>_B.
+      3. Apply the m-qubit unitary U to register A and the m-qubit unitary
+         conjugate of V to register B, mapping |i> to |u_i> and |v_i>.
+
+      Entangling cost: ceil(log2 r) CNOTs across the cut, plus whatever the two
+      local unitaries cost inside their own registers. That is the point. The
+      only gates that must cross the A-B boundary are log2 r of them, and on
+      hardware where the cut is a slow link, for example two chips or two ion
+      traps joined by a photonic interconnect, this is the difference between
+      feasible and not. Generic preparation would need O(2^m) gates across the
+      cut.
+
+      Computing r robustly. Do not test singular values against exact zero.
+      Compute the full spectrum and apply a relative threshold: keep s_i above
+      tol * s_max with tol around 1e-10 for float64 input, or better, choose the
+      smallest r such that the discarded tail sum of s_i^2 is below a target
+      infidelity epsilon. That second criterion is the useful one, because it
+      turns the question into an approximation with a stated error: truncating to
+      rank r produces a state with fidelity 1 - sum over discarded i of s_i^2.
+      For a state that is only approximately low rank, that lets you trade a
+      known infidelity for a smaller r, which is exactly the matrix product state
+      idea applied to one cut.
+
+      ```python
+      import numpy as np
+
+      def schmidt(psi, m, eps=1e-10):
+          M = np.asarray(psi, complex).reshape(2 ** m, 2 ** m)
+          U, s, Vh = np.linalg.svd(M)
+          tail = np.cumsum((s ** 2)[::-1])[::-1]
+          r = int(np.searchsorted(-tail, -eps)) or 1
+          return U[:, :r], s[:r], Vh[:r, :]
+      ```
+
+      A sanity check that catches reshape errors: sum(s**2) must equal 1, and the
+      reduced density matrix of A, computed as M @ M.conj().T, must have
+      eigenvalues exactly s**2.
+    followUps:
+      - How does the entangling cost change if you cut the register unevenly, say 3 qubits against 9?
+      - Extend this idea along a chain of cuts. What have you just built?
+      - Show how the truncation error in fidelity relates to the discarded singular values, with a proof.
+    commonMistakes:
+      - Reshaping the amplitude vector with the wrong index order, so register A and register B are interleaved rather than split, which inflates the apparent Schmidt rank.
+      - Determining the rank by testing singular values against exact zero instead of a relative or fidelity-based threshold.
+      - Applying V rather than its complex conjugate to register B, which gives the correct singular values and the wrong state whenever the amplitudes are complex.
+    references:
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+      - label: Cleve, QIC 710 Quantum Information Processing
+        url: https://cleve.iqc.uwaterloo.ca/qic710/

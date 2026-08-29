@@ -1,0 +1,102 @@
+# One ServiceMonitor per service that exposes a metrics endpoint (SPEC.md service
+# table). sandbox-runner has no network (§10) and therefore no ServiceMonitor: its
+# execution stats are reported out-of-band by the grader that supervises it.
+#
+# Scraped by targetPort (the pod-level container port) rather than by Service port
+# name, so this does not depend on how the owning workload manifests (base/workloads/,
+# owned by another agent) name their Service ports.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: web
+  labels:
+    app.kubernetes.io/name: web
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web
+  endpoints:
+    - targetPort: 3000
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  endpoints:
+    - targetPort: 9464
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: quantum-kernel
+  labels:
+    app.kubernetes.io/name: quantum-kernel
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: quantum-kernel
+  endpoints:
+    - targetPort: 8100
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: quantum-kernel-heavy
+  labels:
+    app.kubernetes.io/name: quantum-kernel-heavy
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: quantum-kernel-heavy
+  endpoints:
+    - targetPort: 8100
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: grader
+  labels:
+    app.kubernetes.io/name: grader
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: grader
+  endpoints:
+    - targetPort: 9464
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ai-tutor
+  labels:
+    app.kubernetes.io/name: ai-tutor
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ai-tutor
+  endpoints:
+    - targetPort: 9464
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s

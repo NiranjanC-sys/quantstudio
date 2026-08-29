@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Kyverno is the default policy engine (enforced, background: true, excludes
+# kube-system). Gatekeeper (./gatekeeper/) is the alternative for operators who
+# standardise on OPA instead -- it is deliberately NOT listed as a resource here.
+# To switch engines, replace `kyverno` below with `gatekeeper`. Enabling both at once
+# is redundant: they enforce the same non-root / read-only-rootfs / no-latest-tag
+# checks and would double every admission review for no additional safety.
+resources:
+  - priorityclasses.yaml
+  - runtimeclass-gvisor.yaml
+  - kyverno

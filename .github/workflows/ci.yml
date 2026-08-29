@@ -1,0 +1,290 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PNPM_VERSION: "11.21.0"
+  NODE_VERSION_DEFAULT: "22"
+  PYTHON_VERSION_DEFAULT: "3.12"
+
+jobs:
+  node:
+    name: node (${{ matrix.package }} / node ${{ matrix.node-version }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # node-version kept as a matrix axis (single value today) so a second
+        # version can be added later without restructuring the job.
+        node-version: [22]
+        package: [web, api]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda  # v4.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node ${{ matrix.node-version }}
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (repo-wide)
+        run: pnpm -r typecheck
+
+      - name: Lint (repo-wide)
+        run: pnpm -r lint
+
+      - name: Test (repo-wide)
+        run: pnpm -r test
+
+      - name: Build (repo-wide)
+        run: pnpm -r build
+
+      - name: Upload build artefacts (apps/${{ matrix.package }})
+        if: matrix.node-version == 22
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
+        with:
+          name: build-${{ matrix.package }}-node${{ matrix.node-version }}
+          path: |
+            apps/${{ matrix.package }}/dist
+            apps/${{ matrix.package }}/.next
+          if-no-files-found: warn
+          retention-days: 7
+
+  python:
+    name: python (quantum-kernel / py ${{ matrix.python-version }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    defaults:
+      run:
+        working-directory: apps/quantum-kernel
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install quantum-kernel dependencies
+        run: |
+          set -euo pipefail
+          if [ -f pyproject.toml ]; then
+            # Editable install with dev + sdk extras, as declared in pyproject.toml.
+            python -m pip install --upgrade pip
+            pip install -e ".[dev,sdk]" || pip install -e ".[dev]"
+          elif [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            # No dependency manifest committed yet: documented fallback list
+            # mirroring the hard + dev dependencies in system-design.md §3/§10.
+            echo "::warning::no pyproject.toml or requirements.txt found; installing documented fallback deps"
+            pip install fastapi "uvicorn[standard]" pydantic numpy scipy prometheus-client structlog pytest httpx ruff mypy pip-audit
+          fi
+          pip install ruff mypy pip-audit
+
+      - name: Ruff
+        run: |
+          set -euo pipefail
+          if [ -f pyproject.toml ] || [ -f ruff.toml ] || [ -f .ruff.toml ]; then
+            ruff check .
+          else
+            echo "::warning::no ruff config found, skipping lint"
+          fi
+
+      - name: Mypy
+        run: |
+          set -euo pipefail
+          if [ -d app ]; then
+            mypy app || { echo "::error::mypy reported type errors"; exit 1; }
+          else
+            echo "::warning::no app/ directory found, skipping mypy"
+          fi
+
+      - name: Pytest
+        run: |
+          set -euo pipefail
+          if [ -d tests ] && [ -n "$(find tests -name 'test_*.py' -o -name '*_test.py' 2>/dev/null)" ]; then
+            pytest
+          else
+            echo "::warning::no pytest tests found, skipping (this does not mask real test failures once tests exist)"
+          fi
+
+  integration:
+    name: integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: redquant
+          POSTGRES_PASSWORD: redquant
+          POSTGRES_DB: redquant
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U redquant"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://redquant:redquant@localhost:5432/redquant
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda  # v4.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node ${{ env.NODE_VERSION_DEFAULT }}
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION_DEFAULT }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run migrations
+        run: |
+          set -euo pipefail
+          if pnpm --filter @redquant/api run | grep -q "db:migrate"; then
+            pnpm --filter @redquant/api db:migrate
+          else
+            echo "::warning::no db:migrate script found on @redquant/api, skipping migrations"
+          fi
+
+      - name: Integration tests
+        run: |
+          set -euo pipefail
+          if pnpm --filter @redquant/api run | grep -q "test:integration"; then
+            pnpm --filter @redquant/api test:integration
+          else
+            echo "::warning::no test:integration script found, skipping"
+          fi
+
+  contract-drift:
+    name: contract-drift (OpenAPI)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Python ${{ env.PYTHON_VERSION_DEFAULT }}
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION_DEFAULT }}
+          cache: pip
+
+      - name: Install quantum-kernel
+        working-directory: apps/quantum-kernel
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          if [ -f pyproject.toml ]; then
+            pip install -e ".[dev]"
+          else
+            echo "::warning::no pyproject.toml found; installing documented fallback deps"
+            pip install fastapi "uvicorn[standard]" pydantic
+          fi
+
+      - name: Regenerate packages/shared/kernel-openapi.json
+        working-directory: apps/quantum-kernel
+        run: |
+          set -euo pipefail
+          mkdir -p ../../packages/shared
+          python - <<'PY'
+          import json
+          import sys
+
+          try:
+              from app.main import app
+          except Exception as exc:  # pragma: no cover - guarded, see below
+              print(f"::error::could not import app.main:app to regenerate OpenAPI schema: {exc}")
+              sys.exit(1)
+
+          with open("../../packages/shared/kernel-openapi.json", "w") as f:
+              json.dump(app.openapi(), f, indent=2, sort_keys=True)
+              f.write("\n")
+          PY
+
+      - name: Fail on schema drift
+        run: |
+          set -euo pipefail
+          git add packages/shared/kernel-openapi.json
+          if ! git diff --cached --exit-code -- packages/shared/kernel-openapi.json; then
+            echo "::error::packages/shared/kernel-openapi.json is out of date. Regenerate it locally and commit the result."
+            exit 1
+          fi
+
+  ci-ok:
+    name: CI OK
+    if: always()
+    needs: [node, python, integration, contract-drift]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Check all required jobs succeeded
+        run: |
+          set -euo pipefail
+          echo '${{ toJSON(needs) }}'
+          if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "::error::one or more required jobs failed"
+            exit 1
+          fi

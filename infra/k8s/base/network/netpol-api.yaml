@@ -1,0 +1,75 @@
+# api (Fastify gateway, also hosts ws-gateway): auth, entitlements, CRUD, rate limits,
+# job enqueue, contest clock/leaderboard fanout. Ingress from web, the ingress
+# controller (api.redquant.io / ws.redquant.io go straight here) and Prometheus.
+# Egress to the quantum-kernel tiers, Redis, the Postgres poolers and the OTel
+# collector -- never directly to sandbox-runner or the grader queue's workers.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: web
+      ports:
+        - protocol: TCP
+          port: 3001
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3001
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9464
+  egress:
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - quantum-kernel
+                  - quantum-kernel-heavy
+      ports:
+        - protocol: TCP
+          port: 8100
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis-cluster
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: cnpg.io/poolerName
+                operator: In
+                values:
+                  - redquant-pg-rw
+                  - redquant-pg-ro
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - protocol: TCP
+          port: 4317

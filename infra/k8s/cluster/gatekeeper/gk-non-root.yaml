@@ -1,0 +1,57 @@
+# OPA Gatekeeper equivalent of kyverno/require-non-root.yaml. Not wired into
+# cluster/kustomization.yaml by default -- see cluster/gatekeeper/kustomization.yaml.
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequirenonroot
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequireNonRoot
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            exemptNamespaces:
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequirenonroot
+
+        violation[{"msg": msg}] {
+          not is_exempt_namespace
+          pod_run_as_non_root != true
+          msg := "Pods and containers must set securityContext.runAsNonRoot: true"
+        }
+
+        is_exempt_namespace {
+          ns := input.review.object.metadata.namespace
+          exempt := input.parameters.exemptNamespaces[_]
+          ns == exempt
+        }
+
+        pod_run_as_non_root {
+          input.review.object.spec.securityContext.runAsNonRoot == true
+        }
+
+        pod_run_as_non_root {
+          container := input.review.object.spec.containers[_]
+          container.securityContext.runAsNonRoot == true
+        }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequireNonRoot
+metadata:
+  name: require-non-root
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+  parameters:
+    exemptNamespaces:
+      - kube-system

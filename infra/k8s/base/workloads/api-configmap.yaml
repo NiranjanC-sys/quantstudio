@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/component: api
+data:
+  LOG_LEVEL: "info"
+  NODE_ENV: "production"
+  # --- SPEC.md section 9: rate limits ---
+  RATE_LIMIT_READ_PER_10S: "120"
+  RATE_LIMIT_SIM_FREE_PER_MIN: "30"
+  RATE_LIMIT_SIM_PRO_PER_MIN: "240"
+  RATE_LIMIT_LAB_SUBMIT_PER_MIN: "6"
+  RATE_LIMIT_CONTEST_SUBMIT_PER_MIN: "10"
+  RATE_LIMIT_CONTEST_SUBMIT_COOLDOWN_SECONDS: "20"
+  RATE_LIMIT_AI_TUTOR_TOKENS_PER_DAY: "50000"
+  RATE_LIMIT_AUTH_PER_10MIN_PER_IP: "10"
+  # --- SPEC.md section 9: degradation ladder flags ---
+  DEGRADE_SIM_ASYNC: "false"
+  DEGRADE_SIM_MAX_QUBITS: "22"
+  DEGRADE_SIM_MAX_QUBITS_ENABLED: "false"
+  DEGRADE_TUTOR_RETRIEVAL_ONLY: "false"
+  DEGRADE_ANALYTICS_DELAYED: "false"
+  DEGRADE_BILLING_QUEUE: "false"

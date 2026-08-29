@@ -1,0 +1,12 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: quantum-kernel
+  labels:
+    app.kubernetes.io/name: quantum-kernel
+    app.kubernetes.io/component: quantum-kernel
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: quantum-kernel

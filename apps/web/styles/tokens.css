@@ -1,0 +1,135 @@
+/*
+ * Design tokens, transcribed from DESIGN.md.
+ *
+ * Light theme lives on bare :root. Dark is redefined under BOTH the media
+ * query (guarded so an explicit light choice wins) and the explicit
+ * [data-theme="dark"] attribute, so the toggle wins in both directions. No
+ * colour is ever defined only inside a media query.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --canvas: #FBFAF8;
+  --surface-1: #FFFFFF;
+  --surface-2: #F4F2EE;
+  --surface-3: #EAE7E1;
+  --surface-inset: #F7F5F1;
+  --hairline: #E2DED7;
+  --hairline-strong: #CFC9C0;
+  --ink: #131518;
+  --ink-muted: #4A4F57;
+  --ink-subtle: #6E747D;
+  --ink-faint: #9AA0A8;
+  --accent: #E23A10;
+  --accent-hover: #C7300B;
+  --accent-press: #A82808;
+  --accent-wash: rgba(226, 58, 16, 0.08);
+  --on-accent: #FFFFFF;
+  --success: #1E7A4C;
+  --warning: #A56F0E;
+  --danger: #C0392F;
+  --info: #2A6BA8;
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 64px;
+  --space-9: 96px; --space-10: 128px; --space-11: 192px;
+
+  --dur-state: 120ms;
+  --dur-move: 200ms;
+  --dur-layout: 320ms;
+  --ease-in: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0.4, 0, 1, 1);
+
+  --font-ui: var(--font-instrument), 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-prose: var(--font-newsreader), 'Newsreader', ui-serif, Georgia, 'Times New Roman', serif;
+  --font-mono: var(--font-plex-mono), 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --canvas: #08090B;
+    --surface-1: #0E1013;
+    --surface-2: #14171B;
+    --surface-3: #1A1E23;
+    --surface-inset: #0A0B0D;
+    --hairline: #22262C;
+    --hairline-strong: #2F343B;
+    --ink: #F4F5F7;
+    --ink-muted: #B4BAC3;
+    --ink-subtle: #7C848F;
+    --ink-faint: #525963;
+    --accent: #FF4A1C;
+    --accent-hover: #FF6740;
+    --accent-press: #E23A10;
+    --accent-wash: rgba(255, 74, 28, 0.10);
+    --on-accent: #0A0A0A;
+    --success: #2FA36B;
+    --warning: #D99420;
+    --danger: #E2453B;
+    --info: #3D8BD4;
+  }
+}
+
+:root[data-theme='dark'] {
+  --canvas: #08090B;
+  --surface-1: #0E1013;
+  --surface-2: #14171B;
+  --surface-3: #1A1E23;
+  --surface-inset: #0A0B0D;
+  --hairline: #22262C;
+  --hairline-strong: #2F343B;
+  --ink: #F4F5F7;
+  --ink-muted: #B4BAC3;
+  --ink-subtle: #7C848F;
+  --ink-faint: #525963;
+  --accent: #FF4A1C;
+  --accent-hover: #FF6740;
+  --accent-press: #E23A10;
+  --accent-wash: rgba(255, 74, 28, 0.10);
+  --on-accent: #0A0A0A;
+  --success: #2FA36B;
+  --warning: #D99420;
+  --danger: #E2453B;
+  --info: #3D8BD4;
+}
+
+/*
+ * Register lock. DESIGN.md defines two registers, and THE INSTRUMENT (the lab,
+ * the builder, contests, dashboards) is a near-black laboratory surface by
+ * definition. The reader's light or dark preference governs THE MONOGRAPH
+ * (lessons and theory), not this. Scoping the dark palette to the register
+ * rather than to the document keeps both registers correct on one site.
+ */
+[data-register='instrument'] {
+  --canvas: #08090B;
+  --surface-1: #0E1013;
+  --surface-2: #14171B;
+  --surface-3: #1A1E23;
+  --surface-inset: #0A0B0D;
+  --hairline: #22262C;
+  --hairline-strong: #2F343B;
+  --ink: #F4F5F7;
+  --ink-muted: #B4BAC3;
+  --ink-subtle: #7C848F;
+  --ink-faint: #525963;
+  --accent: #FF4A1C;
+  --accent-hover: #FF6740;
+  --accent-press: #E23A10;
+  --accent-wash: rgba(255, 74, 28, 0.10);
+  --on-accent: #0A0A0A;
+  --success: #2FA36B;
+  --warning: #D99420;
+  --danger: #E2453B;
+  --info: #3D8BD4;
+
+  color-scheme: dark;
+  background: var(--canvas);
+  color: var(--ink);
+}

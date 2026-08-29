@@ -1,0 +1,739 @@
+questions:
+  - id: iq-001
+    title: Build a GHZ state on n qubits in logarithmic depth
+    kind: coding
+    prompt: |
+      Given an integer n >= 2, return a circuit that prepares the n-qubit GHZ
+      state (|0...0> + |1...1>)/sqrt(2) starting from the all-zero register.
+      Assume an all-to-all coupling map and treat two-qubit gates as the only
+      expensive resource. The interviewer adds one constraint: the circuit depth
+      must be O(log n), not O(n). Report the two-qubit gate count and the depth
+      your construction achieves, and print the resulting statevector with
+      qubit 0 as the most significant bit.
+    difficulty: easy
+    pattern: Circuit construction from a spec
+    topics: [entanglement, ghz, circuit-depth, fan-out]
+    companies: [IBM, Google Quantum AI, Quantinuum, IonQ]
+    modelAnswer: |
+      The reflex answer is one Hadamard on qubit 0 followed by CX(0, k) for
+      k = 1..n-1. That is correct but every CNOT shares control qubit 0, so no
+      two of them commute into the same layer and the depth is n-1.
+
+      The fix uses the fact that CX(a, b) acting on |x>|0> writes x into b in the
+      computational basis. Entanglement can therefore be fanned out by doubling:
+      after layer L the first 2^L qubits already carry the GHZ correlation, and
+      each of them can seed a fresh copy in the next layer. The schedule is
+
+          H(0)
+          for step in 1, 2, 4, 8, ... while step < n:
+              for q in 0 .. step-1:
+                  if q + step < n: CX(q, q + step)
+
+      All CNOTs inside one step value act on disjoint qubit pairs, so each step
+      is a single layer. The depth is 1 + ceil(log2 n) layers, and the CNOT count
+      is still exactly n-1. That count is optimal: every qubit other than the
+      seed must be touched by at least one entangling gate, so n-1 is a lower
+      bound. Only the depth improved, and that is the whole point.
+
+      ```python
+      from qiskit import QuantumCircuit
+
+      def ghz(n: int) -> QuantumCircuit:
+          qc = QuantumCircuit(n)
+          qc.h(0)
+          step = 1
+          while step < n:
+              for q in range(step):
+                  if q + step < n:
+                      qc.cx(q, q + step)
+              step *= 2
+          return qc
+      ```
+
+      Simulated for n = 8 this gives amplitude 0.707107 on |00000000> and
+      0.707107 on |11111111> and nothing else, in 4 layers. For n = 16 it is
+      5 layers. Read the statevector with qubit 0 as the most significant bit,
+      as the RedQuant convention requires. Qiskit's own `Statevector` labels
+      basis states with qubit 0 as the least significant bit, so index 1 in a
+      Qiskit dump is |0...01> meaning qubit n-1 is set, not qubit 0. For GHZ the
+      state is symmetric under bit reversal so the bug hides, which is exactly
+      why it survives to bite you on the next question.
+    followUps:
+      - What changes if the coupling map is a line rather than all-to-all, and what is the best achievable depth there?
+      - How would you verify the prepared state without full tomography?
+      - Your hardware exposes CZ and single-qubit rotations but no CNOT. Rewrite the construction and say what happens to the depth.
+    commonMistakes:
+      - Chaining every CNOT off a single control qubit, which gives depth n-1 rather than 1 + ceil(log2 n) on all-to-all hardware.
+      - Claiming the doubling schedule reduces the CNOT count. It stays at n-1, which is already optimal; only depth changes.
+      - Reading the statevector in Qiskit's little-endian order while asserting results in qubit-0-most-significant order.
+    references:
+      - label: IBM Quantum Learning courses
+        url: https://quantum.cloud.ibm.com/learning/en/courses
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+
+  - id: iq-002
+    title: Prepare a three-qubit W state exactly
+    kind: coding
+    prompt: |
+      Write a circuit that prepares the three-qubit W state
+      (|100> + |010> + |001>)/sqrt(3), where the leftmost ket symbol is qubit 0
+      and qubit 0 is the most significant bit. Post-selection and measurement are
+      not allowed: the preparation must be deterministic and unitary. Give the
+      exact rotation angles as closed-form expressions, not numerical constants
+      you fitted, and state the two-qubit gate count.
+    difficulty: easy
+    pattern: Circuit construction from a spec
+    topics: [entanglement, w-state, state-preparation, controlled-rotations]
+    companies: [IonQ, Quantinuum, IBM, Pasqal]
+    modelAnswer: |
+      Unlike GHZ, the W state is not a stabilizer state, so it cannot be reached
+      by Clifford gates alone. Build it as a cascade of conditional coin flips
+      that walk the single excitation along the register.
+
+      Split the amplitude on qubit 0 first. We want P(qubit 0 = 1) = 1/3, which
+      is one of the three branches, so apply Ry(theta1) with
+      sin(theta1/2) = 1/sqrt(3), that is theta1 = 2*arcsin(1/sqrt(3)) which is
+      about 1.230959 radians. The register is now
+      sqrt(2/3)|0..> + (1/sqrt(3))|1..>, and the |1..> branch is already the
+      finished |100> component.
+
+      Conditioned on qubit 0 being 0, the remaining sqrt(2/3) of amplitude has to
+      split evenly between |010> and |001>. That is a controlled Ry(pi/2) on
+      qubit 1 with qubit 0 as an anti-control, since sin(pi/4) = 1/sqrt(2) and
+      sqrt(2/3)/sqrt(2) = 1/sqrt(3). Finally, the branch where both qubit 0 and
+      qubit 1 are 0 still holds amplitude 1/sqrt(3) on |000> and must be moved to
+      |001>, which is a Toffoli on qubit 2 with both controls inverted.
+
+      ```python
+      import numpy as np
+      from qiskit import QuantumCircuit
+
+      def w3() -> QuantumCircuit:
+          qc = QuantumCircuit(3)
+          qc.ry(2 * np.arcsin(1 / np.sqrt(3)), 0)
+          qc.x(0); qc.cry(np.pi / 2, 0, 1); qc.x(0)
+          qc.x(0); qc.x(1); qc.ccx(0, 1, 2); qc.x(0); qc.x(1)
+          return qc
+      ```
+
+      Simulating this with qubit 0 as the most significant bit gives amplitude
+      0.577350 on each of |100>, |010> and |001> and zero everywhere else, and
+      0.577350 is 1/sqrt(3) to six places. Cost: one controlled Ry plus one
+      Toffoli. Decomposing the Toffoli into six CNOTs and the controlled Ry into
+      two gives eight CNOTs.
+
+      The generalisation to n qubits is the same cascade: the k-th conditional
+      rotation uses angle 2*arcsin(1/sqrt(n-k)), giving O(n) depth and O(n)
+      two-qubit gates. If you need log depth instead, use the divide and conquer
+      Dicke-state construction, which prepares |W_n> = |D^n_1> in O(n) gates and
+      O(log n) depth at the cost of a more intricate controlled-swap network.
+    followUps:
+      - Generalise to n qubits and give the k-th rotation angle in closed form.
+      - Why can no Clifford circuit produce the W state, and how does that show up in a stabilizer simulator?
+      - Compare the entanglement of GHZ and W under loss of one qubit by computing the reduced two-qubit density matrix.
+    commonMistakes:
+      - Using theta = 2*arccos(1/sqrt(3)) instead of 2*arcsin(1/sqrt(3)), which puts weight 2/3 on the first branch and produces amplitudes 0.8165 and 0.4082.
+      - Forgetting the anti-control X sandwich, so the conditional rotation fires on the wrong branch and leaks amplitude onto |110>.
+      - Preparing the state with a measurement and post-selection, which the prompt forbids and which costs an unbounded number of repetitions.
+    references:
+      - label: PennyLane Codebook
+        url: https://pennylane.ai/codebook
+      - label: Deterministic preparation of Dicke states
+        url: https://arxiv.org/abs/1904.07358
+
+  - id: iq-003
+    title: Encode two classical bits into the four Bell states
+    kind: coding
+    prompt: |
+      Write a function bell(a, b) that takes two classical bits and returns a
+      two-qubit circuit preparing the corresponding Bell state, using the
+      standard superdense coding convention: a is the phase bit and b is the
+      parity bit. Then write the inverse circuit that recovers (a, b) by
+      measurement. State the mapping you produce explicitly in qubit-0-most-
+      significant order and prove the four outputs are mutually orthogonal.
+    difficulty: easy
+    pattern: Circuit construction from a spec
+    topics: [bell-states, superdense-coding, measurement, basis-change]
+    companies: [IBM, IonQ, Quandela, Xanadu]
+    modelAnswer: |
+      Prepare the classical bits into the register first, then entangle. Apply X
+      on qubit 1 if b is 1, X on qubit 0 if a is 1, then H on qubit 0 and
+      CX(0, 1). With qubit 0 as the most significant bit the simulator gives
+
+          a=0 b=0  ->  (|00> + |11>)/sqrt(2)      = Phi+
+          a=0 b=1  ->  (|01> + |10>)/sqrt(2)      = Psi+
+          a=1 b=0  ->  (|00> - |11>)/sqrt(2)      = Phi-
+          a=1 b=1  ->  (|01> - |10>)/sqrt(2)      = Psi-
+
+      each amplitude being 0.707107 in magnitude. So b flips the parity of the
+      two kets and a flips the relative phase, which is the standard convention.
+
+      ```python
+      from qiskit import QuantumCircuit
+
+      def bell(a: int, b: int) -> QuantumCircuit:
+          qc = QuantumCircuit(2)
+          if b: qc.x(1)
+          if a: qc.x(0)
+          qc.h(0)
+          qc.cx(0, 1)
+          return qc
+
+      def unbell() -> QuantumCircuit:
+          qc = QuantumCircuit(2, 2)
+          qc.cx(0, 1)
+          qc.h(0)
+          qc.measure([0, 1], [0, 1])   # clbit 0 reads a, clbit 1 reads b
+          return qc
+      ```
+
+      Orthogonality is immediate without any integral. Phi+ and Psi+ have
+      disjoint support in the computational basis, so their inner product is
+      zero; the same holds for Phi- and Psi-. Phi+ and Phi- share support but
+      their inner product is (1/2)(1*1 + 1*(-1)) = 0, and likewise for the Psi
+      pair. Four mutually orthogonal unit vectors in a four-dimensional space
+      form a basis, which is why superdense coding transmits exactly two bits.
+
+      The decoder is the exact inverse of the encoder because CX and H are their
+      own inverses and the sequence is reversed: CX(0, 1) then H(0). Measuring in
+      the computational basis then returns qubit 0 = a and qubit 1 = b
+      deterministically, with no sampling error in the noiseless case.
+    followUps:
+      - Where in this protocol does the entanglement have to be distributed, and why does that make superdense coding not a free doubling of channel capacity?
+      - If the shared pair has decohered into a Werner state with fidelity F, what is the probability of decoding both bits correctly?
+      - Rewrite the encoder so Alice only ever touches qubit 0.
+    commonMistakes:
+      - Applying the X gates after the Hadamard and CNOT, which produces the right set of four states but a different and undocumented bit-to-state mapping.
+      - Claiming Phi+ and Phi- are distinguishable by a computational-basis measurement. They give identical outcome statistics; the basis change is what makes them distinguishable.
+      - Writing the decoder as H then CX, mirroring the encoder rather than inverting it.
+    references:
+      - label: Watrous, Quantum computation lecture notes
+        url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+      - label: IBM Quantum Learning courses
+        url: https://quantum.cloud.ibm.com/learning/en/courses
+
+  - id: iq-004
+    title: Decompose a Toffoli into Clifford plus T and verify it
+    kind: coding
+    prompt: |
+      Your target device exposes CNOT, H, S, S-dagger, T and T-dagger only. Write
+      the Toffoli gate CCX with controls on qubits 0 and 1 and target on qubit 2
+      in that gate set, then write a test that proves your decomposition equals
+      CCX exactly rather than only on computational basis inputs. Report the CNOT
+      count, the T count and the T-depth, and explain why T count is the number
+      an error-corrected architect cares about.
+    difficulty: medium
+    pattern: Circuit construction from a spec
+    topics: [clifford-t, toffoli, gate-synthesis, t-count]
+    companies: [IBM, Microsoft Azure Quantum, PsiQuantum, Quantinuum]
+    modelAnswer: |
+      The canonical decomposition is figure 4.9 of Nielsen and Chuang: six CNOTs
+      and seven T-type gates, with T-depth 4 in the natural ordering.
+
+      ```python
+      from qiskit import QuantumCircuit
+
+      def toffoli_ct() -> QuantumCircuit:
+          qc = QuantumCircuit(3)
+          c1, c2, t = 0, 1, 2
+          qc.h(t)
+          qc.cx(c2, t); qc.tdg(t)
+          qc.cx(c1, t); qc.t(t)
+          qc.cx(c2, t); qc.tdg(t)
+          qc.cx(c1, t); qc.t(c2); qc.t(t)
+          qc.h(t)
+          qc.cx(c1, c2); qc.t(c1); qc.tdg(c2)
+          qc.cx(c1, c2)
+          return qc
+      ```
+
+      Counts: 6 CNOT, 7 gates from {T, T-dagger}, 2 Hadamards. Simulated as a
+      full 8x8 unitary and compared elementwise against CCX, the maximum absolute
+      difference is 3.1e-16, which is floating-point noise, so the decomposition
+      is exact including phases.
+
+      Testing on basis states alone is not enough. CCX is a permutation matrix,
+      and a circuit can permute all eight basis states correctly while attaching
+      wrong relative phases, which is invisible until the gate is used inside a
+      superposition. The correct test builds the unitary column by column, by
+      running the circuit on each of the eight basis states and stacking the
+      output vectors, then comparing to CCX with a tolerance around 1e-10. If you
+      want to allow an unobservable global phase, first divide by the phase of
+      the largest-magnitude entry of the product V-dagger U and then compare to
+      the identity.
+
+      Why T count and not total gate count: in a surface-code architecture the
+      Clifford gates are cheap, since CNOT is lattice surgery or braiding and H
+      and S are essentially free frame changes. Non-Clifford T gates need magic
+      state distillation, and a distillery dominates both the qubit footprint and
+      the wall-clock time of a fault-tolerant computation. T count and T depth
+      are therefore the currency of fault-tolerant resource estimates, and a
+      decomposition with 12 CNOTs and 4 T gates would beat this one on a
+      corrected machine while losing on a NISQ device.
+    followUps:
+      - There is a Toffoli variant with T-count 4 that uses one ancilla. When is trading a qubit for three T gates worth it?
+      - How does the count change if you only need the Toffoli up to relative phase, as inside a compute-uncompute pair?
+      - Give the Solovay-Kitaev cost of approximating an arbitrary single-qubit rotation in this gate set.
+    commonMistakes:
+      - Testing only on computational basis states, which cannot detect a wrong relative phase in a permutation-like gate.
+      - Reporting T-depth as equal to T-count. Here the count is 7 but several T gates act on different qubits and can share a layer.
+      - Counting H and S towards the fault-tolerant cost. They are Clifford and are not what the distillation factory pays for.
+    references:
+      - label: Barenco et al., Elementary gates for quantum computation
+        url: https://arxiv.org/abs/quant-ph/9503016
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+
+  - id: iq-005
+    title: Implement the quantum Fourier transform and count its gates
+    kind: coding
+    prompt: |
+      Implement the n-qubit quantum Fourier transform so that on basis state |x>
+      it produces (1/sqrt(2^n)) * sum over k of exp(2*pi*i*x*k/2^n) |k>, with
+      qubit 0 as the most significant bit of both x and k. Give the exact count
+      of Hadamards, controlled-phase gates and SWAPs as a function of n. Then
+      describe the approximate QFT and quantify the error you incur by dropping
+      rotations smaller than a threshold.
+    difficulty: medium
+    pattern: Circuit construction from a spec
+    topics: [qft, phase-gates, gate-counting, approximate-qft]
+    companies: [IBM, Google Quantum AI, Quantinuum, Microsoft Azure Quantum]
+    modelAnswer: |
+      The product form is the whole algorithm. QFT|x> factorises into a tensor
+      product of single-qubit states whose phases are the binary expansion of x,
+      so the circuit is: for each qubit j in order, apply H(j), then for every
+      later qubit k > j apply a controlled phase of angle pi/2^(k-j) with control
+      k and target j. Finally reverse the register with floor(n/2) SWAPs, because
+      the product form emits the output bits in reverse order.
+
+      ```python
+      import numpy as np
+      from qiskit import QuantumCircuit
+
+      def qft(n: int) -> QuantumCircuit:
+          qc = QuantumCircuit(n)
+          for j in range(n):
+              qc.h(j)
+              for k in range(j + 1, n):
+                  qc.cp(np.pi / 2 ** (k - j), k, j)
+          for j in range(n // 2):
+              qc.swap(j, n - 1 - j)
+          return qc
+      ```
+
+      Counts: n Hadamards, n(n-1)/2 controlled-phase gates and floor(n/2) SWAPs,
+      so n + n(n-1)/2 + floor(n/2) primitives in total. For n = 3 that is
+      3 + 3 + 1 = 7 gates; for n = 5 it is 5 + 10 + 2 = 17. Depth is O(n) if you
+      schedule the phase gates greedily, since gates on disjoint pairs commute.
+
+      Verification: run it on |101>, which is x = 5 with qubit 0 as the most
+      significant bit. The output amplitudes match exp(2*pi*i*5*k/8)/sqrt(8) for
+      k = 0..7 with maximum error 9.3e-16.
+
+      The approximate QFT drops every controlled phase with k - j > m, that is,
+      every rotation with angle below pi/2^m. The gate count falls from
+      O(n^2) to O(n*m). Coppersmith's bound gives an operator-norm error of order
+      n * 2^(-m) for the whole transform, so choosing m = O(log(n/epsilon))
+      keeps total error below epsilon and gives an O(n log n) circuit. This
+      matters in practice because on real hardware a controlled phase of
+      pi/2^20 is far smaller than the calibration error of the gate that
+      implements it, so keeping it adds noise and no signal.
+    followUps:
+      - Where do the final SWAPs go if the next stage of your algorithm can simply read the register in reverse order?
+      - Derive the approximate QFT error bound and pick m for n = 2048 and epsilon = 1e-3.
+      - How would you implement the QFT on a line coupling map without paying O(n^2) SWAPs?
+    commonMistakes:
+      - Using angle 2*pi/2^(k-j) instead of pi/2^(k-j), which doubles every rotation and produces a transform that is correct only for n = 1.
+      - Omitting the terminal SWAP layer and then reporting output bit strings in the wrong order.
+      - Claiming the QFT gives an exponential speedup on its own. It computes amplitudes you cannot read out; the speedup lives in phase estimation and its relatives.
+    references:
+      - label: Watrous, Quantum computation lecture notes
+        url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+
+  - id: iq-006
+    title: Exponentiate an arbitrary Pauli string
+    kind: coding
+    prompt: |
+      Given a Pauli string P over n qubits, for example Z on qubit 0 tensored
+      with X on qubit 1 tensored with Y on qubit 3 and identity elsewhere, and an
+      angle theta, build a circuit implementing exp(-i*theta*P/2). Use only
+      single-qubit Cliffords, Rz and CNOT. State the CNOT count as a function of
+      the Pauli weight w, and explain why the construction fails if you include
+      identity factors in the CNOT ladder.
+    difficulty: medium
+    pattern: Circuit construction from a spec
+    topics: [pauli-exponential, trotterisation, cnot-ladder, basis-change]
+    companies: [IBM, Google Quantum AI, Quantinuum, Rigetti]
+    modelAnswer: |
+      Three moves. First rotate each non-identity factor into the Z basis: H
+      maps X to Z, and the sequence S-dagger then H maps Y to Z. Second, compute
+      the parity of the w active qubits into one of them with a CNOT ladder.
+      Third, apply Rz(theta) on the parity qubit, then undo the ladder and the
+      basis change.
+
+      This works because a Pauli string with weight w is, after the basis
+      changes, Z tensored w times on the active qubits, whose eigenvalue on a
+      basis state is (-1) to the power of the parity of those bits. A CNOT ladder
+      writes that parity into the last active qubit, so a single Rz there applies
+      exactly the phase exp(-i*theta/2) or exp(+i*theta/2) according to parity,
+      which is what exp(-i*theta*P/2) does.
+
+      ```python
+      import numpy as np
+      from qiskit import QuantumCircuit
+
+      def pauli_exp(n: int, pauli: str, theta: float) -> QuantumCircuit:
+          # pauli[q] in "IXYZ", index q is qubit q, qubit 0 is the most significant bit
+          qc = QuantumCircuit(n)
+          active = [q for q, p in enumerate(pauli) if p != "I"]
+          if not active:
+              return qc
+          for q in active:
+              if pauli[q] == "X": qc.h(q)
+              elif pauli[q] == "Y": qc.sdg(q); qc.h(q)
+          for a, b in zip(active, active[1:]):
+              qc.cx(a, b)
+          qc.rz(theta, active[-1])
+          for a, b in reversed(list(zip(active, active[1:]))):
+              qc.cx(a, b)
+          for q in active:
+              if pauli[q] == "X": qc.h(q)
+              elif pauli[q] == "Y": qc.h(q); qc.s(q)
+          return qc
+      ```
+
+      CNOT count is 2(w-1), and depth is O(w) for the linear ladder or
+      O(log w) if you build a balanced parity tree instead, at the same gate
+      count. Verified for P = Z on qubit 0 tensored with X on qubit 1 and
+      theta = 0.7: the assembled 4x4 unitary matches
+      cos(theta/2)*I - i*sin(theta/2)*(Z tensor X) to 2.2e-16.
+
+      Including identity factors in the ladder is the classic bug. A CNOT
+      through a qubit where P acts as identity folds that qubit's value into the
+      parity, so the circuit implements exp(-i*theta*P'/2) for a different, higher
+      weight Pauli P'. The result still looks like a plausible rotation, and unit
+      tests on product states with that qubit in |0> pass, which is why it
+      survives review.
+    followUps:
+      - Rewrite the ladder as a balanced tree and say what it costs on a line coupling map.
+      - Two Pauli strings in a Trotter step share a CNOT ladder prefix. How do you exploit that, and how much does it save for a chemistry Hamiltonian?
+      - Why does the sign convention of Rz matter here, and how would you catch a sign error with one test?
+    commonMistakes:
+      - Running the CNOT ladder over all n qubits rather than only the w qubits where the Pauli is not identity, which silently implements a different operator.
+      - Using H then S to undo the Y basis change instead of H then S. The undo must invert S-dagger then H in reverse order, so it is H then S.
+      - Applying Rz(theta/2) because the target is exp(-i*theta*P/2). Qiskit's Rz(phi) already equals exp(-i*phi*Z/2), so the correct argument is theta.
+    references:
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+
+  - id: iq-007
+    title: Route a two-qubit gate onto a line coupling map
+    kind: coding
+    prompt: |
+      A device has qubits 0..n-1 connected in a line: two-qubit gates are allowed
+      only between neighbours i and i+1. Given a logical CX between qubits a and
+      b with |a - b| = d > 1, produce a hardware-legal circuit. Give two
+      solutions, one that inserts SWAPs and one that does not, compare their
+      two-qubit gate counts and depths, and say which you would ship and why.
+    difficulty: medium
+    pattern: Circuit construction from a spec
+    topics: [routing, coupling-map, swap-insertion, transpilation]
+    companies: [IBM, Rigetti, Google Quantum AI, Q-CTRL]
+    modelAnswer: |
+      Solution 1, SWAP routing. Walk qubit a along the line until it is adjacent
+      to b, apply the CX, then walk it back. That is d-1 SWAPs out, one CX, and
+      d-1 SWAPs back. Each SWAP is three CNOTs, so the cost is 6(d-1) + 1 CNOTs
+      and depth of the same order. If the logical qubit does not need to return
+      to its original wire, drop the return leg and update the permutation in the
+      compiler's layout instead: 3(d-1) + 1 CNOTs. This is the trick every real
+      transpiler uses, and it is why routing is a permutation-tracking problem
+      rather than a gate-insertion problem.
+
+      Solution 2, CNOT ladder without SWAPs. A CX between the endpoints of a
+      chain can be built from nearest-neighbour CNOTs alone:
+
+          for i in a .. b-2:      CX(i, i+1)   descending from b-1 down to a
+          ... mirrored structure ...
+
+      Concretely, the standard identity uses 4(d-1) - 2 nearest-neighbour CNOTs
+      for a distance-d CX and no SWAPs at all. For d = 2 that is 6 CNOTs versus
+      6(d-1) + 1 = 7 for the round-trip SWAP version, and 4 versus 4 for the
+      one-way version.
+
+      ```python
+      from qiskit import QuantumCircuit, transpile
+      from qiskit.transpiler import CouplingMap
+
+      n, a, b = 6, 0, 5
+      qc = QuantumCircuit(n); qc.cx(a, b)
+      line = CouplingMap.from_line(n)
+      out = transpile(qc, coupling_map=line, basis_gates=["cx", "rz", "sx", "x"],
+                      optimization_level=3)
+      print(out.count_ops(), out.depth())
+      ```
+
+      What I would ship: never hand-route. Express the intent, hand the coupling
+      map to the transpiler and let SABRE-style routing pick the layout, because
+      the real objective is the global two-qubit count across the whole circuit,
+      not one gate in isolation. A hand-optimal route for one CX routinely makes
+      the next twenty gates worse. Hand routing is justified only for a small
+      hot inner loop that you then verify against the transpiler's output.
+
+      One more consideration: SWAP routing moves the logical state through more
+      physical qubits, so it accumulates decoherence on more sites, while the
+      ladder keeps the data local but has a longer critical path. On hardware
+      with a poor SWAP fidelity the ladder usually wins; on hardware with idle
+      dephasing dominating, the shorter-depth option wins.
+    followUps:
+      - Give the analogous construction for a CZ, and explain why CZ is easier to route than CX.
+      - How does the answer change on a heavy-hex lattice where the degree-2 qubits are the entangling bus?
+      - Sketch how SABRE scores a candidate SWAP and why it uses a lookahead window.
+    commonMistakes:
+      - Paying for the return SWAPs when the compiler could simply carry the permutation to the end of the circuit and relabel the measurements.
+      - Counting a SWAP as one two-qubit gate. On most superconducting hardware it is three CNOTs, so three times the error.
+      - Assuming the shortest path in the coupling graph is the cheapest route, ignoring per-edge calibrated error rates.
+    references:
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+      - label: qBraid documentation
+        url: https://docs.qbraid.com/
+
+  - id: iq-008
+    title: Build a uniformly controlled Ry multiplexer
+    kind: coding
+    prompt: |
+      Implement a uniformly controlled rotation: given k control qubits and a
+      list of 2^k angles, apply Ry(theta_j) to the target qubit when the control
+      register reads j. You may not use multi-controlled gates. Achieve exactly
+      2^k CNOTs and 2^k single-qubit rotations, derive the angle transform you
+      need, and explain the role of the Gray code.
+    difficulty: hard
+    pattern: Circuit construction from a spec
+    topics: [multiplexer, uniformly-controlled-rotation, gray-code, walsh-hadamard]
+    companies: [IBM, Classiq, Quantinuum, Microsoft Azure Quantum]
+    modelAnswer: |
+      The k = 1 case shows the whole idea. We want Ry(a) when the control is 0
+      and Ry(b) when it is 1. Take
+
+          Ry((a+b)/2) . CX . Ry((a-b)/2) . CX
+
+      reading right to left. When the control is 0 the CNOTs do nothing and the
+      two rotations compose to Ry((a+b)/2 + (a-b)/2) = Ry(a). When the control is
+      1, the first CX flips the target, and X Ry(t) X = Ry(-t), so the composite
+      is Ry((a+b)/2 - (a-b)/2) = Ry(b). Verified numerically for a = 0.9,
+      b = -1.7: the assembled 4x4 matrix is block diagonal with Ry(0.9) and
+      Ry(-1.7) to 1.1e-16.
+
+      For general k the same algebra generalises. Because X Ry(t) X = Ry(-t), the
+      circuit CX-interleaved rotations apply the angle sum
+      sum_i (-1)^(sign pattern) * phi_i, and the sign pattern is exactly the
+      Walsh-Hadamard sign structure. So the rotation angles you must program are
+
+          phi = (1 / 2^k) * M * theta
+
+      where M is the 2^k by 2^k matrix with entries (-1) raised to the bitwise
+      inner product of the Gray-code index and the binary index. That is one
+      Walsh-Hadamard transform of the angle vector, computable in O(2^k * k)
+      classical time.
+
+      The Gray code decides which control qubit each CNOT takes. Placing the
+      i-th CNOT's control on the bit that changes between Gray-code word i and
+      word i+1 makes consecutive CNOTs cancel the accumulated parity with a
+      single gate rather than several, which is what pins the count at exactly
+      2^k CNOTs instead of O(k * 2^k).
+
+      ```python
+      import numpy as np
+      from qiskit import QuantumCircuit
+
+      def ucry(thetas, controls, target, k):
+          n = k + 1
+          qc = QuantumCircuit(n)
+          M = np.array([[(-1) ** (bin((i ^ (i >> 1)) & j).count("1"))
+                         for j in range(2 ** k)] for i in range(2 ** k)])
+          phi = M @ np.asarray(thetas) / 2 ** k
+          for i in range(2 ** k):
+              qc.ry(phi[i], target)
+              ctrl = (i + 1).bit_length() - 1 if i < 2 ** k - 1 else k - 1
+              qc.cx(controls[ctrl], target)
+          return qc
+      ```
+
+      Cost: 2^k CNOTs and 2^k rotations, which is optimal for a generic angle
+      vector by a dimension count, since 2^k independent real parameters must be
+      encoded. This primitive is the workhorse of Möttönen state preparation and
+      of the Shende-Bullock-Markov quantum Shannon decomposition, where a general
+      n-qubit unitary is recursively split into multiplexers.
+    followUps:
+      - Adapt the construction to uniformly controlled Rz and say what changes.
+      - The last CNOT in the chain can often be cancelled against the next block. Show when that is legal.
+      - How does the quantum Shannon decomposition use this to reach the (23/48)*4^n CNOT bound for a general n-qubit unitary?
+    commonMistakes:
+      - Applying the raw angles theta directly instead of their Walsh-Hadamard transform, which gives the correct gate structure and the wrong rotations.
+      - Using a plain binary counter for the CNOT controls instead of the Gray code, which needs more CNOTs to fix the parity and breaks the 2^k count.
+      - Dropping the final CNOT that closes the parity loop back onto the most significant control, which leaves the target entangled with the control register instead of cleanly multiplexed.
+    references:
+      - label: Möttönen et al., Transformation of quantum states using uniformly controlled rotations
+        url: https://arxiv.org/abs/quant-ph/0407010
+      - label: Shende, Bullock and Markov, Synthesis of quantum logic circuits
+        url: https://arxiv.org/abs/quant-ph/0406176
+
+  - id: iq-009
+    title: Implement a multi-controlled X and justify the ancilla trade
+    kind: coding
+    prompt: |
+      Implement an m-controlled X gate for m up to 12. Give two implementations:
+      one that uses m-2 clean ancilla qubits initialised to |0>, and one that
+      uses no ancillas at all. Report the Toffoli or CNOT count of each as a
+      function of m, prove the ancillas are returned to |0>, and say which you
+      would use inside a Grover oracle that runs a few thousand iterations.
+    difficulty: hard
+    pattern: Circuit construction from a spec
+    topics: [multi-controlled-gates, ancillas, uncomputation, grover-oracle]
+    companies: [IBM, Quantinuum, Microsoft Azure Quantum, Classiq]
+    modelAnswer: |
+      With clean ancillas the construction is a V-chain, an AND tree computed
+      then uncomputed. Compute the conjunction of controls 0 and 1 into ancilla
+      a0, then fold in control 2 to get a1, and so on, until the last ancilla
+      holds the AND of the first m-1 controls; one final Toffoli with the last
+      control and that ancilla hits the target. Then run the whole tree backwards
+      to clear the ancillas.
+
+      ```python
+      from qiskit import QuantumCircuit
+
+      def mcx_vchain(m: int) -> QuantumCircuit:
+          # qubits 0..m-1 controls, m target, m+1 .. 2m-2 ancillas
+          n = 2 * m - 1
+          qc = QuantumCircuit(n)
+          anc = list(range(m + 1, n))
+          qc.ccx(0, 1, anc[0])
+          for i in range(2, m - 1):
+              qc.ccx(i, anc[i - 2], anc[i - 1])
+          qc.ccx(m - 1, anc[-1], m)
+          for i in reversed(range(2, m - 1)):
+              qc.ccx(i, anc[i - 2], anc[i - 1])
+          qc.ccx(0, 1, anc[0])
+          return qc
+      ```
+
+      Toffoli count: m-1 to compute, m-2 to uncompute, so 2m-3 in total, and the
+      qubit cost is m-2 ancillas. Verified exhaustively for m = 4 over all 32
+      input assignments of the four controls and the target: the target flips
+      exactly when all four controls are 1, and both ancillas return to |0>.
+      That last part is the whole point. The uncompute is not tidiness. If an
+      ancilla is left entangled with the controls, the register is effectively
+      measured, the branch amplitudes decohere, and any interference the caller
+      depended on is destroyed.
+
+      Without ancillas, the Barenco et al. construction recurses and costs
+      O(m^2) elementary gates: their Corollary 7.6 gives an m-controlled X in
+      O(m^2) basic gates on m+1 qubits with no workspace. If a single borrowed
+      dirty ancilla is available, that drops to 4(m-2) Toffolis, and the borrowed
+      qubit can be any qubit in the machine in any state, since the construction
+      restores it.
+
+      Which one inside a Grover oracle: use the ancilla version. Grover repeats
+      the oracle O(sqrt(N)) times, so the oracle's depth is multiplied by
+      thousands, and 2m-3 Toffolis at linear depth beats O(m^2) at every m above
+      about 5. Ancillas are the cheap resource in a width-rich, depth-poor
+      machine. On a device where qubits are the binding constraint, or inside a
+      fault-tolerant budget where each logical qubit costs a full patch, revisit
+      the trade and prefer the borrowed-ancilla version, which needs one spare
+      qubit rather than m-2.
+    followUps:
+      - Show how to build the ancilla-free version from the Barenco recursion and count the gates for m = 8.
+      - A relative-phase Toffoli is cheaper. When is it a safe substitute inside a compute-uncompute pair?
+      - What is the T count of the V-chain, and how would you reduce it with measurement-based uncomputation?
+    commonMistakes:
+      - Skipping the uncompute step, which leaves ancillas entangled with the controls and silently kills the interference the surrounding algorithm depends on.
+      - Assuming a dirty borrowed ancilla can be treated like a clean one. The construction differs, and using the clean-ancilla circuit on a dirty qubit corrupts it.
+      - Quoting 2m-3 as the gate count in a hardware basis. It is 2m-3 Toffolis, each of which is six CNOTs plus seven T gates.
+    references:
+      - label: Barenco et al., Elementary gates for quantum computation
+        url: https://arxiv.org/abs/quant-ph/9503016
+      - label: Microsoft Quantum Katas
+        url: https://github.com/microsoft/QuantumKatas
+
+  - id: iq-010
+    title: Prepare a uniform superposition over M basis states when M is not a power of two
+    kind: coding
+    prompt: |
+      Given M with 2 <= M < 2^n, prepare (1/sqrt(M)) * sum over j from 0 to M-1
+      of |j> on n qubits, where |j> is the n-bit binary expansion with qubit 0 as
+      the most significant bit. Amplitude amplification and post-selection are
+      forbidden, the circuit must be deterministic, and it must use O(log M)
+      gates rather than O(M). Show your construction on M = 3 with n = 2 and
+      M = 6 with n = 3, with numerical amplitudes.
+    difficulty: hard
+    pattern: Circuit construction from a spec
+    topics: [state-preparation, uniform-superposition, controlled-rotations, binary-expansion]
+    companies: [IBM, Classiq, Quantinuum, Multiverse Computing]
+    modelAnswer: |
+      Read the binary expansion of M and split the range recursively. Write
+      M = 2^(k_1) + 2^(k_2) + ... with k_1 > k_2 > ..., the set bits of M from
+      most significant down. Each set bit corresponds to a contiguous block of
+      basis states whose top bits are fixed and whose remaining k_i bits are
+      free, and the free bits get plain Hadamards. The only work is splitting the
+      amplitude between the blocks in the right ratio.
+
+      Concretely for M = 3, n = 2: block A is j in {0, 1}, which is qubit 0 equal
+      to 0 with qubit 1 free, and block B is j = 2, which is qubit 0 equal to 1
+      with qubit 1 pinned to 0. We need P(qubit 0 = 1) = 1/3, so apply
+      Ry(2*arcsin(1/sqrt(3))) to qubit 0, that is Ry(1.230959), then apply a
+      Hadamard to qubit 1 controlled on qubit 0 being 0. Simulated, this gives
+      amplitude 0.577350 on each of |00>, |01> and |10> and zero on |11>, and
+      0.577350 is 1/sqrt(3).
+
+      For M = 6, n = 3: 6 is binary 110, so block A is j in {0..3}, qubit 0 equal
+      to 0 with qubits 1 and 2 free, and block B is j in {4, 5}, qubit 0 equal to
+      1, qubit 1 pinned to 0, qubit 2 free. We need P(qubit 0 = 1) = 2/6 = 1/3,
+      the same Ry(1.230959), then H on qubit 1 anti-controlled on qubit 0, then
+      an unconditional H on qubit 2 because that bit is free in both blocks.
+
+      ```python
+      import numpy as np
+      from qiskit import QuantumCircuit
+
+      def uniform_M6() -> QuantumCircuit:
+          qc = QuantumCircuit(3)
+          qc.ry(2 * np.arcsin(1 / np.sqrt(3)), 0)
+          qc.x(0); qc.ch(0, 1); qc.x(0)
+          qc.h(2)
+          return qc
+      ```
+
+      Simulated, all six of |000>, |001>, |010>, |011>, |100>, |101> carry
+      amplitude 0.408248, which is 1/sqrt(6) to six places, and |110> and |111>
+      are exactly zero.
+
+      Cost: at most one controlled rotation and one controlled Hadamard per set
+      bit of M, so O(popcount(M)) = O(log M) gates and O(log M) depth, against
+      the O(M) or O(2^n) cost of naive amplitude loading. The k-th split angle is
+      2*arcsin(sqrt(r_k / R_k)) where R_k is the number of states still
+      unassigned at that level and r_k is the number going into the branch you
+      are opening.
+
+      The forbidden alternatives are worth naming. Preparing the full uniform
+      superposition over 2^n states and amplitude-amplifying onto j < M costs
+      O(sqrt(2^n / M)) rounds of a comparator oracle, which is both slower and
+      probabilistic. Post-selecting on a comparison is simpler to write and
+      throws away a 1 - M/2^n fraction of shots.
+    followUps:
+      - Give the general recursive algorithm for arbitrary M and prove the gate count is O(popcount(M)).
+      - How does this change if you need a uniform superposition over an arbitrary set of M basis states rather than the first M integers?
+      - Compare against the comparator plus amplitude amplification route for M = 1000 and n = 10.
+    commonMistakes:
+      - Splitting the amplitude by the ratio of block widths in bits rather than by the ratio of the number of states, which gives the wrong angle whenever the blocks differ in size.
+      - Applying the branch Hadamard without the anti-control, which leaks amplitude onto basis states j >= M.
+      - Falling back to post-selection on j < M, which the prompt forbids and which discards a large fraction of shots when M is just above a power of two.
+    references:
+      - label: Shukla and Vedula, An efficient quantum algorithm for preparation of uniform quantum superposition states
+        url: https://arxiv.org/abs/2306.11747
+      - label: PennyLane Codebook
+        url: https://pennylane.ai/codebook

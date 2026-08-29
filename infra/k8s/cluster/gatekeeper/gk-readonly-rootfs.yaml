@@ -1,0 +1,48 @@
+# OPA Gatekeeper equivalent of kyverno/require-readonly-rootfs.yaml.
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sreadonlyrootfilesystem
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sReadOnlyRootFilesystem
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            exemptNamespaces:
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sreadonlyrootfilesystem
+
+        violation[{"msg": msg, "details": {"container": container.name}}] {
+          not is_exempt_namespace
+          container := input.review.object.spec.containers[_]
+          container.securityContext.readOnlyRootFilesystem != true
+          msg := sprintf("Container %v must set securityContext.readOnlyRootFilesystem: true", [container.name])
+        }
+
+        is_exempt_namespace {
+          ns := input.review.object.metadata.namespace
+          exempt := input.parameters.exemptNamespaces[_]
+          ns == exempt
+        }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sReadOnlyRootFilesystem
+metadata:
+  name: require-readonly-rootfs
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+  parameters:
+    exemptNamespaces:
+      - kube-system

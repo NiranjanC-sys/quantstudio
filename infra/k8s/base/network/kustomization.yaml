@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: redquant
+      app.kubernetes.io/component: network
+    includeSelectors: false
+
+resources:
+  - netpol-default-deny.yaml
+  - netpol-dns.yaml
+  - netpol-sandbox-runner.yaml
+  - netpol-kernel.yaml
+  - netpol-web.yaml
+  - netpol-api.yaml
+  - netpol-grader.yaml
+  - netpol-ai-tutor.yaml
+  - netpol-data.yaml

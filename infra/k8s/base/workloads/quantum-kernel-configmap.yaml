@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: quantum-kernel-config
+  labels:
+    app.kubernetes.io/name: quantum-kernel
+    app.kubernetes.io/component: quantum-kernel
+data:
+  LOG_LEVEL: "info"
+  NODE_ENV: "production"
+  # --- SPEC.md section 4: simulation tier boundaries ---
+  SIM_TIER_A_MAX_QUBITS: "14"
+  SIM_TIER_B_MIN_QUBITS: "15"
+  SIM_TIER_B_MAX_QUBITS: "30"
+  SIM_TIER_B_LATENCY_BUDGET_MS: "900"
+  SIM_TIER_C_MIN_QUBITS: "31"
+  SIM_TIER_C_MAX_QUBITS: "40"
+  SIM_DENSITY_MATRIX_MAX_QUBITS: "14"
+  SIM_CACHE_TTL_SECONDS: "86400"
+  # --- SPEC.md section 7: per-plan qubit caps ---
+  PLAN_FREE_MAX_QUBITS: "16"
+  PLAN_PRO_MAX_QUBITS: "28"
+  PLAN_TEAMS_MAX_QUBITS: "30"
+  PLAN_CAMPUS_MAX_QUBITS: "32"
+  PLAN_FREE_NOISY_ENABLED: "false"
+  PLAN_PRO_NOISY_MAX_QUBITS: "12"
+  PLAN_TEAMS_NOISY_MAX_QUBITS: "14"
+  PLAN_CAMPUS_NOISY_MAX_QUBITS: "14"
+  # --- SPEC.md section 9: degradation ladder flags ---
+  DEGRADE_SIM_ASYNC: "false"
+  DEGRADE_SIM_MAX_QUBITS: "22"
+  DEGRADE_SIM_MAX_QUBITS_ENABLED: "false"

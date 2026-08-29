@@ -1,0 +1,55 @@
+# ai-tutor (§3/§7/§12): prompt assembly, RAG, streaming, cost control. Ingress from
+# api only (api hosts the tutor entrypoint's public-facing route, per SPEC). Egress is
+# the narrowest of any service that talks off-cluster: HTTPS to the Claude API, plus
+# Redis for per-user token-budget counters and the retrieval cache.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ai-tutor-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ai-tutor
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: api
+      ports:
+        - protocol: TCP
+          port: 3002
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9464
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis-cluster
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+    # Anthropic Claude API. No DNS-based egress allowlisting is expressed here since
+    # NetworkPolicy only supports IP blocks; this ipBlock+443 restriction is the
+    # cluster-network layer, paired with an application-layer allowlist of the Claude
+    # API host in the ai-tutor service config.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443

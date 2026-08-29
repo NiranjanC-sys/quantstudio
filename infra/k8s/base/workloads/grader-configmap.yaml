@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grader-config
+  labels:
+    app.kubernetes.io/name: grader
+    app.kubernetes.io/component: grader
+data:
+  LOG_LEVEL: "info"
+  NODE_ENV: "production"

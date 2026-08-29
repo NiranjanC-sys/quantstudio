@@ -1,0 +1,229 @@
+# Redis Cluster: 6 shards, AZ-aware, cluster-enabled, AOF everysec (§5).
+#
+# 6-shard maths: each shard is 1 primary + 1 replica => 2 pods/shard * 6 shards = 12
+# StatefulSet replicas (`--cluster-replicas 1` below). 16,384 hash slots / 6 shards
+# ~= 2,731 slots/shard. maxmemory 8gb * 6 primaries = 48 GiB of addressable cache,
+# matching the §12 cost line ("Redis cluster (6 shards, 48 GiB)"). Serves leaderboards
+# (lb:{contest_id}), the simulation cache (sim:{hash}), rate-limit buckets (rl:{bucket}),
+# sessions (sess:{sid}), presence HLLs (presence:{lesson_id}) and contest/user pub/sub.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-cluster-config
+data:
+  redis.conf: |
+    cluster-enabled yes
+    cluster-config-file /data/nodes.conf
+    cluster-node-timeout 5000
+    cluster-require-full-coverage no
+    appendonly yes
+    appendfsync everysec
+    aof-use-rdb-preamble yes
+    maxmemory 8gb
+    maxmemory-policy allkeys-lru
+    dir /data
+    protected-mode no
+    port 6379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cluster
+  labels:
+    app.kubernetes.io/name: redis-cluster
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: redis-cluster
+  ports:
+    - name: client
+      port: 6379
+      targetPort: 6379
+    - name: bus
+      port: 16379
+      targetPort: 16379
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: redis-cluster
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis-cluster
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-cluster
+  labels:
+    app.kubernetes.io/name: redis-cluster
+spec:
+  serviceName: redis-cluster
+  replicas: 12  # 6 shards x (1 primary + 1 replica) -- see maths comment above
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis-cluster
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis-cluster
+    spec:
+      priorityClassName: redquant-standard
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis-cluster
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis-cluster
+      containers:
+        - name: redis
+          image: redis:7.4-alpine
+          command:
+            - redis-server
+            - /etc/redis/redis.conf
+            - "--requirepass"
+            - "$(REDIS_PASSWORD)"
+            - "--masterauth"
+            - "$(REDIS_PASSWORD)"
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redquant-redis-credentials
+                  key: redis-password
+          ports:
+            - name: client
+              containerPort: 6379
+            - name: bus
+              containerPort: 16379
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 9Gi
+            limits:
+              cpu: "2"
+              memory: 9Gi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /etc/redis
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "-a", "$(REDIS_PASSWORD)", "--no-auth-warning", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "-a", "$(REDIS_PASSWORD)", "--no-auth-warning", "ping"]
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      volumes:
+        - name: config
+          configMap:
+            name: redis-cluster-config
+        - name: tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: gp3-ssd
+        resources:
+          requests:
+            # Independent of the 8gb in-memory maxmemory ceiling: sized for the AOF
+            # (appendonly) log plus headroom for rewrites.
+            storage: 20Gi
+---
+# One-shot cluster formation job. Runs once against the 12 StatefulSet pods (already
+# addressable via the headless Service's stable DNS names) to slot-allocate the 6
+# shards and assign each primary exactly 1 replica (--cluster-replicas 1).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redis-cluster-init
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis-cluster-init
+    spec:
+      priorityClassName: redquant-standard
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: cluster-init
+          image: redis:7.4-alpine
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redquant-redis-credentials
+                  key: redis-password
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              # Wait for all 12 ordinals to answer PING before attempting cluster create.
+              for i in $(seq 0 11); do
+                host="redis-cluster-${i}.redis-cluster.${POD_NAMESPACE}.svc.cluster.local"
+                until redis-cli -a "$REDIS_PASSWORD" --no-auth-warning -h "$host" -p 6379 ping >/dev/null 2>&1; do
+                  echo "waiting for ${host}..."
+                  sleep 3
+                done
+              done
+              # Idempotent: if the cluster is already formed, skip creation.
+              seed="redis-cluster-0.redis-cluster.${POD_NAMESPACE}.svc.cluster.local"
+              if redis-cli -a "$REDIS_PASSWORD" --no-auth-warning -h "$seed" -p 6379 cluster info \
+                  | grep -q "cluster_state:ok"; then
+                echo "cluster already formed"
+                exit 0
+              fi
+              nodes=""
+              for i in $(seq 0 11); do
+                nodes="${nodes} redis-cluster-${i}.redis-cluster.${POD_NAMESPACE}.svc.cluster.local:6379"
+              done
+              # 6 shards x 1 replica each = 12 nodes total, 6 primaries / 6 replicas.
+              yes yes | redis-cli -a "$REDIS_PASSWORD" --no-auth-warning --cluster create ${nodes} --cluster-replicas 1

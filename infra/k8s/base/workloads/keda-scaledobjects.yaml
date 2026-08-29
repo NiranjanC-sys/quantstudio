@@ -1,0 +1,101 @@
+# KEDA autoscaling for queue/metric-driven workers (SPEC.md §1, §4, §6).
+# NOTE: the `redis-secrets` Secret referenced below is materialised by the
+# Redis ExternalSecret owned by the other agent in infra/k8s/base/data/.
+# We only reference its produced Secret name/key here; we do not create it.
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: redis-trigger-auth
+  labels:
+    app.kubernetes.io/component: keda
+spec:
+  secretTargetRef:
+    - parameter: password
+      name: redis-secrets
+      key: password
+---
+# grader: scale on BullMQ `grade` queue depth (SPEC.md §6 write path).
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: grader
+  labels:
+    app.kubernetes.io/name: grader
+    app.kubernetes.io/component: grader
+spec:
+  scaleTargetRef:
+    name: grader
+  minReplicaCount: 8
+  maxReplicaCount: 40
+  cooldownPeriod: 120
+  pollingInterval: 15
+  triggers:
+    - type: redis
+      metadata:
+        listName: "bull:grade:wait"
+        listLength: "5"
+        activationListLength: "0"
+        host: "redis:6379"
+        enableTLS: "false"
+        databaseIndex: "0"
+      authenticationRef:
+        name: redis-trigger-auth
+---
+# quantum-kernel-heavy: T-C async tier, scale from zero on the queue-depth
+# domain metric (SPEC.md §11 domain metrics).
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: quantum-kernel-heavy
+  labels:
+    app.kubernetes.io/name: quantum-kernel-heavy
+    app.kubernetes.io/component: quantum-kernel-heavy
+spec:
+  scaleTargetRef:
+    name: quantum-kernel-heavy
+  minReplicaCount: 0
+  maxReplicaCount: 12
+  cooldownPeriod: 300
+  pollingInterval: 15
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: "http://prometheus:9090"
+        metricName: sim_queue_depth
+        query: "sum(sim_queue_depth{tier=\"T-C\"})"
+        threshold: "1"
+        activationThreshold: "0"
+---
+# sandbox-runner: §1 fleet table sizes this tier 20 steady -> 100 peak, which is
+# exactly the 5x ratio of §1's sandbox execution budget (50/s steady -> 250/s at
+# the contest deadline). Scaling is queue-driven rather than CPU-driven because a
+# gVisor jail is bounded by wall-clock (§10: 2 s CPU, 3x wall-clock kill), not by
+# the pod's own CPU utilisation -- a saturated runner tier shows up as a growing
+# execution backlog long before it shows up as CPU.
+# Pods are single-use (§10: recycled after 50 executions), so `cooldownPeriod` is
+# kept short: scaling down simply stops replacing recycled pods.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: sandbox-runner
+  labels:
+    app.kubernetes.io/name: sandbox-runner
+    app.kubernetes.io/component: sandbox-runner
+spec:
+  scaleTargetRef:
+    name: sandbox-runner
+  minReplicaCount: 20
+  maxReplicaCount: 100
+  cooldownPeriod: 60
+  pollingInterval: 10
+  triggers:
+    - type: redis
+      metadata:
+        listName: "bull:sandbox:wait"
+        listLength: "4"
+        activationListLength: "0"
+        host: "redis:6379"
+        enableTLS: "false"
+        databaseIndex: "0"
+      authenticationRef:
+        name: redis-trigger-auth

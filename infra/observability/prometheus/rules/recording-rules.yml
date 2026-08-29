@@ -1,0 +1,245 @@
+# RedQuant recording rules.
+#
+# Naming convention: redquant:<subject>:<operation>[_<window>]
+#   e.g. redquant:read_availability:ratio_rate5m
+# `subject` uses snake_case business/domain nouns, not raw metric names, so
+# dashboards and alerts stay stable even if the underlying instrumentation
+# metric is renamed. See infra/observability/README.md for the full taxonomy.
+#
+# journey label values used throughout: read_lesson | run_lab | join_contest
+
+groups:
+  # ---------------------------------------------------------------------------
+  # Golden signals per service and per journey
+  # ---------------------------------------------------------------------------
+  - name: redquant-golden-signals
+    interval: 30s
+    rules:
+      - record: redquant:http_requests:rate5m
+        expr: sum by (service, journey, cell, environment) (rate(http_requests_total[5m]))
+
+      - record: redquant:http_requests_errors:rate5m
+        expr: sum by (service, journey, cell, environment) (rate(http_requests_total{status_code=~"5.."}[5m]))
+
+      - record: redquant:http_error_ratio:rate5m
+        expr: |
+          redquant:http_requests_errors:rate5m
+            /
+          redquant:http_requests:rate5m
+
+      - record: redquant:http_latency:p50_5m
+        expr: |
+          histogram_quantile(0.50,
+            sum by (service, journey, cell, environment, le) (rate(http_request_duration_seconds_bucket[5m]))
+          )
+
+      - record: redquant:http_latency:p95_5m
+        expr: |
+          histogram_quantile(0.95,
+            sum by (service, journey, cell, environment, le) (rate(http_request_duration_seconds_bucket[5m]))
+          )
+
+      - record: redquant:http_latency:p99_5m
+        expr: |
+          histogram_quantile(0.99,
+            sum by (service, journey, cell, environment, le) (rate(http_request_duration_seconds_bucket[5m]))
+          )
+
+      # per-journey rollups (sums across services that participate in a journey)
+      - record: redquant:journey_requests:rate5m
+        expr: sum by (journey, cell, environment) (rate(http_requests_total[5m]))
+
+      - record: redquant:journey_error_ratio:rate5m
+        expr: |
+          sum by (journey, cell, environment) (rate(http_requests_total{status_code=~"5.."}[5m]))
+            /
+          sum by (journey, cell, environment) (rate(http_requests_total[5m]))
+
+  # ---------------------------------------------------------------------------
+  # §9 Read availability SLI: 99.95% target. Multi-window ratios feed the
+  # multi-window multi-burn-rate alerts in alerts.yml.
+  # ---------------------------------------------------------------------------
+  - name: redquant-read-availability-slo
+    interval: 30s
+    rules:
+      - record: redquant:read_availability:ratio_rate5m
+        expr: |
+          sum by (cell, environment) (rate(http_requests_total{journey="read_lesson", status_code!~"5.."}[5m]))
+            /
+          sum by (cell, environment) (rate(http_requests_total{journey="read_lesson"}[5m]))
+
+      - record: redquant:read_availability:ratio_rate30m
+        expr: |
+          sum by (cell, environment) (rate(http_requests_total{journey="read_lesson", status_code!~"5.."}[30m]))
+            /
+          sum by (cell, environment) (rate(http_requests_total{journey="read_lesson"}[30m]))
+
+      - record: redquant:read_availability:ratio_rate1h
+        expr: |
+          sum by (cell, environment) (rate(http_requests_total{journey="read_lesson", status_code!~"5.."}[1h]))
+            /
+          sum by (cell, environment) (rate(http_requests_total{journey="read_lesson"}[1h]))
+
+      - record: redquant:read_availability:ratio_rate2h
+        expr: |
+          sum by (cell, environment) (rate(http_requests_total{journey="read_lesson", status_code!~"5.."}[2h]))
+            /
+          sum by (cell, environment) (rate(http_requests_total{journey="read_lesson"}[2h]))
+
+      - record: redquant:read_availability:ratio_rate6h
+        expr: |
+          sum by (cell, environment) (rate(http_requests_total{journey="read_lesson", status_code!~"5.."}[6h]))
+            /
+          sum by (cell, environment) (rate(http_requests_total{journey="read_lesson"}[6h]))
+
+      - record: redquant:read_availability:ratio_rate1d
+        expr: |
+          sum by (cell, environment) (rate(http_requests_total{journey="read_lesson", status_code!~"5.."}[1d]))
+            /
+          sum by (cell, environment) (rate(http_requests_total{journey="read_lesson"}[1d]))
+
+      - record: redquant:read_availability:ratio_rate3d
+        expr: |
+          sum by (cell, environment) (rate(http_requests_total{journey="read_lesson", status_code!~"5.."}[3d]))
+            /
+          sum by (cell, environment) (rate(http_requests_total{journey="read_lesson"}[3d]))
+
+      # §9 read latency target: p99 < 300ms
+      - record: redquant:read_latency:p99_5m
+        expr: |
+          histogram_quantile(0.99,
+            sum by (cell, environment, le) (rate(http_request_duration_seconds_bucket{journey="read_lesson"}[5m]))
+          )
+
+  # ---------------------------------------------------------------------------
+  # §6/§9 Submission durability SLO: 99.999% (accepted == committed)
+  # ---------------------------------------------------------------------------
+  - name: redquant-submission-durability-slo
+    interval: 30s
+    rules:
+      - record: redquant:submission_durability:ratio_rate5m
+        expr: |
+          sum by (cell, environment, journey) (rate(submissions_committed_total[5m]))
+            /
+          sum by (cell, environment, journey) (rate(submissions_accepted_total[5m]))
+
+      - record: redquant:submission_durability:ratio_rate30m
+        expr: |
+          sum by (cell, environment, journey) (rate(submissions_committed_total[30m]))
+            /
+          sum by (cell, environment, journey) (rate(submissions_accepted_total[30m]))
+
+      - record: redquant:submission_durability:ratio_rate1h
+        expr: |
+          sum by (cell, environment, journey) (rate(submissions_committed_total[1h]))
+            /
+          sum by (cell, environment, journey) (rate(submissions_accepted_total[1h]))
+
+      - record: redquant:submission_durability:ratio_rate6h
+        expr: |
+          sum by (cell, environment, journey) (rate(submissions_committed_total[6h]))
+            /
+          sum by (cell, environment, journey) (rate(submissions_accepted_total[6h]))
+
+      - record: redquant:submission_durability:ratio_rate1d
+        expr: |
+          sum by (cell, environment, journey) (rate(submissions_committed_total[1d]))
+            /
+          sum by (cell, environment, journey) (rate(submissions_accepted_total[1d]))
+
+  # ---------------------------------------------------------------------------
+  # §11 domain metrics rollups
+  # ---------------------------------------------------------------------------
+  - name: redquant-domain-metrics
+    interval: 30s
+    rules:
+      - record: redquant:sim_queue_depth:avg5m
+        expr: avg by (cell, environment, tier) (avg_over_time(sim_queue_depth[5m]))
+
+      - record: redquant:sim_queue_depth:max5m
+        expr: max by (cell, environment, tier) (max_over_time(sim_queue_depth[5m]))
+
+      - record: redquant:sim_cache_hit_ratio:rate5m
+        expr: |
+          sum by (cell, environment) (rate(sim_cache_hits_total[5m]))
+            /
+          sum by (cell, environment) (rate(sim_cache_requests_total[5m]))
+
+      - record: redquant:grader_lag_seconds:avg5m
+        expr: avg by (cell, environment) (avg_over_time(grader_lag_seconds[5m]))
+
+      - record: redquant:grader_lag_seconds:max5m
+        expr: max by (cell, environment) (max_over_time(grader_lag_seconds[5m]))
+
+      - record: redquant:contest_broadcast_lag_ms:avg5m
+        expr: avg by (cell, environment, contest_id) (avg_over_time(contest_broadcast_lag_ms[5m]))
+
+      - record: redquant:contest_broadcast_lag_ms:p99_5m
+        expr: |
+          histogram_quantile(0.99,
+            sum by (cell, environment, le) (rate(contest_broadcast_lag_ms_bucket[5m]))
+          )
+
+      - record: redquant:tutor_cost_usd_per_hour:rate1h
+        expr: sum by (cell, environment) (rate(tutor_cost_usd_total[1h]) * 3600)
+
+      - record: redquant:entitlement_denial_rate:rate5m
+        expr: |
+          sum by (cell, environment, plan) (rate(entitlement_denials_total[5m]))
+            /
+          sum by (cell, environment, plan) (rate(entitlement_checks_total[5m]))
+
+  # ---------------------------------------------------------------------------
+  # §4 simulation tier split. This is the single most important derived
+  # metric in the system: the entire capacity model (§1, §4, §12 cost
+  # envelope) assumes T-A (client-side, free, <8ms) absorbs ~92% of
+  # simulation traffic. If this share drifts down, server-side (T-B/T-C)
+  # load grows non-linearly against a fixed kernel fleet (§1: 24 steady /
+  # 120 peak pods sized for ~110/s steady assuming the 92% split holds) and
+  # the cost envelope in §12 breaks. Treat regressions on
+  # redquant:sim_tier:share{tier="T-A"} as a capacity-planning incident, not
+  # just a dashboard curiosity.
+  # ---------------------------------------------------------------------------
+  - name: redquant-sim-tier-share
+    interval: 30s
+    rules:
+      - record: redquant:sim_requests:rate5m
+        expr: sum by (cell, environment, tier) (rate(sim_requests_total[5m]))
+
+      - record: redquant:sim_tier:share
+        expr: |
+          sum by (cell, environment, tier) (rate(sim_requests_total[5m]))
+            /
+          ignoring(tier) group_left
+          sum by (cell, environment) (rate(sim_requests_total[5m]))
+
+  # ---------------------------------------------------------------------------
+  # §1 capacity headroom: "lose one AZ (33%) and still have 40% CPU headroom
+  # at steady state". We approximate available headroom as
+  # (1 - current_utilization) and then simulate the AZ-loss scenario by
+  # redistributing the lost third of capacity across the remaining pods:
+  # effective_utilization_after_az_loss = current_cpu_used / (2/3 * current_capacity)
+  # so headroom_after_az_loss = 1 - (current_utilization * 1.5).
+  # A value >= 0.40 means the headroom rule is satisfied for that tier.
+  # ---------------------------------------------------------------------------
+  - name: redquant-capacity-headroom
+    interval: 1m
+    rules:
+      - record: redquant:tier_cpu_utilization:avg5m
+        expr: |
+          avg by (tier, cell, environment) (
+            rate(container_cpu_usage_seconds_total{container!=""}[5m])
+          )
+            /
+          avg by (tier, cell, environment) (
+            kube_pod_container_resource_requests{resource="cpu"}
+          )
+
+      - record: redquant:tier_headroom_az_loss:ratio
+        expr: |
+          1 - (redquant:tier_cpu_utilization:avg5m * 1.5)
+
+      # convenience boolean-as-number: 1 if headroom rule (>=40%) is violated
+      - record: redquant:tier_headroom_az_loss:breach
+        expr: |
+          (redquant:tier_headroom_az_loss:ratio < 0.40)

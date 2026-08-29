@@ -1,0 +1,22 @@
+# cert-manager Certificate covering all three public hosts (§2 topology). Both
+# ingress-nginx.yaml and gateway-api.yaml reference the same secretName so only one
+# certificate needs to be issued/rotated regardless of which data path is live.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: redquant-tls
+spec:
+  secretName: redquant-tls
+  duration: 2160h  # 90d
+  renewBefore: 360h  # 15d
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  dnsNames:
+    - redquant.io
+    - api.redquant.io
+    - ws.redquant.io
+  issuerRef:
+    name: redquant-letsencrypt-prod
+    kind: ClusterIssuer

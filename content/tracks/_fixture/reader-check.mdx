@@ -1,0 +1,94 @@
+---
+id: fixture.reader
+title: Phase kickback, and why interference is the whole trick
+type: concept
+level: L1
+minutes: 12
+summary: A temporary fixture exercising every lesson primitive.
+objectives:
+  - State what phase kickback does to a control qubit
+  - Read a relative phase off an amplitude table
+  - Explain why Deutsch's algorithm needs only one query
+sources:
+  - label: "CMU 15-859BB, Lecture 2: Rotate, Compute, Rotate"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: "IBM Quantum Learning, Fundamentals of quantum algorithms"
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+---
+
+Every quantum speedup in this curriculum is the same move performed with
+different bookkeeping: spread amplitude across many basis states, arrange for the
+wrong answers to cancel, and read out what survives. Phase kickback is the
+mechanism that lets a controlled operation write into the control instead of the
+target, and it is where that cancellation is set up.
+
+<Margin label="Notation">
+A relative phase is a phase difference between basis states. A global phase
+multiplies every amplitude and is unobservable.
+</Margin>
+
+## The one line of algebra
+
+Suppose $U|\psi\rangle = e^{i\varphi}|\psi\rangle$, so $|\psi\rangle$ is an
+eigenvector of $U$ with eigenvalue $e^{i\varphi}$. Apply a controlled-$U$ with the
+control in $|+\rangle$:
+
+$$
+\mathrm{C}U \, |+\rangle|\psi\rangle
+= \tfrac{1}{\sqrt2}\left(|0\rangle|\psi\rangle + |1\rangle U|\psi\rangle\right)
+= \tfrac{1}{\sqrt2}\left(|0\rangle + e^{i\varphi}|1\rangle\right)|\psi\rangle .
+$$
+
+The target came out unchanged. The phase landed on the control. That is the whole
+of phase estimation, compressed into one line.
+
+<Callout tone="gotcha" title="The usual confusion">
+Nothing was measured and nothing moved. The eigenvalue was already there. What
+the controlled gate does is convert an unobservable global phase on the target
+into an observable relative phase on the control.
+</Callout>
+
+## Seeing it
+
+Take $U = Z$, whose eigenvector for eigenvalue $-1$ is $|1\rangle$. Put the
+control in $|+\rangle$, the target in $|1\rangle$, and apply CZ. The control
+should end up in $|-\rangle$.
+
+<Circuit
+  caption="Control in |+>, target in |1>, then CZ. The minus sign appears on the control."
+  show={['amplitudes', 'bloch', 'qasm']}
+  ir={{
+    version: 1,
+    name: 'phase-kickback',
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: 'a', gate: 'h', targets: [0] },
+      { id: 'b', gate: 'x', targets: [1] },
+      { id: 'c', gate: 'z', targets: [1], controls: [0] }
+    ]
+  }}
+/>
+
+Read the amplitude table. The two surviving basis states are $|01\rangle$ and
+$|11\rangle$, with amplitudes $+1/\sqrt2$ and $-1/\sqrt2$. The control is in
+$|-\rangle$ and the target is untouched in $|1\rangle$.
+
+| control before | target | control after |
+| --- | --- | --- |
+| $\lvert+\rangle$ | $\lvert0\rangle$ | $\lvert+\rangle$ |
+| $\lvert+\rangle$ | $\lvert1\rangle$ | $\lvert-\rangle$ |
+
+A Hadamard on the control now turns that phase difference into a measurable bit.
+That is Deutsch's algorithm.
+
+<Check question="Why does measuring the control in the computational basis, without the final Hadamard, tell you nothing?">
+Because $|+\rangle$ and $|-\rangle$ have identical computational-basis
+probabilities, both $1/2$. The information is in the relative phase, and the
+Hadamard is what rotates phase information into amplitude information.
+</Check>
+
+<Solution>
+Apply H to the control, then measure. Outcome 0 means the eigenvalue was $+1$,
+outcome 1 means it was $-1$, with certainty and one query.
+</Solution>

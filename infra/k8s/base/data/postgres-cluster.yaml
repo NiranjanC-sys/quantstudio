@@ -1,0 +1,105 @@
+# Postgres 18 primary + 3 read replicas (system-design.md §5), managed by CloudNativePG.
+# 9,000 QPS read (85% served from replicas + cache) / 450 QPS write (§1). Writes and
+# in-transaction / read-your-write reads go via the redquant-pg-rw Pooler; the bulk of
+# read traffic goes via the redquant-pg-ro Pooler (see pgbouncer-pooler.yaml).
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: redquant-pg
+spec:
+  instances: 4  # 1 primary + 3 read replicas, per §5
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.0
+  primaryUpdateStrategy: unsupervised
+
+  priorityClassName: redquant-critical
+
+  # Spread the 4 instances across AZs and never co-locate two on the same node.
+  affinity:
+    enablePodAntiAffinity: true
+    topologyKey: topology.kubernetes.io/zone
+    podAntiAffinityType: required
+
+  nodeMaintenanceWindow:
+    enabled: true
+    reusePVC: true
+    inProgress: false
+
+  storage:
+    size: 4Ti  # per §12 cost line: "Postgres (primary + 3 replicas, 4 TB)"
+    storageClass: io2-ssd
+  walStorage:
+    size: 200Gi
+    storageClass: io2-ssd
+
+  # Tuned for ~9,000 QPS read / ~450 QPS write on an SSD-backed volume, c7g.2xlarge-class
+  # node. max_connections is deliberately modest (200) because PgBouncer transaction
+  # pooling fronts every client (1,200 client conns -> 120 server conns, per §5).
+  postgresql:
+    shared_preload_libraries:
+      - pg_stat_statements
+    parameters:
+      max_connections: "200"
+      shared_buffers: "4GB"
+      effective_cache_size: "12GB"
+      work_mem: "32MB"
+      maintenance_work_mem: "1GB"
+      wal_level: "logical"  # required for logical replication / CDC consumers
+      max_wal_size: "8GB"
+      min_wal_size: "2GB"
+      checkpoint_timeout: "15min"
+      checkpoint_completion_target: "0.9"
+      random_page_cost: "1.1"  # SSD-backed storage, not spinning disk
+      effective_io_concurrency: "200"
+      pg_stat_statements.max: "10000"
+      pg_stat_statements.track: "all"
+      log_min_duration_statement: "250ms"
+
+  monitoring:
+    enablePodMonitor: true
+
+  managed:
+    roles:
+      - name: app_readwrite
+        ensure: present
+        login: true
+        comment: "Application role used by the api/quantum-kernel/grader tiers via the RW pooler"
+        passwordSecret:
+          name: redquant-pg-app-readwrite
+      - name: app_readonly
+        ensure: present
+        login: true
+        comment: "Read-only application role used by the RO pooler for replica traffic"
+        passwordSecret:
+          name: redquant-pg-app-readonly
+
+  bootstrap:
+    initdb:
+      database: redquant
+      owner: app_readwrite
+      postInitApplicationSQL:
+        - "CREATE SCHEMA IF NOT EXISTS identity AUTHORIZATION app_readwrite"
+        - "CREATE SCHEMA IF NOT EXISTS catalog  AUTHORIZATION app_readwrite"
+        - "CREATE SCHEMA IF NOT EXISTS progress AUTHORIZATION app_readwrite"
+        - "CREATE SCHEMA IF NOT EXISTS labs     AUTHORIZATION app_readwrite"
+        - "CREATE SCHEMA IF NOT EXISTS contest  AUTHORIZATION app_readwrite"
+        - "CREATE SCHEMA IF NOT EXISTS billing  AUTHORIZATION app_readwrite"
+        - "CREATE SCHEMA IF NOT EXISTS social   AUTHORIZATION app_readwrite"
+        - "GRANT USAGE ON SCHEMA identity, catalog, progress, labs, contest, billing, social TO app_readonly"
+        - "ALTER DEFAULT PRIVILEGES IN SCHEMA identity, catalog, progress, labs, contest, billing, social GRANT SELECT ON TABLES TO app_readonly"
+
+  backup:
+    retentionPolicy: "30d"
+    barmanObjectStore:
+      destinationPath: "s3://redquant-pg-backups/"
+      s3Credentials:
+        accessKeyId:
+          name: redquant-pg-backup-s3-creds
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: redquant-pg-backup-s3-creds
+          key: ACCESS_SECRET_KEY
+      wal:
+        compression: gzip
+      data:
+        compression: gzip
+        immediateCheckpoint: false

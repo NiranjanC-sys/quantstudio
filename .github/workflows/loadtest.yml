@@ -1,0 +1,190 @@
+name: Load test
+
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: "k6 script to run"
+        type: choice
+        required: true
+        default: main
+        options:
+          - main
+          - contest-burst
+          - soak
+      target_url:
+        description: "Target base URL (leave empty to spin up the local docker compose stack)"
+        type: string
+        required: false
+        default: ""
+      scale:
+        description: "Virtual-user scale factor (multiplies the script's base VU count)"
+        type: string
+        required: false
+        default: "1"
+      duration:
+        description: "Override test duration (e.g. 10m). Leave empty to use the script default."
+        type: string
+        required: false
+        default: ""
+
+permissions: {}
+
+concurrency:
+  group: loadtest-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  k6:
+    name: k6 (${{ inputs.script }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Map script input to file
+        id: script
+        run: |
+          set -euo pipefail
+          case "${{ inputs.script }}" in
+            main) file="infra/loadtest/main.js" ;;
+            contest-burst) file="infra/loadtest/contest-burst.js" ;;
+            soak) file="infra/loadtest/soak.js" ;;
+            *) echo "::error::unknown script input '${{ inputs.script }}'"; exit 1 ;;
+          esac
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+
+      - name: Bring up local compose stack
+        if: inputs.target_url == ''
+        run: |
+          docker compose -f infra/docker/docker-compose.yml up -d --wait
+
+      - name: Resolve target URL
+        id: target
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.target_url }}" ]; then
+            echo "url=${{ inputs.target_url }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "url=http://localhost:3001" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup k6
+        uses: grafana/setup-k6-action@ffe7d7290dfa715e48c2ccc924d068444c94bde2  # v1.1.0
+
+      - name: Run k6
+        id: k6
+        env:
+          BASE_URL: ${{ steps.target.outputs.url }}
+          SCALE: ${{ inputs.scale }}
+          DURATION: ${{ inputs.duration }}
+        run: |
+          set -euo pipefail
+          mkdir -p infra/loadtest/results
+          script="${{ steps.script.outputs.file }}"
+          if [ ! -f "$script" ]; then
+            echo "::error::$script not found"
+            exit 1
+          fi
+          ts="$(date -u +%Y%m%dT%H%M%SZ)"
+          out="infra/loadtest/results/${ts}-${{ inputs.script }}.json"
+          echo "summary_json=$out" >> "$GITHUB_OUTPUT"
+          echo "run_ts=$ts" >> "$GITHUB_OUTPUT"
+
+          args=(run --summary-export "$out" -e "BASE_URL=$BASE_URL")
+          if [ -n "$SCALE" ] && [ "$SCALE" != "1" ]; then
+            args+=(-e "SCALE=$SCALE")
+          fi
+          if [ -n "$DURATION" ]; then
+            args+=(--duration "$DURATION")
+          fi
+          args+=("$script")
+
+          k6 "${args[@]}"
+
+      - name: Render report from template
+        if: always() && steps.k6.outputs.summary_json != ''
+        run: |
+          set -euo pipefail
+          summary="${{ steps.k6.outputs.summary_json }}"
+          ts="${{ steps.k6.outputs.run_ts }}"
+          report="infra/loadtest/results/${ts}-${{ inputs.script }}-report.md"
+          template="infra/loadtest/results/REPORT-TEMPLATE.md"
+
+          if [ ! -f "$summary" ]; then
+            echo "::warning::no k6 summary at $summary, skipping report render"
+            exit 0
+          fi
+
+          if [ -f "$template" ]; then
+            python3 - "$template" "$summary" "$report" "${{ inputs.script }}" "${{ steps.target.outputs.url }}" "$ts" <<'PY'
+          import json
+          import sys
+
+          template_path, summary_path, report_path, script, target_url, ts = sys.argv[1:7]
+
+          with open(template_path) as f:
+              template = f.read()
+          with open(summary_path) as f:
+              summary = json.load(f)
+
+          metrics = summary.get("metrics", {})
+
+          def metric(name, field, default="n/a"):
+              m = metrics.get(name, {})
+              values = m.get("values", m)
+              return values.get(field, default)
+
+          replacements = {
+              "{{SCRIPT}}": script,
+              "{{TARGET_URL}}": target_url,
+              "{{TIMESTAMP}}": ts,
+              "{{HTTP_REQ_DURATION_P95}}": str(metric("http_req_duration", "p(95)")),
+              "{{HTTP_REQ_DURATION_P99}}": str(metric("http_req_duration", "p(99)")),
+              "{{HTTP_REQ_FAILED_RATE}}": str(metric("http_req_failed", "rate")),
+              "{{VUS_MAX}}": str(metric("vus_max", "value")),
+              "{{ITERATIONS}}": str(metric("iterations", "count")),
+          }
+
+          rendered = template
+          for key, value in replacements.items():
+              rendered = rendered.replace(key, value)
+
+          with open(report_path, "w") as f:
+              f.write(rendered)
+          PY
+          else
+            echo "::warning::infra/loadtest/results/REPORT-TEMPLATE.md not found yet, writing a minimal fallback report"
+            {
+              echo "# Load test report: ${{ inputs.script }}"
+              echo
+              echo "- target: ${{ steps.target.outputs.url }}"
+              echo "- run: $ts"
+              echo
+              echo '```json'
+              cat "$summary"
+              echo '```'
+            } > "$report"
+          fi
+
+      - name: Dump compose logs on failure
+        if: failure() && inputs.target_url == ''
+        run: docker compose -f infra/docker/docker-compose.yml logs --no-color > infra/loadtest/results/compose-logs.txt
+
+      - name: Tear down local compose stack
+        if: always() && inputs.target_url == ''
+        run: docker compose -f infra/docker/docker-compose.yml down -v
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882  # v4.4.3
+        with:
+          name: loadtest-${{ inputs.script }}-${{ steps.k6.outputs.run_ts }}
+          path: infra/loadtest/results/
+          if-no-files-found: warn
+          retention-days: 90

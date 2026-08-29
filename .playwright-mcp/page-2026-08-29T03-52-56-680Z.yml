@@ -1,0 +1,242 @@
+- generic [ref=f5e1]:
+  - generic [ref=f5e2]:
+    - complementary "Gate palette" [ref=f5e3]:
+      - generic [ref=f5e4]:
+        - searchbox "Search gates" [ref=f5e5]
+        - generic [ref=f5e6]:
+          - generic [ref=f5e7]:
+            - heading "Pauli" [level=3] [ref=f5e8]
+            - generic [ref=f5e9]:
+              - button "Pauli X. Bit flip. A pi rotation about the x axis of the Bloch sphere.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e10]:
+                - generic [ref=f5e11]: X
+                - generic [ref=f5e12]: x
+              - button "Pauli Y. Bit and phase flip together. A pi rotation about y.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e13]:
+                - generic [ref=f5e14]: "Y"
+                - generic [ref=f5e15]: "y"
+              - button "Pauli Z. Phase flip. Leaves |0> alone and negates |1>.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e16]:
+                - generic [ref=f5e17]: Z
+                - generic [ref=f5e18]: z
+              - button "Identity. Does nothing. Useful as an explicit delay.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e19]:
+                - generic [ref=f5e20]: I
+                - generic [ref=f5e21]: id
+          - generic [ref=f5e22]:
+            - heading "Superposition" [level=3] [ref=f5e23]
+            - generic [ref=f5e24]:
+              - button "Hadamard. Maps the computational basis to the x basis. The source of superposition.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e25]:
+                - generic [ref=f5e26]: H
+                - generic [ref=f5e27]: h
+              - button "Square root of X. Half turn about x. A native basis gate on IBM superconducting hardware.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e28]:
+                - generic [ref=f5e29]: √X
+                - generic [ref=f5e30]: sx
+              - button "Inverse root X. Inverse of the square root of X.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e31]:
+                - generic [ref=f5e32]: √X†
+                - generic [ref=f5e33]: sxdg
+          - generic [ref=f5e34]:
+            - heading "Phase" [level=3] [ref=f5e35]
+            - generic [ref=f5e36]:
+              - button "S. Quarter turn about z. Square root of Z.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e37]:
+                - generic [ref=f5e38]: S
+                - generic [ref=f5e39]: s
+              - button "S dagger. Inverse of S.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e40]:
+                - generic [ref=f5e41]: S†
+                - generic [ref=f5e42]: sdg
+              - button "T. Eighth turn about z. The non-Clifford gate that makes universality possible, and the expensive one under error correction.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e43]:
+                - generic [ref=f5e44]: T
+                - generic [ref=f5e45]: t
+              - button "T dagger. Inverse of T.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e46]:
+                - generic [ref=f5e47]: T†
+                - generic [ref=f5e48]: tdg
+              - button "Phase. Adds a relative phase to |1>. Rz up to a global phase.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e49]:
+                - generic [ref=f5e50]: P
+                - generic [ref=f5e51]: p
+          - generic [ref=f5e52]:
+            - heading "Rotation" [level=3] [ref=f5e53]
+            - generic [ref=f5e54]:
+              - button "Rx. Rotation by theta about the x axis.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e55]:
+                - generic [ref=f5e56]: Rx
+                - generic [ref=f5e57]: rx
+              - button "Ry. Rotation by theta about the y axis.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e58]:
+                - generic [ref=f5e59]: Ry
+                - generic [ref=f5e60]: ry
+              - button "Rz. Rotation by theta about z. On real hardware this is often free, done in software by shifting a phase.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e61]:
+                - generic [ref=f5e62]: Rz
+                - generic [ref=f5e63]: rz
+              - button "General unitary. Any single-qubit unitary, up to a global phase.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e64]:
+                - generic [ref=f5e65]: U
+                - generic [ref=f5e66]: u
+          - generic [ref=f5e67]:
+            - heading "Controlled" [level=3] [ref=f5e68]
+            - generic [ref=f5e69]:
+              - button "CNOT. Flips the target when the control is |1>. Together with single-qubit gates it is universal.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e70]:
+                - generic [ref=f5e71]: X
+                - generic [ref=f5e72]: cx
+              - button "Controlled Y. Y on the target, conditioned on the control.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e73]:
+                - generic [ref=f5e74]: "Y"
+                - generic [ref=f5e75]: cy
+              - button "Controlled Z. Negates the |11> amplitude. Symmetric in its two qubits.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e76]:
+                - generic [ref=f5e77]: Z
+                - generic [ref=f5e78]: cz
+              - button "Controlled H. Hadamard on the target, conditioned on the control.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e79]:
+                - generic [ref=f5e80]: H
+                - generic [ref=f5e81]: ch
+              - button "Controlled phase. The building block of the quantum Fourier transform.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e82]:
+                - generic [ref=f5e83]: P
+                - generic [ref=f5e84]: cp
+              - button "Controlled Rx. Rx on the target, conditioned on the control.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e85]:
+                - generic [ref=f5e86]: Rx
+                - generic [ref=f5e87]: crx
+              - button "Controlled Ry. Ry on the target, conditioned on the control. Common in amplitude encoding.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e88]:
+                - generic [ref=f5e89]: Ry
+                - generic [ref=f5e90]: cry
+              - button "Controlled Rz. Rz on the target, conditioned on the control.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e91]:
+                - generic [ref=f5e92]: Rz
+                - generic [ref=f5e93]: crz
+              - button "Controlled U. An arbitrary single-qubit unitary, conditioned on the control.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e94]:
+                - generic [ref=f5e95]: U
+                - generic [ref=f5e96]: cu
+              - button "Controlled S. S on the target, conditioned on the control.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e97]:
+                - generic [ref=f5e98]: S
+                - generic [ref=f5e99]: cs
+              - button "Controlled S dagger. Inverse controlled S.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e100]:
+                - generic [ref=f5e101]: S†
+                - generic [ref=f5e102]: csdg
+              - button "Controlled root X. Square root of X on the target, conditioned on the control.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e103]:
+                - generic [ref=f5e104]: √X
+                - generic [ref=f5e105]: csx
+          - generic [ref=f5e106]:
+            - heading "Two qubit" [level=3] [ref=f5e107]
+            - generic [ref=f5e108]:
+              - button "Swap. Exchanges two qubits. Costs three CNOTs, which is why routing is expensive.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e109]:
+                - generic [ref=f5e110]: SWAP
+                - generic [ref=f5e111]: swap
+              - button "iSwap. Swap with an i phase on the exchanged amplitudes. Native on some superconducting devices.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e112]:
+                - generic [ref=f5e113]: iSWAP
+                - generic [ref=f5e114]: iswap
+              - button "Rxx. exp(-i theta/2 X⊗X). The native two-qubit interaction on trapped-ion hardware.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e115]:
+                - generic [ref=f5e116]: Rxx
+                - generic [ref=f5e117]: rxx
+              - button "Ryy. exp(-i theta/2 Y⊗Y).. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e118]:
+                - generic [ref=f5e119]: Ryy
+                - generic [ref=f5e120]: ryy
+              - button "Rzz. exp(-i theta/2 Z⊗Z). The workhorse of QAOA cost layers.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e121]:
+                - generic [ref=f5e122]: Rzz
+                - generic [ref=f5e123]: rzz
+              - button "Rzx. exp(-i theta/2 Z⊗X). The cross-resonance interaction underneath IBM two-qubit gates.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e124]:
+                - generic [ref=f5e125]: Rzx
+                - generic [ref=f5e126]: rzx
+              - button "Echoed cross-resonance. An IBM hardware basis gate. Locally equivalent to CNOT.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e127]:
+                - generic [ref=f5e128]: ECR
+                - generic [ref=f5e129]: ecr
+          - generic [ref=f5e130]:
+            - heading "Three qubit" [level=3] [ref=f5e131]
+            - generic [ref=f5e132]:
+              - button "Toffoli. Universal for classical reversible computation. Costs six CNOTs to decompose.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e133]:
+                - generic [ref=f5e134]: X
+                - generic [ref=f5e135]: ccx
+              - button "CCZ. Negates only the |111> amplitude.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e136]:
+                - generic [ref=f5e137]: Z
+                - generic [ref=f5e138]: ccz
+              - button "Fredkin. Swaps two qubits when the control is set. Used in the swap test.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e139]:
+                - generic [ref=f5e140]: SWAP
+                - generic [ref=f5e141]: cswap
+              - button "Multi-controlled X. X with any number of controls. The controls live in the op, not the definition.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e142]:
+                - generic [ref=f5e143]: X
+                - generic [ref=f5e144]: mcx
+          - generic [ref=f5e145]:
+            - heading "Non unitary" [level=3] [ref=f5e146]
+            - generic [ref=f5e147]:
+              - button "Measure. Projective measurement in the computational basis, recording the outcome in a classical bit.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e148]:
+                - generic [ref=f5e149]: M
+                - generic [ref=f5e150]: measure
+              - button "Reset. Forces the qubit to |0>. Physically a measurement plus a conditional flip.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e151]:
+                - generic [ref=f5e152]: "|0>"
+                - generic [ref=f5e153]: reset
+              - button "Barrier. A compiler fence. No physical effect; stops optimisation across it.. Press Enter to append to the circuit, or drag onto a wire." [ref=f5e154]:
+                - generic [ref=f5e155]: ‖
+                - generic [ref=f5e156]: barrier
+    - main [ref=f5e157]:
+      - generic [ref=f5e158]:
+        - generic [ref=f5e159]:
+          - generic [ref=f5e160]: qubits
+          - spinbutton "qubits" [ref=f5e161]: "3"
+        - generic [ref=f5e162]:
+          - generic [ref=f5e163]: shots
+          - spinbutton "shots" [ref=f5e164]: "1024"
+        - generic [ref=f5e165]:
+          - checkbox "noise" [ref=f5e166]
+          - text: noise
+        - generic [ref=f5e167]:
+          - button "Undo" [disabled] [ref=f5e168]
+          - button "Redo" [disabled] [ref=f5e169]
+          - button "Clear" [ref=f5e170] [cursor=pointer]
+        - generic [ref=f5e171]:
+          - generic [ref=f5e172]: load
+          - combobox "load" [ref=f5e173]:
+            - option "choose a circuit" [selected]
+            - option "Bell pair"
+            - option "GHZ"
+            - option "W state"
+            - option "QFT"
+            - option "Grover"
+            - option "Teleportation"
+            - option "Superdense"
+            - option "CHSH"
+      - group "Circuit editor" [ref=f5e174]:
+        - img [ref=f5e175]:
+          - generic [ref=f5e176]: q0
+          - generic [ref=f5e178]: q1
+          - generic [ref=f5e180]: q2
+          - generic [ref=f5e182]: c[3]
+      - generic [ref=f5e184]:
+        - region "Source code" [ref=f5e185]:
+          - generic [ref=f5e186]:
+            - generic [ref=f5e187]:
+              - tablist "Code dialect" [ref=f5e188]:
+                - tab "OpenQASM 3" [selected] [ref=f5e189] [cursor=pointer]
+                - tab "Qiskit" [ref=f5e190] [cursor=pointer]
+                - tab "Cirq" [ref=f5e191] [cursor=pointer]
+                - tab "PennyLane" [ref=f5e192] [cursor=pointer]
+              - button "Copy" [ref=f5e194] [cursor=pointer]
+            - textbox "qasm3 source" [ref=f5e195]: OPENQASM 3.0; include "stdgates.inc"; qubit[3] q; bit[3] c;
+        - region "Simulation results" [ref=f5e196]:
+          - generic [ref=f5e197]:
+            - generic [ref=f5e198]:
+              - generic [ref=f5e199]: State
+              - tablist "Result view" [ref=f5e200]:
+                - tab "amplitudes" [ref=f5e201] [cursor=pointer]
+                - tab "probabilities" [ref=f5e202] [cursor=pointer]
+                - tab "bloch" [active] [selected] [ref=f5e203] [cursor=pointer]
+                - tab "counts" [ref=f5e204] [cursor=pointer]
+            - generic [ref=f5e250]:
+              - 'img "q0: Bloch vector x 0.000, y 0.000, z 1.000" [ref=f5e251]':
+                - generic [ref=f5e255]: q0
+              - 'img "q1: Bloch vector x 0.000, y 0.000, z 1.000" [ref=f5e256]':
+                - generic [ref=f5e260]: q1
+              - 'img "q2: Bloch vector x 0.000, y 0.000, z 1.000" [ref=f5e261]':
+                - generic [ref=f5e265]: q2
+            - generic [ref=f5e225]:
+              - generic [ref=f5e226]:
+                - generic [ref=f5e227]: qubits
+                - generic [ref=f5e228]: "3"
+              - generic [ref=f5e229]:
+                - generic [ref=f5e230]: depth
+                - generic [ref=f5e231]: "0"
+              - generic [ref=f5e232]:
+                - generic [ref=f5e233]: gates
+                - generic [ref=f5e234]: "0"
+              - generic [ref=f5e235]:
+                - generic [ref=f5e236]: 2q
+                - generic [ref=f5e237]: "0"
+              - generic [ref=f5e238]:
+                - generic [ref=f5e239]: T
+                - generic [ref=f5e240]: "0"
+              - generic [ref=f5e241]:
+                - generic [ref=f5e242]: clifford
+                - generic [ref=f5e243]: "yes"
+              - generic [ref=f5e244]:
+                - generic [ref=f5e245]: sim
+                - generic [ref=f5e246]: 0.0 ms
+    - complementary "Gate inspector" [ref=f5e247]:
+      - paragraph [ref=f5e249]: Select a gate to edit its parameters, controls and classical condition.
+  - button "Open Next.js Dev Tools" [ref=f5e271] [cursor=pointer]
+  - alert [ref=f5e275]

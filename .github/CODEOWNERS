@@ -1,0 +1,36 @@
+# CODEOWNERS
+#
+# Review is required from the listed owner(s) for any pull request touching
+# the matching paths. Team handles (@redquant/<team>) are placeholders for
+# this repo's GitHub org/teams; replace them with real team slugs once they
+# exist. The catch-all owner keeps every PR reviewable from day one.
+#
+# Order matters: later patterns win, so the catch-all comes first.
+
+*                               @redquant/platform-eng samuel.joseph@securin.io
+
+# CI/CD and repo automation
+/.github/                      @redquant/platform-eng samuel.joseph@securin.io
+/.github/workflows/            @redquant/platform-eng
+/.github/dependabot.yml         @redquant/platform-eng
+/.github/CODEOWNERS             @redquant/platform-eng samuel.joseph@securin.io
+
+# Infra: containers, Kubernetes, load testing
+/infra/docker/                 @redquant/platform-eng
+/infra/k8s/                    @redquant/platform-eng @redquant/sre
+/infra/loadtest/                @redquant/sre
+
+# Applications
+/apps/web/                     @redquant/web
+/apps/api/                     @redquant/backend
+/apps/quantum-kernel/          @redquant/quantum
+
+# Shared / cross-cutting packages
+/packages/qir/                 @redquant/quantum
+/packages/shared/               @redquant/backend @redquant/quantum
+/packages/design/               @redquant/web
+/packages/content/              @redquant/content
+
+# Security-sensitive surfaces get an extra required reviewer
+/.github/workflows/security.yml @redquant/security
+/.github/workflows/release.yml  @redquant/security @redquant/platform-eng

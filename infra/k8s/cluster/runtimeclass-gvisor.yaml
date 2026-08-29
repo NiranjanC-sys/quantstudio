@@ -1,0 +1,18 @@
+# Sandbox isolation runtime for untrusted learner code (§10). sandbox-runner pods
+# must set spec.runtimeClassName: gvisor -- enforced cluster-wide by
+# cluster/kyverno/restrict-sandbox-runtimeclass.yaml (and the Gatekeeper equivalent
+# under cluster/gatekeeper/).
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor
+handler: runsc
+scheduling:
+  # Only schedule gVisor-runtimeclass pods onto the dedicated sandbox node pool
+  # (kernel-level gVisor support + the seccomp/cgroup tuning §10 assumes).
+  nodeSelector:
+    redquant.io/node-pool: sandbox-gvisor
+  tolerations:
+    - key: redquant.io/sandbox-only
+      operator: Exists
+      effect: NoSchedule

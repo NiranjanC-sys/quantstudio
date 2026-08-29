@@ -1,0 +1,47 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    open-pull-requests-limit: 10
+    schedule:
+      interval: weekly
+      day: monday
+    versioning-strategy: increase-if-necessary
+    groups:
+      npm-dev-dependencies:
+        dependency-type: development
+      npm-prod-dependencies:
+        dependency-type: production
+    labels:
+      - dependencies
+      - npm
+
+  - package-ecosystem: pip
+    directory: "/apps/quantum-kernel"
+    open-pull-requests-limit: 10
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - python
+
+  - package-ecosystem: docker
+    directory: "/infra/docker"
+    open-pull-requests-limit: 10
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - docker
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    open-pull-requests-limit: 10
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - github-actions

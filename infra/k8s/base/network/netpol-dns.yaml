@@ -1,0 +1,29 @@
+# Every pod needs DNS to reach anything -- except sandbox-runner, which per §10 has no
+# network at all (an absent interface, not a firewall rule; see netpol-sandbox-runner.yaml).
+# This policy therefore selects every pod in the namespace EXCEPT sandbox-runner.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-dns
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: NotIn
+        values:
+          - sandbox-runner
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

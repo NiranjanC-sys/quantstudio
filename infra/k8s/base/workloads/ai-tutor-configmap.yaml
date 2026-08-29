@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-tutor-config
+  labels:
+    app.kubernetes.io/name: ai-tutor
+    app.kubernetes.io/component: ai-tutor
+data:
+  LOG_LEVEL: "info"
+  NODE_ENV: "production"

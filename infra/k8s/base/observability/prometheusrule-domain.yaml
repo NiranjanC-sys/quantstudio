@@ -1,0 +1,194 @@
+# Alerts on every §11 domain metric (the metrics chosen because they predict
+# incidents before the golden signals move), plus an alert for the §9 degradation
+# ladder engaging a step. Instrumentation contract assumed:
+#   redquant_sim_queue_depth                    gauge, pending T-B/T-C sim requests
+#   redquant_sim_cache_hit_ratio                gauge 0-1, Redis sim: cache hit rate
+#   redquant_grader_lag_seconds                 gauge, oldest ungraded submission age
+#   redquant_contest_broadcast_lag_ms            gauge, leaderboard delta publish lag
+#   redquant_tutor_cost_usd_per_hour             gauge, trailing hourly Claude API spend
+#   redquant_entitlement_denial_rate             gauge 0-1, entitlement-check denial share
+#   redquant_degradation_active{flag}            gauge 0/1, one of the DEGRADE_* flags
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: redquant-domain-alerts
+  labels:
+    app.kubernetes.io/part-of: redquant
+    prometheus: redquant
+    role: alert-rules
+spec:
+  groups:
+    - name: redquant.domain.simulation
+      rules:
+        - alert: SimQueueDepthWarning
+          expr: redquant_sim_queue_depth > 50
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Simulation queue depth elevated ({{ $value }} pending)"
+            description: >-
+              quantum-kernel's pending T-B/T-C request queue has stayed above 50 for 5m. This is the leading indicator for the §9
+              degradation ladder step 1 (T-B goes async).
+            runbook_url: "https://runbooks.redquant.io/simulation-saturation"
+            runbook_path: "docs/runbooks/simulation-saturation.md"
+        - alert: SimQueueDepthCritical
+          expr: redquant_sim_queue_depth > 200
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Simulation queue depth critical ({{ $value }} pending)"
+            description: >-
+              quantum-kernel's pending T-B/T-C request queue has stayed above 200 for 5m. Expect DEGRADE_SIM_ASYNC and
+              DEGRADE_SIM_MAX_QUBITS to be active or imminent.
+            runbook_url: "https://runbooks.redquant.io/simulation-saturation"
+            runbook_path: "docs/runbooks/simulation-saturation.md"
+        - alert: SimCacheHitRatioWarning
+          expr: redquant_sim_cache_hit_ratio < 0.6
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Simulation cache hit ratio degraded ({{ $value | humanizePercentage }})"
+            description: >-
+              sim:{hash} Redis cache hit rate has been below 60% for 15m. Lesson-traffic circuits should collide heavily on the
+              canonical-IR cache key; a drop usually means a cache eviction storm, a TTL/maxmemory misconfiguration, or a
+              content/versioning change that broke cache-key canonicalisation.
+            runbook_url: "https://runbooks.redquant.io/simulation-saturation"
+            runbook_path: "docs/runbooks/simulation-saturation.md"
+        - alert: SimCacheHitRatioCritical
+          expr: redquant_sim_cache_hit_ratio < 0.4
+          for: 15m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Simulation cache hit ratio critical ({{ $value | humanizePercentage }})"
+            description: >-
+              sim:{hash} Redis cache hit rate has been below 40% for 15m, materially increasing load on the quantum-kernel fleet.
+            runbook_url: "https://runbooks.redquant.io/simulation-saturation"
+            runbook_path: "docs/runbooks/simulation-saturation.md"
+
+    - name: redquant.domain.grading
+      rules:
+        - alert: GraderLagWarning
+          expr: redquant_grader_lag_seconds > 30
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Grader lag elevated ({{ $value }}s)"
+            description: >-
+              The oldest ungraded submission in the BullMQ grade queue has been waiting more than 30s for 5m. KEDA should be
+              scaling grader workers on queue depth; check for a stuck/crashlooping worker or a gVisor sandbox saturation issue.
+            runbook_url: "https://runbooks.redquant.io/grading-lag"
+            runbook_path: "docs/runbooks/grading-lag.md"
+        - alert: GraderLagCritical
+          expr: redquant_grader_lag_seconds > 120
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Grader lag critical ({{ $value }}s)"
+            description: >-
+              The oldest ungraded submission has been waiting more than 120s for 5m. At contest deadlines this directly threatens
+              the leaderboard's monotone-update guarantee (§6) by delaying score commits.
+            runbook_url: "https://runbooks.redquant.io/grading-lag"
+            runbook_path: "docs/runbooks/grading-lag.md"
+
+    - name: redquant.domain.contest
+      rules:
+        - alert: ContestBroadcastLagWarning
+          expr: redquant_contest_broadcast_lag_ms > 250
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Contest leaderboard broadcast lag elevated ({{ $value }}ms)"
+            description: >-
+              ws:contest:{id} leaderboard-delta publish lag has been above 250ms for 2m. Learners will perceive stale ranks during
+              an active contest.
+            runbook_url: "https://runbooks.redquant.io/contest-day"
+            runbook_path: "docs/runbooks/contest-day.md"
+        - alert: ContestBroadcastLagCritical
+          expr: redquant_contest_broadcast_lag_ms > 1000
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Contest leaderboard broadcast lag critical ({{ $value }}ms)"
+            description: >-
+              ws:contest:{id} leaderboard-delta publish lag has been above 1000ms for 2m during a contest window. Clients will
+              still self-heal via the 30s full snapshot, but real-time feel is broken.
+            runbook_url: "https://runbooks.redquant.io/contest-day"
+            runbook_path: "docs/runbooks/contest-day.md"
+
+    - name: redquant.domain.ai-tutor
+      rules:
+        - alert: TutorCostRunawayWarning
+          expr: redquant_tutor_cost_usd_per_hour > 40
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "AI tutor spend elevated (${{ $value }}/hr)"
+            description: >-
+              Trailing Claude API spend has been above $40/hr for 10m, well past the ~$12-22/hr steady-state envelope in §12.
+              Approaching the tutor gateway's hard per-hour ceiling.
+            runbook_url: "https://runbooks.redquant.io/ai-tutor-cost-runaway"
+            runbook_path: "docs/runbooks/ai-tutor-cost-runaway.md"
+        - alert: TutorCostRunawayCritical
+          expr: redquant_tutor_cost_usd_per_hour > 60
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "AI tutor spend critical (${{ $value }}/hr)"
+            description: >-
+              Trailing Claude API spend has been above $60/hr for 10m. The gateway's automatic downgrade to retrieval-only
+              (DEGRADE_TUTOR_RETRIEVAL_ONLY) should already be active; if not, page immediately.
+            runbook_url: "https://runbooks.redquant.io/ai-tutor-cost-runaway"
+            runbook_path: "docs/runbooks/ai-tutor-cost-runaway.md"
+
+    - name: redquant.domain.entitlements
+      rules:
+        - alert: EntitlementDenialRateWarning
+          expr: redquant_entitlement_denial_rate > 0.02
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Entitlement denial rate elevated ({{ $value | humanizePercentage }})"
+            description: >-
+              More than 2% of entitlement checks at the gateway have been denials for 10m. Could indicate a Stripe reconciliation
+              drift, a plan-cache bug, or a real abuse pattern.
+            runbook_url: "https://runbooks.redquant.io/entitlement-denials"
+            runbook_path: "docs/runbooks/entitlement-denials.md"
+        - alert: EntitlementDenialRateCritical
+          expr: redquant_entitlement_denial_rate > 0.05
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Entitlement denial rate critical ({{ $value | humanizePercentage }})"
+            description: >-
+              More than 5% of entitlement checks at the gateway have been denials for 10m. Paying users are very likely being
+              wrongly blocked from features they own.
+            runbook_url: "https://runbooks.redquant.io/entitlement-denials"
+            runbook_path: "docs/runbooks/entitlement-denials.md"
+
+    - name: redquant.domain.degradation-ladder
+      rules:
+        - alert: DegradationLadderStepEngaged
+          expr: max by (flag) (redquant_degradation_active) == 1
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Degradation ladder step engaged: {{ $labels.flag }}"
+            description: >-
+              The §9 graceful-degradation ladder has engaged flag {{ $labels.flag }} for 2m. This is not itself an outage -- it
+              means the system is shedding load without lying to users -- but it means an upstream constraint (kernel saturation,
+              tutor budget, ClickHouse, Stripe, or Postgres failover) needs attention.
+            runbook_url: "https://runbooks.redquant.io/degradation-ladder"
+            runbook_path: "docs/runbooks/degradation-ladder.md"

@@ -1,0 +1,234 @@
+# RedQuant Prometheus configuration.
+#
+# Two operating modes live in this one file, clearly separated below:
+#   1. LOCAL / docker-compose mode: plain `static_configs` scrape jobs, active
+#      by default so `docker compose up` gives a working stack with zero
+#      external dependencies (no k8s API server to talk to).
+#   2. CLUSTER mode: `kubernetes_sd_configs` job definitions, kept as a
+#      commented block below. To run in-cluster, either swap the Prometheus
+#      Operator in (recommended - see infra/k8s) or uncomment this block and
+#      comment out the static jobs.
+#
+# Label taxonomy (see infra/observability/README.md for full detail):
+#   - `cell`        which deployment cell (cell-0..cell-3, or "local" in compose)
+#   - `service`     canonical service name from SPEC.md (web, api, quantum-kernel, ...)
+#   - `journey`     user journey a metric belongs to: read_lesson | run_lab | join_contest
+#   - `environment` dev | staging | prod
+#
+# NOTE on metric_relabel_configs: Prometheus has no global
+# metric_relabel_configs stanza — it is per scrape job. We define the
+# high-cardinality-drop list once as a YAML anchor on the first job below
+# (`&drop_high_cardinality`) and alias it (`metric_relabel_configs: *drop_high_cardinality`)
+# into every other job, so the policy stays in exactly one place. Prometheus's
+# strict config unmarshalling rejects unknown top-level/document keys, which
+# is why the anchor is anchored to a real field instead of a top-level
+# `x-`-prefixed key.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: redquant-local
+    environment: dev
+    cell: local
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+scrape_configs:
+  # ===========================================================================
+  # MODE 1: local docker-compose stack (active).
+  # ===========================================================================
+
+  - job_name: prometheus
+    metric_relabel_configs: &drop_high_cardinality
+      # noisy/low-value go runtime series
+      - source_labels: [__name__]
+        regex: "go_gc_duration_seconds.*|go_memstats_.*_sys_bytes"
+        action: drop
+      # never let per-request/per-user identifiers become label values; these
+      # are unbounded cardinality and would blow up the TSDB (and leak PII
+      # per §11's "no PII" requirement).
+      - regex: "user_id|session_id|request_id|submission_id|email|raw_path|contest_user_id"
+        action: labeldrop
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels: {service: prometheus, journey: platform}
+
+  - job_name: web
+    metric_relabel_configs: *drop_high_cardinality
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["web:3000"]
+        labels: {service: web, journey: read_lesson}
+
+  - job_name: api
+    # api-gateway also hosts ws-gateway and the ai-tutor entrypoint in compose;
+    # they all expose metrics on 9464 per SPEC.md.
+    metric_relabel_configs: *drop_high_cardinality
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:9464"]
+        labels: {service: api, journey: multi}
+
+  - job_name: quantum-kernel
+    metric_relabel_configs: *drop_high_cardinality
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["quantum-kernel:8100"]
+        labels: {service: quantum-kernel, journey: run_lab}
+
+  - job_name: grader
+    metric_relabel_configs: *drop_high_cardinality
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["grader:9464"]
+        labels: {service: grader, journey: run_lab}
+
+  - job_name: ai-tutor
+    metric_relabel_configs: *drop_high_cardinality
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["ai-tutor:9464"]
+        labels: {service: ai-tutor, journey: read_lesson}
+
+  - job_name: postgres-exporter
+    metric_relabel_configs: *drop_high_cardinality
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+        labels: {service: postgres, journey: platform}
+
+  - job_name: redis-exporter
+    metric_relabel_configs: *drop_high_cardinality
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+        labels: {service: redis, journey: platform}
+
+  - job_name: otel-collector
+    # collector's own internal telemetry (see otel-collector-config.yaml
+    # telemetry.metrics block), scraped on its Prometheus-format endpoint.
+    metric_relabel_configs: *drop_high_cardinality
+    static_configs:
+      - targets: ["otel-collector:8888"]
+        labels: {service: otel-collector, journey: platform}
+
+  - job_name: loki
+    metric_relabel_configs: *drop_high_cardinality
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["loki:3100"]
+        labels: {service: loki, journey: platform}
+
+  - job_name: tempo
+    metric_relabel_configs: *drop_high_cardinality
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["tempo:3200"]
+        labels: {service: tempo, journey: platform}
+
+  - job_name: minio
+    metric_relabel_configs: *drop_high_cardinality
+    metrics_path: /minio/v2/metrics/cluster
+    static_configs:
+      - targets: ["minio:9000"]
+        labels: {service: minio, journey: platform}
+
+  # ===========================================================================
+  # MODE 2: cluster mode (commented out). Enable by uncommenting and removing
+  # (or leaving disabled) the static jobs above. Requires Prometheus running
+  # with in-cluster RBAC to list/watch pods & endpoints.
+  # ===========================================================================
+
+  # - job_name: kubernetes-pods
+  #   <<: *drop_high_cardinality
+  #   kubernetes_sd_configs:
+  #     - role: pod
+  #   relabel_configs:
+  #     # only scrape pods that opt in via annotation
+  #     - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+  #       action: keep
+  #       regex: "true"
+  #     - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+  #       action: replace
+  #       target_label: __metrics_path__
+  #       regex: (.+)
+  #     - source_labels:
+  #         [
+  #           __address__,
+  #           __meta_kubernetes_pod_annotation_prometheus_io_port,
+  #         ]
+  #       action: replace
+  #       regex: ([^:]+)(?::\d+)?;(\d+)
+  #       replacement: $1:$2
+  #       target_label: __address__
+  #     # -- label enrichment: cell / service / journey --
+  #     - source_labels: [__meta_kubernetes_namespace]
+  #       action: replace
+  #       regex: redquant-(cell-.+)
+  #       target_label: cell
+  #     - source_labels: [__meta_kubernetes_pod_label_redquant_io_cell]
+  #       action: replace
+  #       target_label: cell
+  #     - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+  #       action: replace
+  #       target_label: service
+  #     - source_labels: [__meta_kubernetes_pod_label_redquant_io_journey]
+  #       action: replace
+  #       target_label: journey
+  #     - source_labels: [__meta_kubernetes_pod_name]
+  #       action: replace
+  #       target_label: pod
+  #     - source_labels: [__meta_kubernetes_namespace]
+  #       action: replace
+  #       target_label: namespace
+  #
+  # - job_name: kubernetes-service-endpoints
+  #   <<: *drop_high_cardinality
+  #   kubernetes_sd_configs:
+  #     - role: endpoints
+  #   relabel_configs:
+  #     - source_labels:
+  #         [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+  #       action: keep
+  #       regex: "true"
+  #     - source_labels:
+  #         [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+  #       action: replace
+  #       target_label: __scheme__
+  #       regex: (https?)
+  #     - source_labels:
+  #         [__meta_kubernetes_service_annotation_prometheus_io_path]
+  #       action: replace
+  #       target_label: __metrics_path__
+  #       regex: (.+)
+  #     - source_labels:
+  #         [
+  #           __address__,
+  #           __meta_kubernetes_service_annotation_prometheus_io_port,
+  #         ]
+  #       action: replace
+  #       regex: ([^:]+)(?::\d+)?;(\d+)
+  #       replacement: $1:$2
+  #       target_label: __address__
+  #     - source_labels: [__meta_kubernetes_namespace]
+  #       action: replace
+  #       regex: redquant-(cell-.+)
+  #       target_label: cell
+  #     - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
+  #       action: replace
+  #       target_label: service
+  #     - source_labels: [__meta_kubernetes_service_label_redquant_io_journey]
+  #       action: replace
+  #       target_label: journey
+  #     - source_labels: [__meta_kubernetes_namespace]
+  #       action: replace
+  #       target_label: namespace
+  #     - source_labels: [__meta_kubernetes_service_name]
+  #       action: replace
+  #       target_label: kubernetes_service

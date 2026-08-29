@@ -1,0 +1,255 @@
+# infra/docker/docker-compose.prod.yml
+#
+# Production-shaped overlay for the six RedQuant application services
+# (docs/architecture/system-design.md §1/§3). Apply on top of
+# docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml config
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# This overlay is meant for docker-compose/swarm parity and local
+# hardening drills -- the real production deployment target is Kubernetes
+# (see infra/k8s: per-cell namespaces, HPA/KEDA, topology spread, gVisor
+# RuntimeClass for sandbox-runner). Where a setting only makes sense under
+# `docker stack deploy` (swarm mode) -- `deploy.replicas`,
+# `deploy.resources`, `deploy.restart_policy` -- it is included anyway for
+# documentation/parity; a plain `docker compose up` with this overlay
+# ignores `deploy.*` but still applies read_only/cap_drop/security_opt/
+# tmpfs/restart/logging, which work under both.
+#
+# Real secrets in production come from the platform's secret store (in
+# Kubernetes: external-secrets.io ExternalSecret resources per infra
+# SPEC.md conventions -- never literal values). Every `environment:` entry
+# below is a bare `${VAR}` with NO default, sourced from the CI/CD
+# pipeline or a secrets manager at deploy time -- infra/docker/.env (dev
+# secrets) is intentionally NOT referenced here, so `env_file: .env` from
+# the base file is reset for every service.
+
+services:
+  web:
+    build: !reset null
+    image: ghcr.io/redquant/web:${GIT_SHA}
+    env_file: !reset null
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    tmpfs:
+      - /tmp:size=64m
+      - /app/apps/web/.next/cache:size=256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      # 12 steady / 40 HPA-max in k8s (system-design.md §1: 180 rps/pod @60% CPU).
+      # A fixed swarm replica count has no HPA equivalent, so this is the
+      # steady-state figure, not the peak one.
+      replicas: 12
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 5
+        window: 30s
+      resources:
+        limits:
+          cpus: "3"
+          memory: 3G
+        reservations:
+          cpus: "1.5"
+          memory: 2G
+
+  api:
+    build: !reset null
+    image: ghcr.io/redquant/api:${GIT_SHA}
+    env_file: !reset null
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      SESSION_SECRET: ${SESSION_SECRET}
+      JWT_SIGNING_SECRET: ${JWT_SIGNING_SECRET}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    tmpfs:
+      - /tmp:size=64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      # 16 steady / 60 HPA-max in k8s (§1: 400 rps/pod; 10k WS/pod).
+      replicas: 16
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 5
+        window: 30s
+      resources:
+        limits:
+          cpus: "4"
+          memory: 6G
+        reservations:
+          cpus: "2"
+          memory: 3G
+
+  quantum-kernel:
+    build: !reset null
+    image: ghcr.io/redquant/quantum-kernel:${GIT_SHA}
+    env_file: !reset null
+    environment:
+      REDIS_URL: ${REDIS_URL}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    tmpfs:
+      # Scratch for NumPy/Qiskit/Cirq/PennyLane intermediate buffers, not
+      # for statevectors themselves (those stay in-process memory; see
+      # system-design.md §4 memory guard: 2^n * 16 bytes, admission-controlled).
+      - /tmp:size=512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      # 24 steady / 120 HPA-max in k8s (§1: 6 workers/pod, 3 sim/s/worker).
+      replicas: 24
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 5
+        window: 30s
+      resources:
+        limits:
+          cpus: "7"
+          memory: 14G
+        reservations:
+          cpus: "6"
+          memory: 12G
+
+  # In real production this service runs under the gVisor (`runsc`)
+  # RuntimeClass with an EMPTY network namespace (§10) -- no interface at
+  # all, which plain Docker cannot express (there is no bridge/network
+  # setting equivalent to "no netns"). This overlay keeps it on the
+  # `sandbox-net` internal network defined in docker-compose.yml as the
+  # closest approximation; `read_only` + `cap_drop: [ALL]` +
+  # `no-new-privileges` + the 64MiB tmpfs scratch are the parts Docker CAN
+  # enforce directly. The per-submission jail's own tmpfs (also 64MiB, one
+  # per execution) is separate from this container-level mount and is
+  # created by the runner process itself.
+  sandbox-runner:
+    build: !reset null
+    image: ghcr.io/redquant/sandbox-runner:${GIT_SHA}
+    env_file: !reset null
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    tmpfs:
+      - /tmp:size=64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      # 20 steady / 100 HPA-max in k8s (§1: 2 concurrent jails/pod, 4s median).
+      replicas: 20
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 5
+        window: 30s
+      resources:
+        limits:
+          cpus: "2"
+          memory: 768M
+        reservations:
+          cpus: "1"
+          memory: 640M
+
+  grader:
+    build: !reset null
+    image: ghcr.io/redquant/grader:${GIT_SHA}
+    env_file: !reset null
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    tmpfs:
+      - /tmp:size=64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      # 8 steady / 40 HPA-max in k8s, queue-depth driven (KEDA).
+      replicas: 8
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 5
+        window: 30s
+      resources:
+        limits:
+          cpus: "3"
+          memory: 3G
+        reservations:
+          cpus: "1.5"
+          memory: 2G
+
+  ai-tutor:
+    build: !reset null
+    image: ghcr.io/redquant/ai-tutor:${GIT_SHA}
+    env_file: !reset null
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    tmpfs:
+      - /tmp:size=64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      # 6 steady / 24 HPA-max in k8s (§1: I/O bound, 80 in-flight/pod).
+      replicas: 6
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 5
+        window: 30s
+      resources:
+        limits:
+          cpus: "1"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 1G

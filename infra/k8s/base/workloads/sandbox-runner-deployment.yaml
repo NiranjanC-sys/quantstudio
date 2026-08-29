@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sandbox-runner
+  labels:
+    app.kubernetes.io/name: sandbox-runner
+    app.kubernetes.io/component: sandbox-runner
+spec:
+  replicas: 20
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sandbox-runner
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sandbox-runner
+        app.kubernetes.io/component: sandbox-runner
+    spec:
+      serviceAccountName: sandbox-runner
+      automountServiceAccountToken: false
+      priorityClassName: redquant-batch
+      terminationGracePeriodSeconds: 10
+      runtimeClassName: gvisor
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: sandbox-runner
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: sandbox-runner
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: sandbox-runner
+      containers:
+        - name: sandbox-runner
+          image: ghcr.io/redquant/sandbox-runner:0.1.0
+          envFrom:
+            - configMapRef:
+                name: sandbox-runner-config
+            - secretRef:
+                name: sandbox-runner-secrets
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector:4317"
+            - name: OTEL_SERVICE_NAME
+              value: "sandbox-runner"
+            - name: OTEL_TRACES_SAMPLER
+              value: "parentbased_traceidratio"
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: "0.01"
+            - name: SANDBOX_CPU_SECONDS
+              value: "2"
+            - name: SANDBOX_PROJECT_CPU_SECONDS
+              value: "10"
+            - name: SANDBOX_RSS_BYTES
+              value: "536870912"
+            - name: SANDBOX_MAX_PROCS
+              value: "64"
+            - name: SANDBOX_STDOUT_BYTES
+              value: "4194304"
+            - name: SANDBOX_WALLCLOCK_MULTIPLIER
+              value: "3"
+            - name: SANDBOX_MAX_EXECUTIONS
+              value: "50"
+            - name: SANDBOX_IMPORT_ALLOWLIST
+              value: "numpy,qiskit,cirq,pennylane,scipy,math,itertools,typing"
+          resources:
+            requests:
+              cpu: "1"
+              memory: "640Mi"
+            limits:
+              cpu: "2"
+              memory: "768Mi"
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          startupProbe:
+            exec:
+              command: ["/bin/sh", "-c", "pgrep -f sandbox-runner >/dev/null 2>&1 || exit 1"]
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "pgrep -f sandbox-runner >/dev/null 2>&1 || exit 1"]
+            initialDelaySeconds: 5
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "test -e /tmp/.ready || exit 0"]
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi

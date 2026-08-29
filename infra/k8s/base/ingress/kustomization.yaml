@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: redquant
+      app.kubernetes.io/component: ingress
+    includeSelectors: false
+
+# WAF.md is documentation, not a kustomize resource.
+resources:
+  - ingress-nginx.yaml
+  - gateway-api.yaml
+  - certificate.yaml

@@ -1,0 +1,246 @@
+# Multi-window, multi-burn-rate alerts (the Google SRE workbook 4-alert pattern) for
+# the three §9 SLOs, plus the contest-correctness alert.
+#
+# Pattern: alert fires only when BOTH a short window and a long window are burning
+# error budget faster than `factor`. The long window gives sensitivity to slow
+# burns; the short window gives fast recovery detection (the alert clears quickly
+# once the short window improves, even if the long window hasn't rolled off yet).
+#
+#   threshold = factor * (1 - SLO)                     (error-budget-burn threshold)
+#   fires when (1 - ratio_longWindow) > threshold AND (1 - ratio_shortWindow) > threshold
+#
+# Read availability   SLO 99.95%   -> error_budget 0.0005
+# Submission durability SLO 99.999% -> error_budget 0.00001
+# Read latency (p99<300ms, converted to an event ratio: "% of read requests <300ms")
+#   assumed target ratio 99% -> error_budget 0.01. This conversion is documented in
+#   prometheusrule-recording.yaml.
+#
+# factor 14.4 over 1h/5m  -> page   (burns a 28d budget in ~2 days if sustained)
+# factor 6    over 6h/30m -> page   (~5 days)
+# factor 3    over 1d/2h  -> ticket (~10 days)
+# factor 1    over 3d/6h  -> ticket (~28 days, i.e. exactly the budget period)
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: redquant-slo-alerts
+  labels:
+    app.kubernetes.io/part-of: redquant
+    prometheus: redquant
+    role: alert-rules
+spec:
+  groups:
+    - name: redquant.slo.read-availability
+      rules:
+        - alert: ReadAvailabilityBurnRatePage1h5m
+          expr: |
+            (1 - redquant:read_availability:ratio_rate1h) > (14.4 * 0.0005)
+            and
+            (1 - redquant:read_availability:ratio_rate5m) > (14.4 * 0.0005)
+          for: 2m
+          labels:
+            severity: critical
+            slo: read-availability
+          annotations:
+            summary: "Read availability burning error budget at >14.4x over 1h/5m"
+            description: >-
+              Read-path 5xx rate has burned more than 14.4x the 99.95% availability error budget over both a 1h and 5m window. At
+              this rate the 28-day budget is exhausted in ~2 days.
+            runbook_url: "https://runbooks.redquant.io/read-availability-burn-rate"
+            runbook_path: "docs/runbooks/read-availability-burn-rate.md"
+        - alert: ReadAvailabilityBurnRatePage6h30m
+          expr: |
+            (1 - redquant:read_availability:ratio_rate6h) > (6 * 0.0005)
+            and
+            (1 - redquant:read_availability:ratio_rate30m) > (6 * 0.0005)
+          for: 5m
+          labels:
+            severity: critical
+            slo: read-availability
+          annotations:
+            summary: "Read availability burning error budget at >6x over 6h/30m"
+            description: >-
+              Read-path 5xx rate has burned more than 6x the 99.95% availability error budget over both a 6h and 30m window.
+            runbook_url: "https://runbooks.redquant.io/read-availability-burn-rate"
+            runbook_path: "docs/runbooks/read-availability-burn-rate.md"
+        - alert: ReadAvailabilityBurnRateTicket1d2h
+          expr: |
+            (1 - redquant:read_availability:ratio_rate1d) > (3 * 0.0005)
+            and
+            (1 - redquant:read_availability:ratio_rate2h) > (3 * 0.0005)
+          for: 30m
+          labels:
+            severity: warning
+            slo: read-availability
+          annotations:
+            summary: "Read availability burning error budget at >3x over 1d/2h"
+            description: >-
+              Read-path 5xx rate has burned more than 3x the 99.95% availability error budget over both a 1d and 2h window.
+            runbook_url: "https://runbooks.redquant.io/read-availability-burn-rate"
+            runbook_path: "docs/runbooks/read-availability-burn-rate.md"
+        - alert: ReadAvailabilityBurnRateTicket3d6h
+          expr: |
+            (1 - redquant:read_availability:ratio_rate3d) > (1 * 0.0005)
+            and
+            (1 - redquant:read_availability:ratio_rate6h) > (1 * 0.0005)
+          for: 1h
+          labels:
+            severity: warning
+            slo: read-availability
+          annotations:
+            summary: "Read availability burning error budget at >1x over 3d/6h"
+            description: >-
+              Read-path 5xx rate has burned more than 1x (the full-speed budget-exhaustion rate) the 99.95% availability error
+              budget over both a 3d and 6h window.
+            runbook_url: "https://runbooks.redquant.io/read-availability-burn-rate"
+            runbook_path: "docs/runbooks/read-availability-burn-rate.md"
+
+    - name: redquant.slo.submission-durability
+      rules:
+        - alert: SubmissionDurabilityBurnRatePage1h5m
+          expr: |
+            (1 - redquant:submission_durability:ratio_rate1h) > (14.4 * 0.00001)
+            and
+            (1 - redquant:submission_durability:ratio_rate5m) > (14.4 * 0.00001)
+          for: 2m
+          labels:
+            severity: critical
+            slo: submission-durability
+          annotations:
+            summary: "Submission durability burning error budget at >14.4x over 1h/5m"
+            description: >-
+              accepted != committed for submissions at more than 14.4x the 99.999% durability error budget over both a 1h and 5m
+              window. A submission acknowledged with 202 is not reliably reaching submission_results.
+            runbook_url: "https://runbooks.redquant.io/submission-durability-burn-rate"
+            runbook_path: "docs/runbooks/submission-durability-burn-rate.md"
+        - alert: SubmissionDurabilityBurnRatePage6h30m
+          expr: |
+            (1 - redquant:submission_durability:ratio_rate6h) > (6 * 0.00001)
+            and
+            (1 - redquant:submission_durability:ratio_rate30m) > (6 * 0.00001)
+          for: 5m
+          labels:
+            severity: critical
+            slo: submission-durability
+          annotations:
+            summary: "Submission durability burning error budget at >6x over 6h/30m"
+            description: >-
+              accepted != committed for submissions at more than 6x the 99.999% durability error budget over both a 6h and 30m
+              window.
+            runbook_url: "https://runbooks.redquant.io/submission-durability-burn-rate"
+            runbook_path: "docs/runbooks/submission-durability-burn-rate.md"
+        - alert: SubmissionDurabilityBurnRateTicket1d2h
+          expr: |
+            (1 - redquant:submission_durability:ratio_rate1d) > (3 * 0.00001)
+            and
+            (1 - redquant:submission_durability:ratio_rate2h) > (3 * 0.00001)
+          for: 30m
+          labels:
+            severity: warning
+            slo: submission-durability
+          annotations:
+            summary: "Submission durability burning error budget at >3x over 1d/2h"
+            description: >-
+              accepted != committed for submissions at more than 3x the 99.999% durability error budget over both a 1d and 2h
+              window.
+            runbook_url: "https://runbooks.redquant.io/submission-durability-burn-rate"
+            runbook_path: "docs/runbooks/submission-durability-burn-rate.md"
+        - alert: SubmissionDurabilityBurnRateTicket3d6h
+          expr: |
+            (1 - redquant:submission_durability:ratio_rate3d) > (1 * 0.00001)
+            and
+            (1 - redquant:submission_durability:ratio_rate6h) > (1 * 0.00001)
+          for: 1h
+          labels:
+            severity: warning
+            slo: submission-durability
+          annotations:
+            summary: "Submission durability burning error budget at >1x over 3d/6h"
+            description: >-
+              accepted != committed for submissions at the full-speed budget-exhaustion rate over both a 3d and 6h window.
+            runbook_url: "https://runbooks.redquant.io/submission-durability-burn-rate"
+            runbook_path: "docs/runbooks/submission-durability-burn-rate.md"
+
+    - name: redquant.slo.read-latency
+      rules:
+        - alert: ReadLatencyBurnRatePage1h5m
+          expr: |
+            (1 - redquant:read_latency_fast:ratio_rate1h) > (14.4 * 0.01)
+            and
+            (1 - redquant:read_latency_fast:ratio_rate5m) > (14.4 * 0.01)
+          for: 2m
+          labels:
+            severity: critical
+            slo: read-latency
+          annotations:
+            summary: "Read p99 latency burning error budget at >14.4x over 1h/5m"
+            description: >-
+              Fewer than the required share of read requests are completing under the 300ms budget, at more than 14.4x the assumed
+              99% target error budget, over both a 1h and 5m window.
+            runbook_url: "https://runbooks.redquant.io/read-latency-burn-rate"
+            runbook_path: "docs/runbooks/read-latency-burn-rate.md"
+        - alert: ReadLatencyBurnRatePage6h30m
+          expr: |
+            (1 - redquant:read_latency_fast:ratio_rate6h) > (6 * 0.01)
+            and
+            (1 - redquant:read_latency_fast:ratio_rate30m) > (6 * 0.01)
+          for: 5m
+          labels:
+            severity: critical
+            slo: read-latency
+          annotations:
+            summary: "Read p99 latency burning error budget at >6x over 6h/30m"
+            description: >-
+              Fewer than the required share of read requests are completing under the 300ms budget, at more than 6x the assumed
+              99% target error budget, over both a 6h and 30m window.
+            runbook_url: "https://runbooks.redquant.io/read-latency-burn-rate"
+            runbook_path: "docs/runbooks/read-latency-burn-rate.md"
+        - alert: ReadLatencyBurnRateTicket1d2h
+          expr: |
+            (1 - redquant:read_latency_fast:ratio_rate1d) > (3 * 0.01)
+            and
+            (1 - redquant:read_latency_fast:ratio_rate2h) > (3 * 0.01)
+          for: 30m
+          labels:
+            severity: warning
+            slo: read-latency
+          annotations:
+            summary: "Read p99 latency burning error budget at >3x over 1d/2h"
+            description: >-
+              Fewer than the required share of read requests are completing under the 300ms budget, at more than 3x the assumed
+              99% target error budget, over both a 1d and 2h window.
+            runbook_url: "https://runbooks.redquant.io/read-latency-burn-rate"
+            runbook_path: "docs/runbooks/read-latency-burn-rate.md"
+        - alert: ReadLatencyBurnRateTicket3d6h
+          expr: |
+            (1 - redquant:read_latency_fast:ratio_rate3d) > (1 * 0.01)
+            and
+            (1 - redquant:read_latency_fast:ratio_rate6h) > (1 * 0.01)
+          for: 1h
+          labels:
+            severity: warning
+            slo: read-latency
+          annotations:
+            summary: "Read p99 latency burning error budget at >1x over 3d/6h"
+            description: >-
+              Fewer than the required share of read requests are completing under the 300ms budget, at the full-speed budget-
+              exhaustion rate, over both a 3d and 6h window.
+            runbook_url: "https://runbooks.redquant.io/read-latency-burn-rate"
+            runbook_path: "docs/runbooks/read-latency-burn-rate.md"
+
+    - name: redquant.slo.contest-correctness
+      rules:
+        - alert: ContestScoringCorrectnessViolated
+          expr: |
+            increase(redquant_contest_replay_diff_total[1h]) > 0
+          for: 0m
+          labels:
+            severity: critical
+            slo: contest-scoring-correctness
+          annotations:
+            summary: "Post-contest replay found a standings diff"
+            description: >-
+              The post-contest replay job recomputed standings from the submission log and found at least one diff against the
+              published snapshot (§6/§9 require 100% scoring correctness). Any non-zero value is a violation -- ratings and prizes
+              may be wrong.
+            runbook_url: "https://runbooks.redquant.io/contest-scoring-correctness"
+            runbook_path: "docs/runbooks/contest-scoring-correctness.md"

@@ -1,0 +1,14 @@
+/*
+ * Single stylesheet entry for a consuming app.
+ *
+ * ```css
+ * @import "@redquant/design/styles.css";
+ * @source "../../packages/design/src";
+ * ```
+ *
+ * The `@source` line points Tailwind at this package's components so the
+ * utilities they reference survive tree shaking.
+ */
+@import 'tailwindcss';
+@import './tokens.css';
+@import './components.css';

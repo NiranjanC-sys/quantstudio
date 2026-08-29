@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: redquant-dev
+  labels:
+    app.kubernetes.io/part-of: redquant
+    app.kubernetes.io/environment: dev

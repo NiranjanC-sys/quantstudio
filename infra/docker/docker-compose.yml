@@ -1,0 +1,336 @@
+# infra/docker/docker-compose.yml
+#
+# Local development stack for RedQuant (docs/architecture/system-design.md).
+# `docker compose up` from this directory should bring up the full vertical
+# slice: the six application services plus Postgres, Redis, MinIO (an S3/R2
+# stand-in), and the observability stack (§11).
+#
+# Build context for every app service is the monorepo root (../..) because
+# the pnpm/turbo build needs the whole workspace; see Dockerfile.<svc> and
+# the matching Dockerfile.<svc>.dockerignore next to each one.
+#
+# ENV VAR NOTE: apps/web and apps/quantum-kernel have not been scaffolded yet
+# (see the "NOTE ON APP LAYOUT" comments in the Dockerfiles), so the exact
+# environment variable names their config layers expect are not yet known.
+# The DATABASE_URL / REDIS_URL / S3_* / OTEL_* / *_SECRET names below follow
+# the most common Node/Python conventions and should need only trivial
+# renaming once real config-loading code lands.
+#
+# Production topology differs substantially from this file -- see
+# docker-compose.prod.yml and system-design.md §1/§2 (cells, HPA, KEDA).
+
+networks:
+  redquant:
+    driver: bridge
+  # Isolated network for the sandbox-runner (system-design.md §10: "no
+  # network... not a firewall rule, an absent interface"). sandbox-runner is
+  # the ONLY service attached to it, so even though a plain bridge network
+  # technically permits routing between its members, there is nothing else
+  # on this network to route to or from -- it cannot reach postgres, redis,
+  # the other app services, or the internet, and nothing can reach it. In
+  # production (docker-compose.prod.yml) this is taken further: the
+  # sandbox-runner container has NO network at all (an empty network
+  # namespace under the gVisor RuntimeClass), which compose alone cannot
+  # express -- `internal: true` here is the closest local-dev approximation.
+  sandbox-net:
+    driver: bridge
+    internal: true
+
+volumes:
+  pg_data:
+  redis_data:
+  minio_data:
+  grafana_data:
+  prometheus_data:
+
+services:
+  # =========================================================================
+  # Data plane
+  # =========================================================================
+
+  postgres:
+    image: postgres:18-alpine
+    networks: [redquant]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      # Postgres 18+ images store data in a major-version-specific subdirectory
+      # and REFUSE to start if a volume is mounted at the old .../data path.
+      # See docker-library/postgres#1259. Mount the parent, not `data`.
+      - pg_data:/var/lib/postgresql
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # Single node in dev. Production is a 6-shard cluster-enabled Redis with
+  # AOF everysec, AZ-aware placement (system-design.md §5) -- see
+  # docker-compose.prod.yml and infra/k8s for the real topology. Auth is
+  # intentionally left off here for simplicity; REDIS_PASSWORD is defined in
+  # .env for parity with prod naming but unused by this single-node dev setup.
+  redis:
+    image: redis:7-alpine
+    networks: [redquant]
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  minio:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    networks: [redquant]
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "${MINIO_API_PORT}:9000"
+      - "${MINIO_CONSOLE_PORT}:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # =========================================================================
+  # Observability (system-design.md §11). Configs are owned/mounted from
+  # ../observability/ -- this compose file only references those paths, it
+  # does not create them.
+  # =========================================================================
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    networks: [redquant]
+    volumes:
+      - ../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # prometheus.yml has `rule_files: [/etc/prometheus/rules/*.yml]`; without
+      # this second mount the recording rules and SLO burn-rate alerts silently
+      # never load (Prometheus does not error on an unmatched rule_files glob).
+      - ../observability/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT}:9090"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  tempo:
+    image: grafana/tempo:2.6.0
+    networks: [redquant]
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ../observability/tempo/tempo.yaml:/etc/tempo.yaml:ro
+    ports:
+      - "${TEMPO_PORT}:3200"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3200/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  loki:
+    image: grafana/loki:3.3.2
+    networks: [redquant]
+    command: ["-config.file=/etc/loki/loki-config.yaml"]
+    volumes:
+      - ../observability/loki/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+    ports:
+      - "${LOKI_PORT}:3100"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.116.1
+    networks: [redquant]
+    volumes:
+      - ../observability/otel/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "${OTEL_GRPC_PORT}:4317"
+      - "${OTEL_HTTP_PORT}:4318"
+    depends_on:
+      tempo:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    # This image is fully distroless (no shell, no curl/wget, not even `ls`
+    # -- verified: `docker run --rm --entrypoint sh <image>` fails with
+    # "sh: not found"), so an HTTP-based liveness check is not possible
+    # without a shell to run it from. `validate` re-parses the mounted
+    # config and exits non-zero on a bad/missing file, which is the closest
+    # available proxy for "this collector is correctly deployed" -- it does
+    # NOT prove the running process is still accepting OTLP traffic. In
+    # production, prefer scraping the collector's `health_check` extension
+    # (default :13133/health) from an external prober instead of a
+    # container-local HEALTHCHECK.
+    healthcheck:
+      test: ["CMD", "/otelcol-contrib", "validate", "--config", "/etc/otelcol-contrib/config.yaml"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    networks: [redquant]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+    volumes:
+      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT}:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # =========================================================================
+  # Application services (system-design.md §3)
+  # =========================================================================
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.web
+    networks: [redquant]
+    env_file: .env
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      NEXT_PUBLIC_API_URL: http://localhost:${API_PORT}
+    ports:
+      - "${WEB_PORT}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    # HEALTHCHECK is inherited from the image (Dockerfile.web) -- GET
+    # http://127.0.0.1:3000/api/health via wget.
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.api
+    networks: [redquant]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+    ports:
+      - "${API_PORT}:3001"
+      - "${API_METRICS_PORT}:9464"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    # HEALTHCHECK is inherited from the image (Dockerfile.api) -- GET
+    # http://127.0.0.1:3001/healthz via wget.
+
+  quantum-kernel:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.quantum-kernel
+    networks: [redquant]
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+    ports:
+      - "${QUANTUM_KERNEL_PORT}:8100"
+    depends_on:
+      redis:
+        condition: service_healthy
+    # HEALTHCHECK is inherited from the image (Dockerfile.quantum-kernel) --
+    # GET http://127.0.0.1:8100/healthz via a python urllib one-liner.
+
+  # See the network-isolation comment on `sandbox-net` above: sandbox-runner
+  # is deliberately NOT on the `redquant` network and gets no host ports.
+  # It executes untrusted learner code (§10): gVisor runsc, empty network
+  # namespace, tmpfs 64MiB scratch, recycled after 50 executions.
+  sandbox-runner:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.sandbox-runner
+    networks: [sandbox-net]
+    # HEALTHCHECK is inherited from the image (Dockerfile.sandbox-runner) --
+    # a file-based heartbeat check, deliberately not network-based.
+
+  grader:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.grader
+    networks: [redquant]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+    ports:
+      - "${GRADER_METRICS_PORT}:9464"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # HEALTHCHECK is inherited from the image (Dockerfile.grader) -- GET
+    # http://127.0.0.1:9464/metrics via a python urllib one-liner.
+
+  ai-tutor:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.ai-tutor
+    networks: [redquant]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+    ports:
+      - "${AI_TUTOR_PORT}:3002"
+      - "${AI_TUTOR_METRICS_PORT}:9464"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # HEALTHCHECK is inherited from the image (Dockerfile.ai-tutor) -- GET
+    # http://127.0.0.1:3002/healthz via wget.

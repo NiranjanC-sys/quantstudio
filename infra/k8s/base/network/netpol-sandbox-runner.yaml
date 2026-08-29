@@ -1,0 +1,26 @@
+# THE critical policy. Per system-design.md §10:
+#
+#   "No network. Empty network namespace. Not a firewall rule, an absent interface."
+#
+# The gVisor (runsc) sandbox itself gives the untrusted-code process no network
+# interface at all -- that is the primary control. This NetworkPolicy is defence in
+# depth *behind* that empty network namespace: even if a future change (a sidecar, a
+# misconfigured runtime, a gVisor bug) ever gave the pod an interface, ingress: [] and
+# egress: [] mean Kubernetes' own network layer independently permits nothing in or
+# out. Two independent layers must both fail before sandbox-runner talks to anything.
+#
+# sandbox-runner is also the one workload explicitly excluded from netpol-dns.yaml: it
+# has no legitimate reason to resolve a hostname, so it does not even get port 53.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-runner-no-network
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: sandbox-runner
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress: []

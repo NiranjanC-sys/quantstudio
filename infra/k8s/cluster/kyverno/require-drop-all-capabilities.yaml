@@ -1,0 +1,56 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-drop-all-capabilities
+  annotations:
+    policies.kyverno.io/title: Require Drop ALL Capabilities
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Requires every container to explicitly drop the ALL capability set and
+      forbids allowPrivilegeEscalation, per the SPEC.md pod security
+      convention.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: check-drop-all
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+      validate:
+        message: "Every container must set securityContext.capabilities.drop: [ALL]."
+        pattern:
+          spec:
+            containers:
+              - name: "*"
+                securityContext:
+                  capabilities:
+                    drop:
+                      - ALL
+    - name: check-no-privilege-escalation
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+      validate:
+        message: "Every container must set securityContext.allowPrivilegeEscalation: false."
+        pattern:
+          spec:
+            containers:
+              - name: "*"
+                securityContext:
+                  allowPrivilegeEscalation: false

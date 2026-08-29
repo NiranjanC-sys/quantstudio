@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist",
+    "rootDir": ".",
+    "types": ["node"],
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": false,
+    "allowJs": false,
+    "verbatimModuleSyntax": false
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts", "drizzle.config.ts", "vitest.config.ts"],
+  "exclude": ["dist", "node_modules"]
+}

@@ -1,0 +1,226 @@
+# RedQuant alerting rules — local/compose-usable plain Prometheus rule groups.
+#
+# The cluster PrometheusRule CRs (owned by another agent, see infra/k8s) wrap
+# equivalent groups for the Prometheus Operator. These plain rule_files exist
+# so `promtool check rules` and the docker-compose stack (which mounts
+# infra/observability/prometheus/rules/*.yml straight into vanilla
+# Prometheus) both work without the Operator CRD machinery.
+#
+# Per §11/system-design.md: "Alerts fire on SLO burn rate, never on raw CPU."
+# All SLO alerts below are multi-window multi-burn-rate (Google SRE workbook
+# style) using the recording rules in recording-rules.yml.
+
+groups:
+  # ---------------------------------------------------------------------------
+  # §9 Read availability SLO: 99.95% over 28d -> error budget 0.05%.
+  # Burn-rate thresholds (fast: 1h/5m window pair at 14.4x; slow: 6h/30m at 6x;
+  # 1d/2h at 3x; 3d/6h at 1x) per the standard multi-window recipe.
+  # ---------------------------------------------------------------------------
+  - name: redquant-read-availability-burn-rate
+    rules:
+      - alert: ReadAvailabilitySLOBurnRateFast
+        expr: |
+          (1 - redquant:read_availability:ratio_rate5m) > (14.4 * 0.0005)
+            and
+          (1 - redquant:read_availability:ratio_rate1h) > (14.4 * 0.0005)
+        for: 2m
+        labels: {severity: critical, journey: read_lesson, slo: read_availability}
+        annotations:
+          summary: "Read availability burning error budget fast in cell {{ $labels.cell }}"
+          description: "5m and 1h error ratio both exceed the 14.4x burn threshold for the 99.95% read availability SLO. At this rate the 28d budget exhausts in <2h."
+
+      - alert: ReadAvailabilitySLOBurnRateSlow
+        expr: |
+          (1 - redquant:read_availability:ratio_rate30m) > (6 * 0.0005)
+            and
+          (1 - redquant:read_availability:ratio_rate6h) > (6 * 0.0005)
+        for: 15m
+        labels: {severity: warning, journey: read_lesson, slo: read_availability}
+        annotations:
+          summary: "Read availability burning error budget in cell {{ $labels.cell }}"
+          description: "30m and 6h error ratio both exceed the 6x burn threshold for the 99.95% read availability SLO."
+
+      - alert: ReadAvailabilitySLOBurnRateSustained
+        expr: |
+          (1 - redquant:read_availability:ratio_rate2h) > (3 * 0.0005)
+            and
+          (1 - redquant:read_availability:ratio_rate1d) > (3 * 0.0005)
+        for: 1h
+        labels: {severity: warning, journey: read_lesson, slo: read_availability}
+        annotations:
+          summary: "Sustained read availability budget burn in cell {{ $labels.cell }}"
+          description: "2h and 1d error ratio both exceed the 3x burn threshold."
+
+      - alert: ReadLatencyP99BudgetBreach
+        expr: redquant:read_latency:p99_5m > 0.3
+        for: 5m
+        labels: {severity: warning, journey: read_lesson, slo: read_latency}
+        annotations:
+          summary: "Read path p99 latency above 300ms budget in cell {{ $labels.cell }}"
+          description: "p99 read latency is {{ $value }}s, over the §9 budget of 300ms."
+
+  # ---------------------------------------------------------------------------
+  # §6/§9 Submission durability SLO: 99.999% -> error budget 0.001%.
+  # ---------------------------------------------------------------------------
+  - name: redquant-submission-durability-burn-rate
+    rules:
+      - alert: SubmissionDurabilitySLOBurnRateFast
+        expr: |
+          (1 - redquant:submission_durability:ratio_rate5m) > (14.4 * 0.00001)
+            and
+          (1 - redquant:submission_durability:ratio_rate1h) > (14.4 * 0.00001)
+        for: 2m
+        labels: {severity: critical, slo: submission_durability}
+        annotations:
+          summary: "Submission durability burning error budget fast ({{ $labels.journey }}, cell {{ $labels.cell }})"
+          description: "Accepted submissions are not committing at the rate required for the 99.999% durability SLO. Page immediately — this is a data-loss risk (§6)."
+
+      - alert: SubmissionDurabilitySLOBurnRateSlow
+        expr: |
+          (1 - redquant:submission_durability:ratio_rate30m) > (6 * 0.00001)
+            and
+          (1 - redquant:submission_durability:ratio_rate6h) > (6 * 0.00001)
+        for: 15m
+        labels: {severity: critical, slo: submission_durability}
+        annotations:
+          summary: "Submission durability budget burn ({{ $labels.journey }}, cell {{ $labels.cell }})"
+          description: "30m/6h windows both breach the 6x burn threshold for the 99.999% durability SLO."
+
+  # ---------------------------------------------------------------------------
+  # §4 sim tier split — the single most important derived metric (see
+  # recording-rules.yml comment). Alert if T-A share drifts meaningfully
+  # below the ~92% assumption baked into kernel fleet sizing (§1).
+  # ---------------------------------------------------------------------------
+  - name: redquant-sim-tier-share
+    rules:
+      - alert: ClientSimShareBelowBudget
+        expr: redquant:sim_tier:share{tier="T-A"} < 0.90
+        for: 15m
+        labels: {severity: warning, journey: run_lab}
+        annotations:
+          summary: "T-A (client-side) simulation share below 90% in cell {{ $labels.cell }}"
+          description: "T-A share is {{ $value | humanizePercentage }}, below the §4 assumption of ~92%. Server kernel load (T-B/T-C) grows non-linearly (§1)."
+
+      - alert: ClientSimShareCritical
+        expr: redquant:sim_tier:share{tier="T-A"} < 0.80
+        for: 5m
+        labels: {severity: critical, journey: run_lab}
+        annotations:
+          summary: "T-A simulation share critically low in cell {{ $labels.cell }}"
+          description: "T-A share is {{ $value | humanizePercentage }}. Immediate capacity risk to quantum-kernel fleet (§1 sizing assumes ~92% offload)."
+
+  # ---------------------------------------------------------------------------
+  # §11 domain metrics — one alert group per metric named in system-design.md.
+  # ---------------------------------------------------------------------------
+  - name: redquant-domain-metrics
+    rules:
+      - alert: SimQueueDepthHigh
+        expr: redquant:sim_queue_depth:avg5m{tier="T-B"} > 50
+        for: 5m
+        labels: {severity: warning, journey: run_lab}
+        annotations:
+          summary: "T-B sim queue depth elevated in cell {{ $labels.cell }}"
+          description: "Average T-B sim_queue_depth is {{ $value }}. §9 degradation ladder step 1 (DEGRADE_SIM_ASYNC) should already be engaging."
+
+      - alert: SimQueueDepthCritical
+        expr: redquant:sim_queue_depth:avg5m{tier="T-B"} > 200
+        for: 5m
+        labels: {severity: critical, journey: run_lab}
+        annotations:
+          summary: "T-B sim queue depth critical in cell {{ $labels.cell }}"
+          description: "Average T-B sim_queue_depth is {{ $value }}. Expect §9 degradation ladder step 2 (DEGRADE_SIM_MAX_QUBITS=22) to be active."
+
+      - alert: SimCacheHitRatioLow
+        expr: redquant:sim_cache_hit_ratio:rate5m < 0.5
+        for: 15m
+        labels: {severity: warning, journey: run_lab}
+        annotations:
+          summary: "Simulation cache hit ratio degraded in cell {{ $labels.cell }}"
+          description: "sim_cache_hit_ratio is {{ $value | humanizePercentage }}, below baseline (§4). Check Redis health and cache key canonicalisation."
+
+      - alert: GraderLagHigh
+        expr: redquant:grader_lag_seconds:avg5m > 30
+        for: 5m
+        labels: {severity: warning, journey: run_lab}
+        annotations:
+          summary: "Grader lag elevated in cell {{ $labels.cell }}"
+          description: "Average grader_lag_seconds is {{ $value }}s. Check BullMQ queue depth and KEDA scaling for the grader tier."
+
+      - alert: GraderLagCritical
+        expr: redquant:grader_lag_seconds:avg5m > 120
+        for: 5m
+        labels: {severity: critical, journey: run_lab}
+        annotations:
+          summary: "Grader lag critical in cell {{ $labels.cell }}"
+          description: "Average grader_lag_seconds is {{ $value }}s. Contest scoring correctness and lab feedback latency are both at risk."
+
+      - alert: ContestBroadcastLagHigh
+        expr: redquant:contest_broadcast_lag_ms:p99_5m > 500
+        for: 2m
+        labels: {severity: warning, journey: join_contest}
+        annotations:
+          summary: "Contest leaderboard broadcast lag elevated (contest {{ $labels.contest_id }})"
+          description: "p99 contest_broadcast_lag_ms is {{ $value }}ms. Learners may perceive a stale leaderboard during an active contest."
+
+      - alert: ContestBroadcastLagCritical
+        expr: redquant:contest_broadcast_lag_ms:p99_5m > 2000
+        for: 1m
+        labels: {severity: critical, journey: join_contest}
+        annotations:
+          summary: "Contest leaderboard broadcast lag critical (contest {{ $labels.contest_id }})"
+          description: "p99 contest_broadcast_lag_ms is {{ $value }}ms during an active contest window."
+
+      - alert: TutorCostBudgetHigh
+        expr: redquant:tutor_cost_usd_per_hour:rate1h > 30
+        for: 30m
+        labels: {severity: warning, journey: read_lesson}
+        annotations:
+          summary: "AI tutor spend rate elevated in cell {{ $labels.cell }}"
+          description: "tutor_cost_usd_per_hour is ${{ $value }}/hr. §12 budgets $9-16k/mo total; sustained overrun should trigger the retrieval-only downgrade (§9 step 3)."
+
+      - alert: TutorCostBudgetCritical
+        expr: redquant:tutor_cost_usd_per_hour:rate1h > 60
+        for: 10m
+        labels: {severity: critical, journey: read_lesson}
+        annotations:
+          summary: "AI tutor spend rate critical in cell {{ $labels.cell }}"
+          description: "tutor_cost_usd_per_hour is ${{ $value }}/hr. Verify the automatic downgrade to retrieval-only (DEGRADE_TUTOR_RETRIEVAL_ONLY) has engaged."
+
+      - alert: EntitlementDenialRateHigh
+        expr: redquant:entitlement_denial_rate:rate5m > 0.10
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Entitlement denial rate elevated for plan {{ $labels.plan }} in cell {{ $labels.cell }}"
+          description: "entitlement_denial_rate is {{ $value | humanizePercentage }}. Could indicate a billing issue (§7) or a cache bug, not just plan limits."
+
+  # ---------------------------------------------------------------------------
+  # §1 capacity headroom
+  # ---------------------------------------------------------------------------
+  - name: redquant-capacity-headroom
+    rules:
+      - alert: AZLossHeadroomInsufficient
+        expr: redquant:tier_headroom_az_loss:breach == 1
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "Tier {{ $labels.tier }} would not have 40% headroom after an AZ loss (cell {{ $labels.cell }})"
+          description: "Simulated post-AZ-loss headroom for tier {{ $labels.tier }} is below the §1 requirement of 40% CPU headroom. Consider scaling steady-state replicas."
+
+  # ---------------------------------------------------------------------------
+  # §10 sandbox / recycling — supporting alert, not an explicit domain metric
+  # but referenced by §10's N=50 recycle policy.
+  # ---------------------------------------------------------------------------
+  - name: redquant-sandbox
+    rules:
+      - alert: SandboxRecycleRateAnomalous
+        expr: |
+          sum by (cell, environment) (rate(sandbox_pod_recycles_total[15m]))
+            /
+          sum by (cell, environment) (rate(sandbox_executions_total[15m]))
+          > (1.0 / 40)
+        for: 15m
+        labels: {severity: warning, journey: run_lab}
+        annotations:
+          summary: "Sandbox pods recycling faster than expected (N=50 policy) in cell {{ $labels.cell }}"
+          description: "Recycle rate implies pods are cycling before reaching the configured N=50 execution count — check for OOM/kill-driven early recycles (§10)."

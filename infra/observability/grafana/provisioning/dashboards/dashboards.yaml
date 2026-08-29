@@ -1,0 +1,18 @@
+# RedQuant Grafana dashboard provisioning — file provider pointed at the
+# dashboards directory mounted into the Grafana container (see
+# infra/docker/docker-compose.yml, which mounts
+# infra/observability/grafana/dashboards -> /etc/grafana/dashboards).
+
+apiVersion: 1
+
+providers:
+  - name: redquant-journeys
+    orgId: 1
+    folder: "RedQuant / Journeys"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false

@@ -1,0 +1,512 @@
+/*
+ * RedQuant design tokens.
+ * Tailwind CSS v4, CSS-first. There is no JS Tailwind config.
+ *
+ * Theme resolution
+ * ----------------
+ * The complete light palette sits on bare `:root`, so no colour in this file is
+ * ever defined only inside a media query. Dark then wins in three places:
+ *
+ *   :root:not([data-theme="light"])                    dark is the default
+ *   @media (prefers-color-scheme: dark) { same }       honours the OS
+ *   :root[data-theme="dark"]                           explicit toggle
+ *
+ * and `:root[data-theme="light"]` restates light last, so an explicit toggle
+ * wins in both directions.
+ *
+ * Provenance
+ * ----------
+ * Values marked `spec` come from DESIGN.md verbatim. Values marked `derived`
+ * move a spec value's OKLCH lightness while holding hue and chroma, which is
+ * how DESIGN.md derives its own light accent, and is required to meet the
+ * contrast floor it sets. No derivation introduces a new hue.
+ */
+
+/* ========================================================================== */
+/* Runtime palette                                                            */
+/* ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* -- Monograph, warm paper ------------------------------------------- */
+  --rq-canvas: #fbfaf8; /* spec */
+  --rq-surface-1: #ffffff; /* spec */
+  --rq-surface-2: #f4f2ee; /* spec */
+  --rq-surface-3: #eae7e1; /* spec */
+  --rq-surface-inset: #f7f5f1; /* spec */
+
+  --rq-hairline: #e2ded7; /* spec */
+  --rq-hairline-strong: #cfc9c0; /* spec */
+
+  --rq-ink: #131518; /* spec */
+  --rq-ink-muted: #4a4f57; /* spec */
+  --rq-ink-subtle: #696f78; /* derived: spec #6e747d reads 4.21:1 on --surface-2 */
+  --rq-ink-faint: #9aa0a8; /* spec, disabled only */
+
+  --rq-accent: #e23a10; /* spec, indicators and rules */
+  --rq-accent-strong: #d52a00; /* derived, accent as text and as a ground */
+  --rq-accent-hover: #cc1f00; /* derived */
+  --rq-accent-press: #bb0000; /* derived */
+  --rq-accent-wash: rgba(226, 58, 16, 0.1);
+  --rq-on-accent: #ffffff; /* spec */
+
+  --rq-success: #007f4a; /* derived */
+  --rq-success-strong: #007f4a;
+  --rq-success-wash: rgba(0, 127, 74, 0.1);
+  --rq-warning: #a15f00; /* derived */
+  --rq-warning-strong: #a15f00;
+  --rq-warning-wash: rgba(161, 95, 0, 0.1);
+  --rq-danger: #d0322b; /* derived */
+  --rq-danger-strong: #d0322b;
+  --rq-danger-wash: rgba(208, 50, 43, 0.1);
+  --rq-info: #2072b9; /* derived */
+  --rq-info-strong: #2072b9;
+  --rq-info-wash: rgba(32, 114, 185, 0.1);
+
+  /* Panels lift off paper in the Monograph register and never in Instrument. */
+  --rq-shadow-panel: 0 1px 2px rgba(19, 21, 24, 0.04);
+  --rq-shadow-overlay: 0 12px 32px -8px rgba(19, 21, 24, 0.16);
+}
+
+/*
+ * Dark is the default when the reader has expressed no preference at all.
+ * `ThemeProvider` also defaults to dark, so a first visit with nothing stored
+ * writes data-theme="dark" before paint; this block covers the no-script case.
+ */
+@media (prefers-color-scheme: no-preference) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    /* -- Instrument, laboratory surface ---------------------------------- */
+    --rq-canvas: #08090b; /* spec */
+    --rq-surface-1: #0e1013; /* spec */
+    --rq-surface-2: #14171b; /* spec */
+    --rq-surface-3: #1a1e23; /* spec */
+    --rq-surface-inset: #0a0b0d; /* spec */
+
+    --rq-hairline: #22262c; /* spec */
+    --rq-hairline-strong: #2f343b; /* spec */
+
+    --rq-ink: #f4f5f7; /* spec */
+    --rq-ink-muted: #b4bac3; /* spec */
+    --rq-ink-subtle: #7c848f; /* spec */
+    --rq-ink-faint: #525963; /* spec, disabled only */
+
+    --rq-accent: #ff4a1c; /* spec */
+    --rq-accent-strong: #ff4a1c; /* spec */
+    --rq-accent-hover: #ff6740; /* spec */
+    --rq-accent-press: #e23a10; /* spec */
+    --rq-accent-wash: rgba(255, 74, 28, 0.1); /* spec */
+    --rq-on-accent: #0a0a0a; /* spec */
+
+    --rq-success: #2fa36b; /* spec */
+    --rq-success-strong: #2fa36b;
+    --rq-success-wash: rgba(47, 163, 107, 0.1);
+    --rq-warning: #d99420; /* spec */
+    --rq-warning-strong: #d99420;
+    --rq-warning-wash: rgba(217, 148, 32, 0.1);
+    --rq-danger: #e2453b; /* spec */
+    --rq-danger-strong: #e4473d; /* derived: spec value reads 4.41:1 on --surface-2 */
+    --rq-danger-wash: rgba(226, 69, 59, 0.1);
+    --rq-info: #3d8bd4; /* spec */
+    --rq-info-strong: #3d8bd4;
+    --rq-info-wash: rgba(61, 139, 212, 0.1);
+
+    /* No shadow on panels in dark. Hairlines do the separating. */
+    --rq-shadow-panel: none;
+    --rq-shadow-overlay: 0 16px 40px -12px rgba(0, 0, 0, 0.72);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    --rq-canvas: #08090b;
+    --rq-surface-1: #0e1013;
+    --rq-surface-2: #14171b;
+    --rq-surface-3: #1a1e23;
+    --rq-surface-inset: #0a0b0d;
+
+    --rq-hairline: #22262c;
+    --rq-hairline-strong: #2f343b;
+
+    --rq-ink: #f4f5f7;
+    --rq-ink-muted: #b4bac3;
+    --rq-ink-subtle: #7c848f;
+    --rq-ink-faint: #525963;
+
+    --rq-accent: #ff4a1c;
+    --rq-accent-strong: #ff4a1c;
+    --rq-accent-hover: #ff6740;
+    --rq-accent-press: #e23a10;
+    --rq-accent-wash: rgba(255, 74, 28, 0.1);
+    --rq-on-accent: #0a0a0a;
+
+    --rq-success: #2fa36b;
+    --rq-success-strong: #2fa36b;
+    --rq-success-wash: rgba(47, 163, 107, 0.1);
+    --rq-warning: #d99420;
+    --rq-warning-strong: #d99420;
+    --rq-warning-wash: rgba(217, 148, 32, 0.1);
+    --rq-danger: #e2453b;
+    --rq-danger-strong: #e4473d;
+    --rq-danger-wash: rgba(226, 69, 59, 0.1);
+    --rq-info: #3d8bd4;
+    --rq-info-strong: #3d8bd4;
+    --rq-info-wash: rgba(61, 139, 212, 0.1);
+
+    --rq-shadow-panel: none;
+    --rq-shadow-overlay: 0 16px 40px -12px rgba(0, 0, 0, 0.72);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --rq-canvas: #08090b;
+  --rq-surface-1: #0e1013;
+  --rq-surface-2: #14171b;
+  --rq-surface-3: #1a1e23;
+  --rq-surface-inset: #0a0b0d;
+
+  --rq-hairline: #22262c;
+  --rq-hairline-strong: #2f343b;
+
+  --rq-ink: #f4f5f7;
+  --rq-ink-muted: #b4bac3;
+  --rq-ink-subtle: #7c848f;
+  --rq-ink-faint: #525963;
+
+  --rq-accent: #ff4a1c;
+  --rq-accent-strong: #ff4a1c;
+  --rq-accent-hover: #ff6740;
+  --rq-accent-press: #e23a10;
+  --rq-accent-wash: rgba(255, 74, 28, 0.1);
+  --rq-on-accent: #0a0a0a;
+
+  --rq-success: #2fa36b;
+  --rq-success-strong: #2fa36b;
+  --rq-success-wash: rgba(47, 163, 107, 0.1);
+  --rq-warning: #d99420;
+  --rq-warning-strong: #d99420;
+  --rq-warning-wash: rgba(217, 148, 32, 0.1);
+  --rq-danger: #e2453b;
+  --rq-danger-strong: #e4473d;
+  --rq-danger-wash: rgba(226, 69, 59, 0.1);
+  --rq-info: #3d8bd4;
+  --rq-info-strong: #3d8bd4;
+  --rq-info-wash: rgba(61, 139, 212, 0.1);
+
+  --rq-shadow-panel: none;
+  --rq-shadow-overlay: 0 16px 40px -12px rgba(0, 0, 0, 0.72);
+}
+
+/* Restated last so an explicit light toggle beats the default-dark rule. */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --rq-canvas: #fbfaf8;
+  --rq-surface-1: #ffffff;
+  --rq-surface-2: #f4f2ee;
+  --rq-surface-3: #eae7e1;
+  --rq-surface-inset: #f7f5f1;
+
+  --rq-hairline: #e2ded7;
+  --rq-hairline-strong: #cfc9c0;
+
+  --rq-ink: #131518;
+  --rq-ink-muted: #4a4f57;
+  --rq-ink-subtle: #696f78;
+  --rq-ink-faint: #9aa0a8;
+
+  --rq-accent: #e23a10;
+  --rq-accent-strong: #d52a00;
+  --rq-accent-hover: #cc1f00;
+  --rq-accent-press: #bb0000;
+  --rq-accent-wash: rgba(226, 58, 16, 0.1);
+  --rq-on-accent: #ffffff;
+
+  --rq-success: #007f4a;
+  --rq-success-strong: #007f4a;
+  --rq-success-wash: rgba(0, 127, 74, 0.1);
+  --rq-warning: #a15f00;
+  --rq-warning-strong: #a15f00;
+  --rq-warning-wash: rgba(161, 95, 0, 0.1);
+  --rq-danger: #d0322b;
+  --rq-danger-strong: #d0322b;
+  --rq-danger-wash: rgba(208, 50, 43, 0.1);
+  --rq-info: #2072b9;
+  --rq-info-strong: #2072b9;
+  --rq-info-wash: rgba(32, 114, 185, 0.1);
+
+  --rq-shadow-panel: 0 1px 2px rgba(19, 21, 24, 0.04);
+  --rq-shadow-overlay: 0 12px 32px -8px rgba(19, 21, 24, 0.16);
+}
+
+/* ========================================================================== */
+/* Tailwind theme                                                             */
+/* ========================================================================== */
+
+/*
+ * `inline` so the generated utilities emit `var(--rq-*)` rather than a snapshot
+ * of whichever palette was active when the stylesheet was built. That is what
+ * lets one class react to the theme swap.
+ */
+@theme inline {
+  --color-canvas: var(--rq-canvas);
+  --color-surface-1: var(--rq-surface-1);
+  --color-surface-2: var(--rq-surface-2);
+  --color-surface-3: var(--rq-surface-3);
+  --color-surface-inset: var(--rq-surface-inset);
+
+  --color-hairline: var(--rq-hairline);
+  --color-hairline-strong: var(--rq-hairline-strong);
+
+  --color-ink: var(--rq-ink);
+  --color-ink-muted: var(--rq-ink-muted);
+  --color-ink-subtle: var(--rq-ink-subtle);
+  --color-ink-faint: var(--rq-ink-faint);
+
+  --color-accent: var(--rq-accent);
+  --color-accent-strong: var(--rq-accent-strong);
+  --color-accent-hover: var(--rq-accent-hover);
+  --color-accent-press: var(--rq-accent-press);
+  --color-accent-wash: var(--rq-accent-wash);
+  --color-on-accent: var(--rq-on-accent);
+
+  --color-success: var(--rq-success);
+  --color-success-strong: var(--rq-success-strong);
+  --color-success-wash: var(--rq-success-wash);
+  --color-warning: var(--rq-warning);
+  --color-warning-strong: var(--rq-warning-strong);
+  --color-warning-wash: var(--rq-warning-wash);
+  --color-danger: var(--rq-danger);
+  --color-danger-strong: var(--rq-danger-strong);
+  --color-danger-wash: var(--rq-danger-wash);
+  --color-info: var(--rq-info);
+  --color-info-strong: var(--rq-info-strong);
+  --color-info-wash: var(--rq-info-wash);
+
+  --shadow-panel: var(--rq-shadow-panel);
+  --shadow-overlay: var(--rq-shadow-overlay);
+}
+
+@theme {
+  /* -- Families -------------------------------------------------------- */
+  /*
+   * The `--font-*` custom properties are set by the consuming app with
+   * `next/font/google`. The literal family name covers a locally installed
+   * copy, and the generic stack covers neither being available.
+   */
+  --font-display:
+    var(--font-instrument-sans, 'Instrument Sans'), ui-sans-serif, system-ui, -apple-system,
+    'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-prose:
+    var(--font-newsreader, 'Newsreader'), ui-serif, Georgia, Cambria, 'Times New Roman', Times,
+    serif;
+  --font-mono:
+    var(--font-ibm-plex-mono, 'IBM Plex Mono'), ui-monospace, SFMono-Regular, 'SF Mono', Menlo,
+    Consolas, 'Liberation Mono', monospace;
+  --font-sans: var(--font-display);
+  --font-serif: var(--font-prose);
+
+  /* -- Type scale ------------------------------------------------------ */
+  --text-display-xl: 76px;
+  --text-display-xl--line-height: 1.02;
+  --text-display-xl--letter-spacing: -0.035em;
+  --text-display-xl--font-weight: 500;
+
+  --text-display-lg: 52px;
+  --text-display-lg--line-height: 1.06;
+  --text-display-lg--letter-spacing: -0.028em;
+  --text-display-lg--font-weight: 500;
+
+  --text-display-md: 38px;
+  --text-display-md--line-height: 1.12;
+  --text-display-md--letter-spacing: -0.022em;
+  --text-display-md--font-weight: 500;
+
+  --text-headline: 27px;
+  --text-headline--line-height: 1.2;
+  --text-headline--letter-spacing: -0.016em;
+  --text-headline--font-weight: 500;
+
+  --text-title: 20px;
+  --text-title--line-height: 1.28;
+  --text-title--letter-spacing: -0.011em;
+  --text-title--font-weight: 500;
+
+  --text-ui: 14px;
+  --text-ui--line-height: 1.45;
+  --text-ui--letter-spacing: -0.003em;
+  --text-ui--font-weight: 450;
+
+  --text-ui-sm: 13px;
+  --text-ui-sm--line-height: 1.4;
+  --text-ui-sm--letter-spacing: 0em;
+  --text-ui-sm--font-weight: 450;
+
+  --text-eyebrow: 12px;
+  --text-eyebrow--line-height: 1.3;
+  --text-eyebrow--letter-spacing: 0.07em;
+  --text-eyebrow--font-weight: 550;
+
+  --text-prose: 19px;
+  --text-prose--line-height: 1.65;
+  --text-prose--letter-spacing: 0em;
+  --text-prose--font-weight: 400;
+
+  --text-prose-lg: 21px;
+  --text-prose-lg--line-height: 1.62;
+  --text-prose-lg--letter-spacing: -0.005em;
+  --text-prose-lg--font-weight: 400;
+
+  --text-prose-lead: 24px;
+  --text-prose-lead--line-height: 1.5;
+  --text-prose-lead--letter-spacing: -0.008em;
+  --text-prose-lead--font-weight: 350;
+
+  --text-marginalia: 13px;
+  --text-marginalia--line-height: 1.5;
+  --text-marginalia--letter-spacing: 0em;
+  --text-marginalia--font-weight: 450;
+
+  --text-mono: 13.5px;
+  --text-mono--line-height: 1.6;
+  --text-mono--letter-spacing: 0em;
+  --text-mono--font-weight: 400;
+
+  --text-numeric: 13px;
+  --text-numeric--line-height: 1.3;
+  --text-numeric--letter-spacing: 0em;
+  --text-numeric--font-weight: 450;
+
+  /* -- Space: 8px base ------------------------------------------------- */
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+  --spacing-24: 96px;
+  --spacing-32: 128px;
+  --spacing-48: 192px;
+
+  /* -- Shape: soft radii only. `pill` is Tag and nothing else. --------- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-pill: 9999px;
+
+  /* -- Layout ---------------------------------------------------------- */
+  --container-prose: 680px;
+  --container-monograph: 1180px;
+
+  /* -- Motion ---------------------------------------------------------- */
+  --duration-state: 120ms;
+  --duration-enter: 200ms;
+  --duration-exit: 200ms;
+  --duration-layout: 320ms;
+  --duration-camera: 600ms;
+  --ease-enter: cubic-bezier(0.2, 0, 0, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* ========================================================================== */
+/* Named layout and instrument constants                                      */
+/* ========================================================================== */
+
+:root {
+  --rq-prose-column: 680px;
+  --rq-monograph-frame: 1180px;
+  --rq-marginalia-rail: 200px;
+  --rq-grid-gutter: 16px;
+  --rq-page-padding: 24px;
+  --rq-section-break: 96px;
+  --rq-panel-header: 40px;
+  --rq-verdict-strip: 44px;
+  --rq-nav-height: 64px;
+
+  --rq-wire-pitch: 48px;
+  --rq-moment-column: 56px;
+  --rq-control-dot: 7px;
+  --rq-phase-disc: 10px;
+
+  --rq-control-sm: 32px;
+  --rq-control-md: 36px;
+  --rq-control-lg: 44px;
+
+  --rq-focus-width: 2px;
+  --rq-focus-offset: 2px;
+
+  --rq-duration-state: 120ms;
+  --rq-duration-enter: 200ms;
+  --rq-duration-exit: 200ms;
+  --rq-duration-layout: 320ms;
+  --rq-duration-camera: 600ms;
+  --rq-ease-enter: cubic-bezier(0.2, 0, 0, 1);
+  --rq-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* ========================================================================== */
+/* Base                                                                       */
+/* ========================================================================== */
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-underline-offset: 0.18em;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--rq-canvas);
+    color: var(--rq-ink);
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 450;
+    line-height: 1.45;
+    letter-spacing: -0.003em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* The numeric lock. Anything comparable is mono with tabular figures. */
+  [data-rq-numeric] {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  ::selection {
+    background-color: var(--rq-accent-wash);
+  }
+
+  /* One focus treatment across the whole system: 2px accent at 2px offset. */
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: var(--rq-focus-width) solid var(--rq-accent);
+    outline-offset: var(--rq-focus-offset);
+    border-radius: var(--radius-xs);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    /*
+     * Reduced motion keeps opacity and drops everything else. Transforms are
+     * neutralised rather than merely shortened.
+     */
+    *,
+    *::before,
+    *::after {
+      animation-duration: 1ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 1ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

@@ -1,0 +1,52 @@
+# infra/docker/requirements-kernel.txt
+#
+# Production dependencies for the apps/quantum-kernel codebase, shared by the
+# three python images built from it: Dockerfile.quantum-kernel (FastAPI,
+# port 8100), Dockerfile.sandbox-runner (untrusted-code execution, §10 of
+# docs/architecture/system-design.md), and Dockerfile.grader (BullMQ
+# consumer worker, §6).
+#
+# apps/quantum-kernel does not have its own requirements.txt or pyproject.toml
+# yet -- it currently only has a local dev .venv/. This file was derived from
+# the packages actually installed in that venv (site-packages listing) plus
+# the worker-only deps that grader/sandbox-runner need per SPEC.md. If
+# apps/quantum-kernel later grows its own requirements.txt / pyproject.toml,
+# delete this file and point the three Dockerfiles at that instead (per the
+# task instructions this file must NOT be invented if one already exists).
+
+# --- web framework / server (quantum-kernel: FastAPI on :8100) ---
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+pydantic==2.13.5
+starlette==1.6.0
+httpx==0.28.1
+
+# --- simulation backends (system-design.md §4, tiers T-B / T-C) ---
+numpy==2.5.2
+scipy==1.18.1
+pandas==3.0.5
+matplotlib==3.11.1
+sympy==1.14.0
+networkx==3.6.1
+qiskit==2.5.2
+qiskit-aer==0.17.2
+cirq-core==1.7.0
+pennylane==0.45.1
+pennylane-lightning==0.45.0
+
+# --- observability (system-design.md §11) ---
+structlog==26.1.0
+prometheus-client==0.26.0
+psutil==7.2.2
+
+# --- config / utility ---
+python-dotenv==1.2.3
+pyyaml==6.0.3
+tomlkit==0.15.1
+cachetools==7.1.7
+requests==2.34.2
+
+# --- grader worker only (system-design.md §6): BullMQ consumer, redis-backed ---
+# redis is pinned to exactly what bullmq 3.1.0 requires (Requires-Dist: redis==7.4.1).
+redis==7.4.1
+bullmq==3.1.0

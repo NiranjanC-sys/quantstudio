@@ -1,0 +1,107 @@
+# Primary, currently-enabled ingress path (see gateway-api.yaml for the
+# forward-looking alternative). Two Ingress objects because the WS host needs very
+# different proxy timeouts than the plain HTTP hosts.
+#
+# Rate limits mirror §9's "Read: 120 / 10s" ceiling at the edge: 120/10s == 12 rps ==
+# 720 rpm. Endpoint-specific limits (server sim 30-240/min, lab submit 6/min, contest
+# submit 10/min + cooldown, auth 10/10min/IP) are enforced in api's own rate-limiter
+# (Redis token buckets, §9) because nginx-ingress annotations apply per-Ingress-object,
+# not per-route, and cannot express the plan-based/cooldown logic those limits need.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: redquant-web-api
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: redquant-letsencrypt-prod
+    nginx.ingress.kubernetes.io/limit-rps: "12"
+    nginx.ingress.kubernetes.io/limit-rpm: "720"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
+    nginx.ingress.kubernetes.io/limit-connections: "20"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    # Ensure the client's Idempotency-Key (required on every mutating endpoint, §9)
+    # survives the proxy hop unmodified, and add HSTS since nginx-ingress has no
+    # first-class HSTS annotation.
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Idempotency-Key $http_idempotency_key;
+      more_set_headers "Strict-Transport-Security: max-age=63072000; includeSubDomains; preload";
+    nginx.ingress.kubernetes.io/enable-modsecurity: "true"
+    nginx.ingress.kubernetes.io/enable-owasp-core-rules: "true"
+    # See WAF.md for what is intentionally NOT blocked by these OWASP CRS rules
+    # (learner lab-submission code contains shell-looking strings by design).
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - redquant.io
+        - api.redquant.io
+        - ws.redquant.io
+      secretName: redquant-tls
+  rules:
+    - host: redquant.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 3000
+    - host: api.redquant.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 3001
+---
+# ws.redquant.io: same api Service (§3: "api-gateway ... also hosts ws-gateway"), but
+# WebSocket connections are long-lived (contest clock, leaderboard deltas, presence),
+# so this Ingress carries much longer proxy timeouts than the HTTP hosts above.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: redquant-ws
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: redquant-letsencrypt-prod
+    nginx.ingress.kubernetes.io/limit-rps: "12"
+    nginx.ingress.kubernetes.io/limit-rpm: "720"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
+    nginx.ingress.kubernetes.io/limit-connections: "20"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    # Long timeouts for the 32,000 concurrent WebSocket sockets (§1). uWebSockets on
+    # the api pod handles its own ping/pong keepalive; the proxy just needs to not
+    # cut the connection out from under it.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Idempotency-Key $http_idempotency_key;
+      more_set_headers "Strict-Transport-Security: max-age=63072000; includeSubDomains; preload";
+    nginx.ingress.kubernetes.io/enable-modsecurity: "true"
+    nginx.ingress.kubernetes.io/enable-owasp-core-rules: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - redquant.io
+        - api.redquant.io
+        - ws.redquant.io
+      secretName: redquant-tls
+  rules:
+    - host: ws.redquant.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  number: 3001

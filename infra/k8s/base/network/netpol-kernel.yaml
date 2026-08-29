@@ -1,0 +1,61 @@
+# quantum-kernel + quantum-kernel-heavy (T-B/T-C simulation tiers, §4). Ingress only
+# from api (the only caller, per §3's service contract table) plus Prometheus for
+# metrics scraping. Egress limited to the simulation cache/rate-limit store (Redis),
+# the Postgres poolers, and the OTel collector -- never sandbox-runner's payloads,
+# never S3/the public internet.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kernel-policy
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - quantum-kernel
+          - quantum-kernel-heavy
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: api
+      ports:
+        - protocol: TCP
+          port: 8100
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8100
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis-cluster
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: cnpg.io/poolerName
+                operator: In
+                values:
+                  - redquant-pg-rw
+                  - redquant-pg-ro
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - protocol: TCP
+          port: 4317

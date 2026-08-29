@@ -1,0 +1,81 @@
+# syntax=docker/dockerfile:1.7
+#
+# RedQuant `quantum-kernel` image -- Python/FastAPI simulation service
+# (docs/architecture/system-design.md §3/§4). Owns simulation, transpile,
+# noise modelling, metrics, and visual payloads for tiers T-B (15-30 qubits,
+# synchronous, 900ms budget) and T-C (31-40 qubits / noisy density-matrix,
+# async queue). Never does auth or billing.
+#
+# The same codebase (apps/quantum-kernel) also backs Dockerfile.sandbox-runner
+# and Dockerfile.grader with different entrypoints -- see those files.
+#
+# apps/quantum-kernel has no requirements.txt/pyproject.toml yet (only a
+# local dev .venv/); infra/docker/requirements-kernel.txt was derived from
+# that venv's installed packages (see the header of that file). If the app
+# grows its own requirements/pyproject, point this Dockerfile at that instead.
+#
+# Build context MUST be the monorepo root:
+#   docker build -f infra/docker/Dockerfile.quantum-kernel -t redquant/quantum-kernel:<sha> .
+
+ARG PYTHON_VERSION=3.12-slim
+
+########################################################################
+# builder -- compile-time deps + venv
+########################################################################
+FROM python:${PYTHON_VERSION} AS builder
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python -m venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+
+WORKDIR /build
+COPY infra/docker/requirements-kernel.txt ./requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -r requirements.txt
+
+########################################################################
+# runtime -- copies /opt/venv only, no build toolchain
+########################################################################
+FROM python:${PYTHON_VERSION} AS runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tini \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -g 10001 redquant \
+    && useradd -u 10001 -g redquant -M -s /usr/sbin/nologin redquant
+
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH=/opt/venv/bin:$PATH \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+# NOTE: apps/quantum-kernel/app/ does not exist in the repo yet -- the
+# package.json `kernel:dev` script (`uvicorn app.main:app --port 8100`)
+# confirms the expected module path, which this COPY and CMD follow.
+COPY --chown=redquant:redquant apps/quantum-kernel/app ./app
+
+USER redquant:redquant
+
+EXPOSE 8100
+
+# Writable dirs for a read-only root filesystem: /tmp for scratch buffers
+# used by NumPy/Qiskit/Cirq/PennyLane during simulation.
+VOLUME ["/tmp"]
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/healthz', timeout=2)" || exit 1
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+# 6 workers/pod, 3 sim/s/worker per system-design.md §1 fleet sizing.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8100", "--workers", "6"]
+
+LABEL org.opencontainers.image.title="redquant-quantum-kernel" \
+      org.opencontainers.image.description="RedQuant FastAPI simulation kernel (T-B/T-C statevector, transpile, noise)" \
+      org.opencontainers.image.source="https://github.com/redquant/redquant" \
+      org.opencontainers.image.vendor="RedQuant" \
+      org.opencontainers.image.licenses="UNLICENSED"

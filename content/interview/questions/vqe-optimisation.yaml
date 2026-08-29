@@ -1,0 +1,883 @@
+questions:
+  - id: iq-081
+    title: Compute an exact VQE gradient with the parameter-shift rule
+    kind: coding
+    prompt: |
+      You are given a variational circuit whose only occurrences of the parameter
+      theta are single-qubit rotation gates RY(theta), and a Hamiltonian H. Write
+      a function that returns dE/dtheta where E(theta) is the expectation value of
+      H in the prepared state. The interviewer forbids finite differences and
+      forbids access to the statevector: your function may only call an
+      `energy(params)` oracle that returns an expectation value. State the number
+      of oracle calls per parameter and prove the formula you use is exact, not an
+      approximation. Qubit 0 is the most significant bit throughout.
+    difficulty: easy
+    pattern: VQE parameter optimisation
+    topics: [vqe, parameter-shift, gradients, variational-algorithms]
+    companies: [IBM, Xanadu, Classiq, Q-CTRL]
+    modelAnswer: |
+      RY(theta) = exp(-i theta Y / 2), so its generator is Y/2 with eigenvalues
+      plus and minus one half. Any expectation value that depends on theta only
+      through such a gate is a pure sinusoid of period 2 pi:
+
+          E(theta) = a cos(theta) + b sin(theta) + c.
+
+      The reason is that the gate contributes cos(theta/2) and sin(theta/2)
+      amplitudes, and the expectation value is quadratic in amplitudes, so only
+      cos^2, sin^2 and cos*sin survive, which collapse to the single-frequency
+      form above. Differentiate:
+
+          dE/dtheta = -a sin(theta) + b cos(theta).
+
+      Now evaluate the shifted energies. E(theta + pi/2) = -a sin + b cos + c and
+      E(theta - pi/2) = a sin - b cos + c, so their difference is exactly
+      2(-a sin + b cos) = 2 dE/dtheta. Hence
+
+          dE/dtheta = (E(theta + pi/2) - E(theta - pi/2)) / 2.
+
+      This is exact for every theta, not a small-step approximation. Two oracle
+      calls per parameter, so 2p calls for a p-parameter gradient. The same rule
+      applies to RX and RZ, and to RZZ(theta) = exp(-i theta Z x Z / 2), because
+      all four generators have eigenvalues plus and minus one half. It does not
+      apply to a gate whose generator has three or more distinct eigenvalues,
+      such as a controlled rotation written as a single block; decompose those
+      first, or use the four-term rule.
+
+      ```python
+      import numpy as np
+
+      def parameter_shift_gradient(energy, params):
+          """energy: callable(np.ndarray) -> float. Exact gradient, 2p calls."""
+          params = np.asarray(params, dtype=float)
+          grad = np.zeros_like(params)
+          for i in range(params.size):
+              plus = params.copy();  plus[i]  += np.pi / 2
+              minus = params.copy(); minus[i] -= np.pi / 2
+              grad[i] = 0.5 * (energy(plus) - energy(minus))
+          return grad
+      ```
+
+      Checked against a central finite difference with step 1e-6 on a two-qubit
+      RY/RX/CX ansatz measuring Z0 + 0.5 X0X1, the two agree to better than 1e-8,
+      and the parameter-shift value is the one that stays correct when the energy
+      oracle is noisy. Finite differences divide by a small h, which amplifies
+      shot noise by 1/h; parameter shift divides by 2, so estimator variance is
+      not amplified at all. That is the whole reason it exists.
+    followUps:
+      - Your ansatz contains a controlled-RY block. Why does the two-term rule fail and what replaces it?
+      - How many shots does each of the 2p evaluations need if you want the gradient norm accurate to 1e-2?
+      - Can you reuse the same measurement outcomes for several partial derivatives, and under what condition?
+    commonMistakes:
+      - Claiming the pi/2 shift is a finite-difference approximation. It is exact for a generator with eigenvalues plus and minus one half.
+      - Applying the two-term rule to a gate whose generator has more than two distinct eigenvalues, such as a controlled rotation kept as one block.
+      - Forgetting the factor of one half, and reporting a gradient exactly twice the true value.
+    references:
+      - label: Schuld et al, Evaluating analytic gradients on quantum hardware
+        url: https://arxiv.org/abs/1811.11184
+      - label: PennyLane quantum machine learning demos
+        url: https://pennylane.ai/qml/
+
+  - id: iq-082
+    title: Estimate a VQE energy with a defensible error bar
+    kind: coding
+    prompt: |
+      Given a Hamiltonian written as a weighted sum of Pauli strings and a fixed
+      shot budget N, write code that estimates the energy of a prepared state and
+      returns the estimate together with its standard error. Use the two-qubit
+      Hamiltonian H = -1.052373 II + 0.397937 IZ - 0.397937 ZI - 0.011280 ZZ
+      + 0.180931 XX, where the left tensor factor is qubit 0 and qubit 0 is the
+      most significant bit. Your answer must say how many distinct measurement
+      settings the circuit needs and how you split N between them. Reporting an
+      energy without an error bar is a failed answer.
+    difficulty: easy
+    pattern: VQE parameter optimisation
+    topics: [vqe, measurement, shot-noise, pauli-grouping, error-bars]
+    companies: [IBM, Quantinuum, Classiq, Multiverse Computing]
+    modelAnswer: |
+      Two measurement settings suffice. II, IZ, ZI and ZZ are qubit-wise
+      commuting: every one of them is diagonal in the computational basis, so a
+      single Z-basis circuit yields all four expectation values from the same
+      counts. XX needs a Hadamard on both qubits before measurement. So the
+      settings are {Z-basis} and {X-basis}, and the identity term is a constant
+      that costs zero shots.
+
+      From Z-basis counts with bitstring b = b0 b1 (qubit 0 first), the estimators
+      are <ZI> = mean of (-1)^b0, <IZ> = mean of (-1)^b1, <ZZ> = mean of
+      (-1)^(b0 xor b1). Each is the mean of a plus-or-minus-one variable, so if
+      the sample mean is m over n shots the variance of a single draw is 1 - m^2
+      and the standard error is sqrt((1 - m^2)/n). Equivalently, in terms of the
+      probability p of the plus-one outcome, m = 2p - 1 and the standard error is
+      2 sqrt(p(1-p)/n), which is the familiar binomial sqrt(p(1-p)/n) rescaled to
+      the plus-or-minus-one range.
+
+      Combine linearly. Because the two settings use independent shots and the
+      four Z terms come from the same counts, propagate the Z group as one
+      correlated block by resampling, or bound it conservatively. Allocate shots
+      in proportion to |c_i| sigma_i, which minimises total variance for a fixed
+      budget; with sigma unknown a priori, |c_i| weighting is the standard
+      practical proxy. Here the Z group carries total weight 0.397937 + 0.397937
+      + 0.011280 = 0.807154 against 0.180931 for XX, so roughly 82 percent of the
+      budget goes to the Z setting.
+
+      ```python
+      import numpy as np
+
+      def energy_and_error(z_bits, x_bits):
+          """z_bits, x_bits: (shots, 2) arrays of 0/1, column 0 is qubit 0."""
+          def signs(bits, mask):           # mask over (q0, q1)
+              par = np.zeros(len(bits), dtype=int)
+              for q, use in enumerate(mask):
+                  if use:
+                      par ^= bits[:, q]
+              return 1 - 2 * par
+          terms = []
+          terms.append((-1.052373, np.ones(1)))                 # identity
+          terms.append(( 0.397937, signs(z_bits, (0, 1))))      # IZ
+          terms.append((-0.397937, signs(z_bits, (1, 0))))      # ZI
+          terms.append((-0.011280, signs(z_bits, (1, 1))))      # ZZ
+          terms.append(( 0.180931, signs(x_bits, (1, 1))))      # XX
+          e = sum(c * s.mean() for c, s in terms)
+          var = sum((c ** 2) * s.var(ddof=1) / len(s)
+                    for c, s in terms if len(s) > 1)
+          return e, np.sqrt(var)
+      ```
+
+      The exact ground energy of this Hamiltonian by direct diagonalisation is
+      -1.857275 Hartree, so a converged VQE run should report something like
+      -1.8567 plus or minus 0.0021. Quoting -1.8567 with no error bar hides
+      whether you are 0.5 sigma or 20 sigma from chemical accuracy, which is
+      1.6 millihartree.
+    followUps:
+      - How does the shot count scale if you want the error bar below chemical accuracy for a 12-qubit molecular Hamiltonian?
+      - What changes if you use general commuting groups rather than qubit-wise commuting groups?
+      - The Z-group estimators come from the same shots and are correlated. How do you get their joint contribution to the variance right?
+    commonMistakes:
+      - Using a separate circuit for each Pauli string, which wastes shots by a factor equal to the qubit-wise commuting group size.
+      - Reporting sqrt(p(1-p)/N) as the error on an expectation value in the plus-or-minus-one range without the factor of two.
+      - Splitting the shot budget uniformly across settings instead of weighting by the coefficient magnitude.
+    references:
+      - label: IBM Quantum Learning courses
+        url: https://quantum.cloud.ibm.com/learning/en/courses
+      - label: Kandala et al, Hardware-efficient variational quantum eigensolver
+        url: https://arxiv.org/abs/1704.05018
+
+  - id: iq-083
+    title: Run VQE end to end against exact diagonalisation
+    kind: coding
+    prompt: |
+      Implement a complete VQE loop in simulation for the two-qubit Hamiltonian
+      H = -1.052373 II + 0.397937 IZ - 0.397937 ZI - 0.011280 ZZ + 0.180931 XX,
+      with the left factor being qubit 0 and qubit 0 the most significant bit.
+      Choose an ansatz, justify why it can reach the ground state, optimise the
+      parameters, and compare the result with exact diagonalisation. Report the
+      absolute error in Hartree and say whether you reached chemical accuracy of
+      1.6 millihartree. Assume a noiseless statevector backend.
+    difficulty: easy
+    pattern: VQE parameter optimisation
+    topics: [vqe, ansatz-design, ground-state, exact-diagonalisation]
+    companies: [IBM, Xanadu, Classiq, Quantinuum]
+    modelAnswer: |
+      First establish the target. Diagonalising the 4 by 4 matrix gives spectrum
+      {-1.857275, -1.244585, -0.882722, -0.224911}, so the ground energy is
+      -1.857275 Hartree and the gap to the first excited state is 0.612690.
+
+      Now pick an ansatz. The Hamiltonian is real and symmetric, and its ground
+      state lives entirely in the span of |00> and |11>, because the only
+      off-diagonal term XX connects |00> to |11> and |01> to |10>, and the two
+      blocks do not mix. So a one-parameter ansatz suffices: prepare
+      cos(theta/2)|00> + sin(theta/2)|11> with X on qubit 0, RY(theta) on qubit 0,
+      then CX(0, 1). That is exactly the two-dimensional block containing the
+      ground state, so the ansatz is expressive enough by construction, which is
+      the claim an interviewer wants you to make rather than assume.
+
+      With one parameter, the energy is a sinusoid, so a coarse scan plus a local
+      refinement converges in a handful of evaluations, and any reasonable
+      optimiser works. Gradient descent with the parameter-shift rule converges in
+      about twenty iterations from a random start.
+
+      ```python
+      import numpy as np
+      from scipy.optimize import minimize   # or a hand-rolled line search
+
+      I = np.eye(2); X = np.array([[0, 1], [1, 0]]); Z = np.diag([1.0, -1.0])
+      kron = np.kron
+      H = (-1.052373 * kron(I, I) + 0.397937 * kron(I, Z)
+           - 0.397937 * kron(Z, I) - 0.011280 * kron(Z, Z)
+           + 0.180931 * kron(X, X))
+
+      CX = np.eye(4); CX[[2, 3]] = CX[[3, 2]]      # qubit 0 controls qubit 1
+
+      def state(theta):
+          ry = np.array([[np.cos(theta / 2), -np.sin(theta / 2)],
+                         [np.sin(theta / 2),  np.cos(theta / 2)]])
+          psi = np.zeros(4); psi[2] = 1.0          # |10>, qubit 0 is the MSB
+          return CX @ (kron(ry, I) @ psi)
+
+      def energy(p):
+          psi = state(p[0])
+          return float(psi @ H @ psi)
+
+      res = minimize(energy, x0=[0.3], method="COBYLA")
+      exact = np.linalg.eigvalsh(H)[0]
+      print(res.fun, exact, abs(res.fun - exact))
+      ```
+
+      This converges to -1.857275 with absolute error below 1e-7 Hartree, far
+      inside chemical accuracy. Note the index conventions: with qubit 0 as the
+      most significant bit, |10> is index 2 and |01> is index 1. In Qiskit the
+      same labels are reversed, so a copied snippet that writes `psi[1] = 1` for
+      |10> silently prepares the wrong seed state and the optimiser then converges
+      to -1.244585, the first excited state, which looks plausible enough to ship.
+      Always print the two extreme eigenvalues alongside your result.
+    followUps:
+      - Your ansatz cannot leave the span of |00> and |11>. Is that a feature or a bug, and what happens on a molecule where it is a bug?
+      - How would you find the first excited state with the same machinery?
+      - Add depolarising noise of 1 percent per two-qubit gate. What does the converged energy do, and in which direction?
+    commonMistakes:
+      - Assuming an ansatz reaches the ground state without checking that the ground state lies in the subspace the ansatz spans.
+      - Indexing the statevector in Qiskit little-endian order while asserting results in qubit-0-most-significant order, which converges to the wrong eigenvalue.
+      - Reporting a converged energy below the exact ground energy and not treating that as a bug. The variational principle forbids it in the noiseless case.
+    references:
+      - label: IBM Quantum Learning courses
+        url: https://quantum.cloud.ibm.com/learning/en/courses
+      - label: Kandala et al, Hardware-efficient variational quantum eigensolver
+        url: https://arxiv.org/abs/1704.05018
+
+  - id: iq-084
+    title: Choose and implement an optimiser for a shot-noisy landscape
+    kind: coding
+    prompt: |
+      A VQE ansatz has 60 parameters and each energy evaluation costs 4096 shots,
+      giving a standard error of roughly 5 millihartree per evaluation. You have a
+      budget of 400 energy evaluations total. Implement an optimiser suited to
+      this regime, and justify the choice against gradient descent with the
+      parameter-shift rule, against BFGS with finite-difference gradients, and
+      against COBYLA. Give the per-iteration evaluation cost of each candidate in
+      terms of the parameter count p.
+    difficulty: medium
+    pattern: VQE parameter optimisation
+    topics: [vqe, spsa, optimisers, shot-noise, hyperparameters]
+    companies: [IBM, Q-CTRL, Rigetti, Multiverse Computing]
+    modelAnswer: |
+      Count the budget first. Parameter-shift gradient descent costs 2p = 120
+      evaluations per step, so 400 evaluations buys three steps. Useless. BFGS
+      with finite differences costs p + 1 = 61 per gradient plus line-search
+      evaluations, so roughly five steps, and the finite-difference quotient
+      divides the 5 millihartree noise by the step h, which for h = 0.01 inflates
+      it to 0.5 Hartree. Also useless, and worse, quietly wrong: BFGS builds a
+      Hessian approximation from noise and takes confident steps in random
+      directions. COBYLA maintains a simplex of p + 1 = 61 points and assumes
+      deterministic function values; it stalls once the trust region shrinks below
+      the noise floor.
+
+      SPSA is the right choice. It costs exactly two evaluations per iteration
+      regardless of p, so 400 evaluations buys 200 iterations. It perturbs all
+      parameters simultaneously along a random plus-or-minus-one Rademacher
+      direction and forms
+
+          ghat_i = (E(theta + c_k Delta) - E(theta - c_k Delta)) / (2 c_k Delta_i).
+
+      Because Delta_i is plus or minus one, dividing by it is multiplying by it.
+      The estimator is wildly noisy per iteration but unbiased to first order,
+      and the decaying step sizes average the noise out. The standard gain
+      schedule is a_k = a/(A + k + 1)^alpha with alpha = 0.602 and c_k =
+      c/(k + 1)^gamma with gamma = 0.101, A about 10 percent of the iteration
+      budget. Calibrate c to the noise level: set c near the standard deviation of
+      the energy estimator, here about 0.005 to 0.01, so the numerator is not
+      dominated by noise. Calibrate a by a short pilot run that measures the
+      typical gradient magnitude and targets a first step of about 0.1 radians.
+
+      ```python
+      import numpy as np
+
+      def spsa(energy, theta, iters=200, a=0.2, c=0.01, A=20,
+               alpha=0.602, gamma=0.101, rng=None):
+          rng = rng or np.random.default_rng(0)
+          theta = np.asarray(theta, dtype=float).copy()
+          for k in range(iters):
+              ak = a / (A + k + 1) ** alpha
+              ck = c / (k + 1) ** gamma
+              delta = rng.choice([-1.0, 1.0], size=theta.size)
+              gh = (energy(theta + ck * delta) - energy(theta - ck * delta)) \
+                   / (2.0 * ck) * delta
+              theta -= ak * gh
+          return theta
+      ```
+
+      Report the final energy as the mean of a high-shot re-evaluation at the
+      final parameters, never as the smallest value seen during the trace: the
+      minimum of a noisy sequence is a biased low estimate, and on a variational
+      objective that bias reads as a violation of the variational bound.
+
+      If the budget were 40000 evaluations instead of 400, parameter-shift
+      gradient descent or Adam on parameter-shift gradients would win, because the
+      gradient estimate is unbiased and its variance does not blow up with a
+      shrinking step.
+    followUps:
+      - At what evaluation budget does parameter-shift Adam overtake SPSA for p = 60, and how would you measure the crossover?
+      - How do you use a second SPSA gradient estimate to approximate the Hessian, and when is second-order SPSA worth it?
+      - The energy oracle drifts because the device recalibrates mid-run. Which of these optimisers degrades most gracefully?
+    commonMistakes:
+      - Using finite-difference gradients on a shot-noisy expectation value, which multiplies the noise by 1/h.
+      - Feeding a stochastic objective to BFGS or L-BFGS-B, whose curvature estimates are meaningless under noise.
+      - Reporting the minimum energy seen in the optimiser trace instead of a fresh high-shot evaluation at the final parameters.
+      - Leaving the SPSA perturbation size c at a default unrelated to the measured noise level of the energy estimator.
+    references:
+      - label: IBM Quantum Learning courses
+        url: https://quantum.cloud.ibm.com/learning/en/courses
+      - label: Kandala et al, Hardware-efficient variational quantum eigensolver
+        url: https://arxiv.org/abs/1704.05018
+
+  - id: iq-085
+    title: Measure the barren plateau in a hardware-efficient ansatz
+    kind: coding
+    prompt: |
+      Write an experiment that decides empirically whether a given ansatz family
+      suffers from barren plateaus. For qubit counts n = 2 through 8, sample
+      random parameter vectors uniformly, compute one partial derivative of the
+      energy exactly with the parameter-shift rule, and report the sample variance
+      of that derivative as a function of n. Fit the decay and say what it implies
+      for the shot budget needed to resolve a gradient at n = 50. Use a
+      hardware-efficient ansatz of depth n + 2 with a linear CX entangler and the
+      observable Z0 Z1, qubit 0 being the most significant bit.
+    difficulty: medium
+    pattern: VQE parameter optimisation
+    topics: [vqe, barren-plateaus, trainability, gradient-variance, ansatz-design]
+    companies: [Google Quantum AI, IBM, Xanadu, Q-CTRL]
+    modelAnswer: |
+      The experiment is the answer. Fix the observable, sample parameters
+      uniformly from [0, 2 pi), evaluate a single partial derivative exactly with
+      the two-term shift rule, and take the variance over samples. The mean is
+      zero by symmetry, so the variance is the whole story.
+
+      ```python
+      import numpy as np
+
+      def gradient_variance(n, layers, samples=300, rng=None):
+          rng = rng or np.random.default_rng(11)
+          I = np.eye(2)
+          X = np.array([[0, 1], [1, 0]], dtype=complex)
+          Z = np.diag([1.0, -1.0]).astype(complex)
+          Hd = np.array([[1, 1], [1, -1]], dtype=complex) / np.sqrt(2)
+
+          def kron_all(ms):
+              out = ms[0]
+              for m in ms[1:]:
+                  out = np.kron(out, m)
+              return out
+
+          def entangler():
+              U = np.eye(2 ** n, dtype=complex)
+              P0 = np.diag([1, 0]).astype(complex)
+              P1 = np.diag([0, 1]).astype(complex)
+              for q in range(n - 1):
+                  a = [I] * n; a[q] = P0
+                  b = [I] * n; b[q] = P1; b[q + 1] = X
+                  U = (kron_all(a) + kron_all(b)) @ U
+              return U
+
+          def ry(t):
+              return np.array([[np.cos(t / 2), -np.sin(t / 2)],
+                               [np.sin(t / 2),  np.cos(t / 2)]], dtype=complex)
+
+          def rz(t):
+              return np.diag([np.exp(-1j * t / 2), np.exp(1j * t / 2)])
+
+          ent = entangler()
+          obs = kron_all([Z if q < 2 else I for q in range(n)])
+
+          def energy(theta):
+              psi = np.zeros(2 ** n, dtype=complex); psi[0] = 1
+              psi = kron_all([Hd] * n) @ psi
+              k = 0
+              for _ in range(layers):
+                  psi = kron_all([ry(theta[k + q]) for q in range(n)]) @ psi; k += n
+                  psi = kron_all([rz(theta[k + q]) for q in range(n)]) @ psi; k += n
+                  psi = ent @ psi
+              return float(np.real(psi.conj() @ obs @ psi))
+
+          p = 2 * n * layers
+          g = []
+          for _ in range(samples):
+              th = rng.uniform(0, 2 * np.pi, size=p)
+              tp = th.copy(); tp[0] += np.pi / 2
+              tm = th.copy(); tm[0] -= np.pi / 2
+              g.append(0.5 * (energy(tp) - energy(tm)))
+          return np.var(g)
+      ```
+
+      Running this for n = 2..8 with layers = n + 2 gives variances of about
+      1.1e-1, 6.5e-2, 3.1e-2, 1.8e-2, 9.3e-3, 6.1e-3, 2.5e-3. Each additional
+      qubit roughly halves the variance, so a regression of log2(variance) on n
+      has slope near -1 and the decay is Var ~ 2^-n, the signature of a barren
+      plateau. A polynomial decay would show as a straight line against log n
+      instead, which is the control you should also plot.
+
+      The shot consequence is brutal. To resolve a gradient component of typical
+      magnitude sqrt(Var) = 2^(-n/2) you need the estimator standard error below
+      that, and the standard error of an expectation value from N shots is at best
+      1/sqrt(N). So N grows like 2^n. At n = 50 that is on the order of 10^15
+      shots per partial derivative. No shot budget fixes this; the fix is
+      structural: shallow or problem-informed ansaetze, local observables rather
+      than global ones, layerwise training, or identity-block initialisation that
+      starts the circuit at a point where the effective circuit is short.
+    followUps:
+      - Repeat the experiment with a local observable Z0 only and a depth that stays constant in n. What changes?
+      - How does identity-block initialisation, where each block is paired with its inverse at the start, change the variance at n = 8?
+      - Distinguish a barren plateau from a narrow gorge. Which one does this experiment detect?
+    commonMistakes:
+      - Averaging the gradient rather than its variance. The mean is zero by symmetry and tells you nothing.
+      - Holding the circuit depth fixed while increasing n, which conflates depth-induced and width-induced concentration.
+      - Concluding a plateau from three data points without fitting the decay or plotting a polynomial-decay control.
+      - Believing more shots solve a plateau. The required shot count itself grows exponentially.
+    references:
+      - label: McClean et al, Barren plateaus in quantum neural network training landscapes
+        url: https://arxiv.org/abs/1803.11173
+      - label: PennyLane quantum machine learning demos
+        url: https://pennylane.ai/qml/
+
+  - id: iq-086
+    title: Initialise and grow a VQE ansatz layer by layer
+    kind: coding
+    prompt: |
+      Random initialisation of a deep hardware-efficient ansatz lands you on a
+      plateau. Implement a training schedule that avoids this: start from an
+      initialisation whose circuit is provably the identity, then add and train
+      one layer at a time, freezing or warm-starting earlier layers. Your code
+      should expose the schedule as a function of layer count, and you must state
+      what the identity initialisation does to the initial energy and why that is
+      a useful diagnostic.
+    difficulty: medium
+    pattern: VQE parameter optimisation
+    topics: [vqe, initialisation, layerwise-training, warm-start, ansatz-design]
+    companies: [IBM, Xanadu, Classiq, Quantinuum]
+    modelAnswer: |
+      Two independent ideas do the work here, and a good answer separates them.
+
+      Identity initialisation. Build the ansatz as pairs of blocks, U(theta) =
+      prod_k V_k(theta_k) W_k(phi_k), and initialise phi_k so that W_k = V_k
+      inverse. Then the whole circuit is the identity at step zero, the prepared
+      state is exactly the reference state you fed in, and the initial energy
+      equals the reference energy, typically the Hartree-Fock energy for a
+      chemistry problem. That equality is the diagnostic: if your first energy is
+      not the reference energy to numerical precision, your pairing is wrong or
+      your qubit ordering is flipped. Because the effective circuit is shallow at
+      the start, the state does not look like a Haar-random state and the gradient
+      variance is not suppressed by 2^-n.
+
+      Layerwise growth. Train layer 1 to convergence, freeze it, append layer 2
+      initialised to the identity so appending does not change the energy, train
+      layer 2, and so on. Every append is monotone: the energy at the start of
+      stage L equals the converged energy of stage L-1, so the sequence of
+      converged energies is non-increasing. That monotonicity is worth asserting
+      in code.
+
+      ```python
+      import numpy as np
+
+      def layerwise_vqe(energy, n_params_per_layer, max_layers, optimise,
+                        tol=1e-6):
+          """energy(theta, L) evaluates the L-layer circuit.
+          optimise(f, x0) -> (x_opt, f_opt). Returns the parameter history."""
+          theta = np.zeros(0)
+          best = np.inf
+          history = []
+          for L in range(1, max_layers + 1):
+              # identity-initialised new layer: appended params are all zero,
+              # and each block is paired with its inverse, so E is unchanged.
+              theta = np.concatenate([theta, np.zeros(n_params_per_layer)])
+              e_before = energy(theta, L)
+              if L > 1:
+                  assert abs(e_before - best) < 1e-9, "append changed the energy"
+              theta, e_after = optimise(lambda t: energy(t, L), theta)
+              assert e_after <= e_before + tol, "layer L made the energy worse"
+              history.append((L, e_after))
+              if best - e_after < tol:
+                  break                      # extra layers buy nothing
+              best = e_after
+          return theta, history
+      ```
+
+      Freezing earlier layers is cheaper per stage but caps the reachable set;
+      warm-starting, meaning you keep the converged values as the starting point
+      but let all parameters move, is strictly more expressive and usually worth
+      the cost once the circuit exceeds two or three layers. Layerwise training is
+      not a cure-all: it can saturate in a local minimum that full training would
+      escape, and published results show it can itself hit a plateau at moderate
+      depth. Use the stopping rule in the code, which halts when a whole extra
+      layer improves the energy by less than the shot noise floor. Growing past
+      that point spends shots to fit noise.
+    followUps:
+      - Show that appending an identity-initialised layer cannot raise the energy, and say where that argument breaks under hardware noise.
+      - When does freezing earlier layers cost you the global optimum? Construct a two-layer example.
+      - How do you set the stopping tolerance from the measured standard error of the energy estimator?
+    commonMistakes:
+      - Initialising a new layer randomly, which discards the converged energy of the previous stage and reintroduces the plateau.
+      - Failing to assert that the first energy equals the reference energy, which is the only cheap check that the identity pairing is correct.
+      - Continuing to add layers after the improvement drops below the shot noise, which fits noise rather than physics.
+    references:
+      - label: McClean et al, Barren plateaus in quantum neural network training landscapes
+        url: https://arxiv.org/abs/1803.11173
+      - label: IBM Quantum Learning courses
+        url: https://quantum.cloud.ibm.com/learning/en/courses
+
+  - id: iq-087
+    title: Group Pauli terms to cut the measurement cost of a VQE step
+    kind: coding
+    prompt: |
+      Given a Hamiltonian as a list of (coefficient, Pauli string) pairs on n
+      qubits, write code that partitions the strings into the smallest number of
+      qubit-wise commuting groups you can find, and returns for each group the
+      single-qubit basis rotation to apply before a computational-basis
+      measurement. Report the group count on a real input and the resulting
+      reduction in circuit settings per energy evaluation. Pauli strings are
+      indexed with character 0 acting on qubit 0, and qubit 0 is the most
+      significant bit.
+    difficulty: medium
+    pattern: VQE parameter optimisation
+    topics: [vqe, pauli-grouping, measurement-reduction, graph-colouring]
+    companies: [IBM, Classiq, Quantinuum, Multiverse Computing]
+    modelAnswer: |
+      Two Pauli strings are qubit-wise commuting when, position by position, their
+      letters are either equal or at least one of them is I. That relation is not
+      transitive, so grouping is a graph colouring problem: build a compatibility
+      graph on the strings, then find a clique cover, equivalently colour the
+      complement graph. Minimum clique cover is NP-hard, so use a greedy
+      largest-first heuristic; it is what production stacks ship and it is what
+      the interviewer expects you to name as a heuristic rather than an optimum.
+
+      The payoff for a group is that all its members are simultaneously diagonal
+      after one layer of single-qubit rotations. For each qubit take the unique
+      non-identity letter appearing at that position across the group: X needs H,
+      Y needs S-dagger then H, Z needs nothing, and an all-identity position is
+      free.
+
+      ```python
+      def qwc(a, b):
+          return all(x == y or x == "I" or y == "I" for x, y in zip(a, b))
+
+      def group_qwc(terms):
+          """terms: list of (coeff, pauli_string). Returns list of groups."""
+          order = sorted(range(len(terms)),
+                         key=lambda i: sum(c != "I" for c in terms[i][1]),
+                         reverse=True)
+          groups = []                       # each: (representative, members)
+          for i in order:
+              coeff, p = terms[i]
+              for g in groups:
+                  if all(qwc(p, q) for _, q in g):
+                      g.append((coeff, p))
+                      break
+              else:
+                  groups.append([(coeff, p)])
+          return groups
+
+      def basis_rotation(group, n):
+          """Returns per-qubit rotation names, qubit 0 first."""
+          letters = ["I"] * n
+          for _, p in group:
+              for q, c in enumerate(p):
+                  if c != "I":
+                      assert letters[q] in ("I", c), "group is not QWC"
+                      letters[q] = c
+          return ["h" if c == "X" else "sdg,h" if c == "Y" else "" 
+                  for c in letters]
+      ```
+
+      On the two-qubit Hamiltonian with terms II, IZ, ZI, ZZ, XX the greedy pass
+      returns two groups: {XX} and {II, IZ, ZI, ZZ}, so five strings collapse to
+      two circuit settings, a 2.5x reduction. On a four-qubit Jordan-Wigner
+      hydrogen Hamiltonian with 15 non-identity terms the typical result is five
+      groups, a 3x reduction. In general qubit-wise commuting grouping gives
+      roughly O(n^3) groups for an O(n^4)-term molecular Hamiltonian.
+
+      Two caveats worth volunteering. First, general commuting groups, which allow
+      a Clifford rather than a product of single-qubit gates, compress further,
+      but the diagonalising Clifford adds two-qubit gates and therefore noise, so
+      on hardware the shallower qubit-wise grouping often wins on total error even
+      though it needs more settings. Second, sharing shots inside a group makes
+      the estimators for its members correlated, so the variance of the group's
+      contribution is not the sum of individual variances; compute it from the
+      per-shot sum of c_i times the measured sign, which handles the covariance
+      automatically.
+    followUps:
+      - How much further does general commuting grouping compress this Hamiltonian, and what does the diagonalising Clifford cost in CX gates?
+      - Two greedy orderings give different group counts. How would you search for a better cover without solving the NP-hard problem?
+      - Show how to compute the group's variance contribution correctly given that its terms share shots.
+    commonMistakes:
+      - Treating qubit-wise commutation as transitive and merging groups that are not pairwise compatible.
+      - Forgetting that measuring Y requires S-dagger before the Hadamard, not just a Hadamard.
+      - Summing per-term variances inside a shared-shot group, which ignores the covariance and misstates the error bar.
+      - Claiming greedy colouring is optimal. It is a heuristic for an NP-hard cover problem.
+    references:
+      - label: IBM Quantum Learning courses
+        url: https://quantum.cloud.ibm.com/learning/en/courses
+      - label: Qiskit documentation
+        url: https://docs.quantum.ibm.com/
+
+  - id: iq-088
+    title: Implement quantum natural gradient with a block-diagonal metric
+    kind: coding
+    prompt: |
+      Plain gradient descent on a VQE landscape is slow because the parameter
+      space is not Euclidean. Implement quantum natural gradient: compute the
+      block-diagonal approximation to the Fubini-Study metric tensor for a layered
+      ansatz, solve the resulting linear system with regularisation, and take the
+      step. State the extra circuit cost per iteration relative to plain gradient
+      descent, and explain why the metric is not the identity.
+    difficulty: hard
+    pattern: VQE parameter optimisation
+    topics: [vqe, natural-gradient, fubini-study, optimisers, quantum-fisher-information]
+    companies: [Xanadu, IBM, Q-CTRL, Classiq]
+    modelAnswer: |
+      Plain descent moves theta by a fixed Euclidean step, but equal steps in
+      theta do not produce equal changes in the state. The right local geometry is
+      the Fubini-Study metric on projective Hilbert space, whose components are
+
+          g_ij = Re<d_i psi | d_j psi> - <d_i psi | psi><psi | d_j psi>,
+
+      which is one quarter of the quantum Fisher information matrix. The natural
+      gradient step is theta <- theta - eta g^+ grad E, with g^+ a pseudoinverse.
+      Where the state changes fast, g is large and the step is damped; where the
+      state barely moves, g is small and the step is amplified. Plain descent is
+      the special case g = I, which is only correct if the parameterisation is
+      isometric, and it never is.
+
+      Computing the full g costs O(p^2) circuits. The block-diagonal
+      approximation, one block per layer, costs one extra circuit per layer. For a
+      layer whose gates are exp(-i theta_i K_i / 2) with commuting single-qubit
+      generators K_i, the block entry is
+
+          g_ij = (1/4)(<K_i K_j> - <K_i><K_j>),
+
+      where the expectation values are taken in the state produced by the layers
+      before this one. So you run the circuit truncated at the start of the layer
+      and measure the K_i and their pairwise products; because the K_i inside a
+      layer are single-qubit Paulis on distinct qubits, they are qubit-wise
+      commuting and one measurement setting delivers the whole block.
+
+      ```python
+      import numpy as np
+
+      def qng_step(grad, blocks, theta, eta=0.1, damping=1e-3):
+          """blocks: list of (index_array, metric_block). Solves per block."""
+          step = np.zeros_like(theta)
+          for idx, g in blocks:
+              gr = g + damping * np.eye(len(idx))     # Tikhonov regularisation
+              step[idx] = np.linalg.solve(gr, grad[idx])
+          return theta - eta * step
+
+      def layer_block(expect_single, expect_pair):
+          """expect_single[i] = <K_i>, expect_pair[i, j] = <K_i K_j>."""
+          s = np.asarray(expect_single)
+          return 0.25 * (np.asarray(expect_pair) - np.outer(s, s))
+      ```
+
+      Cost accounting. Plain parameter-shift descent is 2p circuits per iteration.
+      Block-diagonal natural gradient adds L circuits, one per layer, so the total
+      is 2p + L, a small constant overhead since L is much smaller than p. The
+      published payoff is a large reduction in iteration count on ill-conditioned
+      landscapes, often an order of magnitude on chemistry ansaetze.
+
+      Two practical points. The metric is positive semidefinite and routinely
+      singular, because redundant parameters produce zero directions, so solve
+      with Tikhonov damping or a truncated pseudoinverse rather than a raw
+      `np.linalg.inv`; a naive inverse produces enormous steps along the null
+      space and diverges on the first iteration. And under shot noise the measured
+      block can pick up small negative eigenvalues, so project it to the positive
+      semidefinite cone by clipping eigenvalues at zero before adding the damping.
+    followUps:
+      - When does the block-diagonal approximation break down, and what does the diagonal-only approximation cost you?
+      - Relate the Fubini-Study metric to the quantum Fisher information and to the SLD definition.
+      - Under a fixed total shot budget, is natural gradient still the better spend? Set up the comparison.
+    commonMistakes:
+      - Inverting the metric directly instead of using a damped or truncated pseudoinverse, which diverges along the null space.
+      - Omitting the subtraction of the outer product of single-term expectation values, which leaves a metric that is not the Fubini-Study tensor.
+      - Measuring the block in the final state rather than in the state at the start of the layer.
+      - Feeding a shot-noisy block with negative eigenvalues into the solve without projecting it back to the positive semidefinite cone.
+    references:
+      - label: PennyLane quantum machine learning demos
+        url: https://pennylane.ai/qml/
+      - label: Schuld et al, Evaluating analytic gradients on quantum hardware
+        url: https://arxiv.org/abs/1811.11184
+
+  - id: iq-089
+    title: Select ansatz operators by gradient screening in ADAPT-VQE
+    kind: coding
+    prompt: |
+      Implement the operator-selection step of ADAPT-VQE. Given a current state,
+      a Hamiltonian H, and a pool of anti-Hermitian generators, compute for each
+      pool element the energy gradient that would result from appending
+      exp(-i theta A) with theta starting at zero, pick the largest in magnitude,
+      append it, and re-optimise all parameters. Derive the gradient formula and
+      state the measurement cost of one screening sweep over a pool of size M.
+      Give the convergence criterion.
+    difficulty: hard
+    pattern: VQE parameter optimisation
+    topics: [vqe, adapt-vqe, operator-pool, commutators, adaptive-ansatz]
+    companies: [IBM, Quantinuum, Classiq, Xanadu]
+    modelAnswer: |
+      Derivation. Let the candidate gate be U(theta) = exp(-i theta A) with A
+      Hermitian, appended to the current state |psi>. Then
+
+          E(theta) = <psi| exp(i theta A) H exp(-i theta A) |psi>,
+          dE/dtheta at theta = 0 = <psi| i[A, H] |psi>.
+
+      That is the screening score. It is a single expectation value of the
+      Hermitian operator i[A, H] in the current state, and if A is a Pauli string
+      and H is a sum of Pauli strings then i[A, H] is itself a real linear
+      combination of Pauli strings, computed classically by commuting the strings
+      pairwise. So screening needs no new ansatz parameters and no extra circuit
+      structure: it is M expectation values in the same state.
+
+      ```python
+      import numpy as np
+
+      def pauli_commutator_terms(H_terms, A):
+          """H_terms: list of (coeff, pauli). A: pauli string.
+          Returns terms of i[A, H], dropping the commuting ones."""
+          out = []
+          for c, P in H_terms:
+              if paulis_commute(A, P):
+                  continue                     # contributes nothing
+              coeff, R = pauli_product(A, P)   # A P = coeff * R
+              # i[A, P] = i (A P - P A) = 2i * coeff * R  when they anticommute
+              out.append((2.0 * c * (1j * coeff).real, R))
+          return out
+
+      def adapt_step(state_expect, H_terms, pool, tol=1e-3):
+          """state_expect(terms) -> expectation of a Pauli sum in |psi>."""
+          scores = [(abs(state_expect(pauli_commutator_terms(H_terms, A))), A)
+                    for A in pool]
+          g_norm = np.linalg.norm([s for s, _ in scores])
+          if g_norm < tol:
+              return None, g_norm            # converged, stop growing
+          return max(scores)[1], g_norm
+      ```
+
+      Cost. Naively M expectation values per sweep, each a Pauli sum. In practice
+      you group all the commutator terms across the whole pool into qubit-wise
+      commuting sets once, then a few dozen measurement settings on the same state
+      score the entire pool. That is the trick that makes ADAPT affordable: the
+      screening cost is set by the number of distinct measurement bases, not by M.
+
+      Convergence criterion. Stop when the norm of the vector of pool gradients
+      falls below a threshold, not when the energy stops moving. The gradient norm
+      is the honest statement that no single pool operator can lower the energy to
+      first order; the energy flattening can also mean your optimiser stalled.
+      Set the threshold above the shot noise floor of the screening measurement,
+      otherwise you will keep appending operators chosen by noise.
+
+      Two design notes. Use a fermionic pool such as spin-adapted singles and
+      doubles when the problem is chemistry, because the resulting ansatz respects
+      particle number and spin, and the operator count stays small; a generic
+      Pauli pool converges in fewer operators but each is less physical and the
+      circuits are deeper. And after appending, re-optimise every parameter, not
+      only the new one; freezing the old parameters turns ADAPT into a greedy
+      construction that plateaus early.
+    followUps:
+      - Why does re-optimising all parameters after each append matter, and what does the run look like if you freeze the old ones?
+      - How do you group the commutator terms across the pool so one set of measurement settings scores every candidate?
+      - Compare a spin-adapted fermionic pool with a qubit-Pauli pool on operator count and on final CX depth.
+    commonMistakes:
+      - Getting the sign or factor wrong in dE/dtheta = <i[A, H]>, which flips the ranking of candidate operators.
+      - Stopping on energy stagnation rather than on the pool gradient norm, which cannot distinguish convergence from a stalled optimiser.
+      - Setting the gradient threshold below the shot noise, so the algorithm appends operators selected by measurement noise.
+      - Screening M operators with M separate circuits when one grouped measurement pass scores the whole pool.
+    references:
+      - label: IBM Quantum Learning courses
+        url: https://quantum.cloud.ibm.com/learning/en/courses
+      - label: Kandala et al, Hardware-efficient variational quantum eigensolver
+        url: https://arxiv.org/abs/1704.05018
+
+  - id: iq-090
+    title: Enforce a particle-number constraint in a noisy VQE run
+    kind: coding
+    prompt: |
+      Your VQE converges to an energy below the true ground energy of the target
+      symmetry sector. The ansatz can leak into sectors with the wrong particle
+      number and the device is noisy. Implement two fixes and compare them: a
+      penalty term added to the measured objective, and post-selection on the
+      symmetry from mid-circuit or terminal measurements. Give the objective
+      function, the extra measurement cost, and the effect of each on the
+      variational bound. Bitstrings are read with qubit 0 as the most significant
+      bit.
+    difficulty: hard
+    pattern: VQE parameter optimisation
+    topics: [vqe, symmetry, penalty-methods, post-selection, error-mitigation]
+    companies: [IBM, Quantinuum, Google Quantum AI, Classiq]
+    modelAnswer: |
+      Diagnose first. A converged energy below the sector ground energy is not a
+      broken variational principle; it means you are minimising over a larger
+      space than you think. Under Jordan-Wigner the particle-number operator is
+      N = sum_q (I - Z_q)/2, so measure <N> at the converged parameters. If it is
+      not the target electron count, the state has leaked.
+
+      Fix one, penalty. Optimise
+
+          E_pen(theta) = <H> + mu (<N^2> - 2 N_target <N> + N_target^2),
+
+      which is <H> + mu <(N - N_target)^2>. The penalty is non-negative and
+      vanishes exactly on the target sector, so the minimiser of E_pen inside the
+      sector is the sector ground state, and outside it the objective is lifted.
+      Cost: N is diagonal, so <N> comes free from the same Z-basis counts you
+      already collect, and N^2 needs the pairwise Z_q Z_r expectation values,
+      which are also diagonal and also free from the same counts. So the penalty
+      is measurement-free on top of the existing Z group. Choose mu larger than
+      the spectral width of H restricted to the neighbouring sectors, in practice
+      a few Hartree; too small and leakage survives, too large and the landscape
+      becomes stiff and the optimiser crawls.
+
+      ```python
+      import numpy as np
+
+      def penalised_energy(z_counts, h_energy, n_target, mu=5.0):
+          """z_counts: (shots, n) array of 0/1 bits, column 0 is qubit 0."""
+          occ = z_counts.sum(axis=1).astype(float)       # N per shot
+          pen = ((occ - n_target) ** 2).mean()
+          se = ((occ - n_target) ** 2).std(ddof=1) / np.sqrt(len(occ))
+          return h_energy + mu * pen, mu * se
+
+      def post_selected_energy(z_counts, signs, n_target):
+          keep = z_counts.sum(axis=1) == n_target
+          if keep.mean() < 0.05:
+              raise RuntimeError("acceptance too low, error bars will explode")
+          s = signs[keep]
+          return s.mean(), s.std(ddof=1) / np.sqrt(keep.sum()), keep.mean()
+      ```
+
+      Fix two, post-selection. Discard every shot whose measured occupancy is not
+      N_target. This is free for the diagonal groups, but for a non-diagonal group
+      such as an XX term you cannot read N from the same shot, so you need an
+      ancilla-based parity measurement or a mid-circuit syndrome extraction, which
+      costs extra gates and adds its own error. Post-selection does not change the
+      variational bound; it changes the estimator. If the acceptance rate is a,
+      the effective shot count is a N and the error bar grows by 1/sqrt(a). Below
+      about 5 percent acceptance the mitigation costs more than it buys, and on
+      wide circuits a falls exponentially with qubit count.
+
+      Comparison. The penalty biases the optimiser and keeps every shot; it is
+      cheap and it is what you use during optimisation. Post-selection is unbiased
+      with respect to the symmetry and is what you use for the final high-shot
+      evaluation, where you can afford the acceptance loss. Doing both is standard:
+      penalty during the search, post-selection at readout, and report the
+      acceptance rate alongside the energy so a reader can judge how much of the
+      data survived.
+
+      The cleanest structural fix, when the ansatz allows it, is a
+      number-preserving ansatz built from Givens rotations, which cannot leave the
+      sector at all and needs neither penalty nor post-selection.
+    followUps:
+      - Write down a Givens-rotation ansatz that conserves particle number by construction and count its CX gates.
+      - Post-selection acceptance falls exponentially with qubit count. At what width does it stop being viable?
+      - How do you combine a symmetry penalty with zero-noise extrapolation without double-counting the mitigation?
+    commonMistakes:
+      - Treating an energy below the sector ground energy as a numerical fluke rather than as evidence of symmetry leakage.
+      - Paying for extra circuits to measure the particle-number penalty when it is diagonal and already contained in the Z-basis counts.
+      - Reporting a post-selected energy without the acceptance rate, so the reader cannot tell the effective shot count.
+      - Choosing the penalty weight mu without reference to the energy scale of neighbouring sectors.
+    references:
+      - label: IBM Quantum Learning courses
+        url: https://quantum.cloud.ibm.com/learning/en/courses
+      - label: Kandala et al, Hardware-efficient variational quantum eigensolver
+        url: https://arxiv.org/abs/1704.05018

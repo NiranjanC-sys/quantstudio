@@ -1,0 +1,39 @@
+# Cluster-scoped PriorityClasses referenced by priorityClassName across every
+# namespace/overlay. Values are spaced two orders of magnitude apart so there is no
+# ambiguity in preemption ordering, and all sit well below the reserved
+# system-cluster-critical (2000000000) / system-node-critical (2000001000) range.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: redquant-critical
+value: 1000000
+globalDefault: false
+description: >-
+  User-facing, latency-critical services on the hot path: api-gateway,
+  quantum-kernel/quantum-kernel-heavy, and the Postgres/PgBouncer data tier.
+  Preempts redquant-standard and redquant-batch pods for scheduling. Losing
+  one of these pods directly degrades read latency or the simulation SLOs
+  in §9.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: redquant-standard
+value: 100000
+globalDefault: false
+description: >-
+  User-facing but not on the tightest latency budget: web (SSR), ai-tutor,
+  and the Redis cluster. Scheduled ahead of batch work but behind
+  redquant-critical.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: redquant-batch
+value: 10000
+globalDefault: false
+description: >-
+  Asynchronous, queue-driven, or single-use workloads: grader workers and
+  sandbox-runner. Scaled by KEDA on queue depth (§1); delayed scheduling here
+  degrades grading/sandbox lag, not live user-facing latency, so these yield
+  to everything else under node pressure.

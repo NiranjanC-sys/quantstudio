@@ -1,0 +1,68 @@
+# OPA Gatekeeper equivalent of kyverno/disallow-latest-tag.yaml.
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sdisallowedtags
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sDisallowedTags
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            disallowedTags:
+              type: array
+              items:
+                type: string
+            exemptNamespaces:
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8sdisallowedtags
+
+        violation[{"msg": msg, "details": {"container": container.name}}] {
+          not is_exempt_namespace
+          container := input.review.object.spec.containers[_]
+          not contains(container.image, ":")
+          msg := sprintf("Container %v has no image tag or digest: %v", [container.name, container.image])
+        }
+
+        violation[{"msg": msg, "details": {"container": container.name}}] {
+          not is_exempt_namespace
+          container := input.review.object.spec.containers[_]
+          tag := split(container.image, ":")[count(split(container.image, ":")) - 1]
+          bad := input.parameters.disallowedTags[_]
+          tag == bad
+          msg := sprintf("Container %v uses disallowed mutable tag ':%v': %v", [container.name, bad, container.image])
+        }
+
+        is_exempt_namespace {
+          ns := input.review.object.metadata.namespace
+          exempt := input.parameters.exemptNamespaces[_]
+          ns == exempt
+        }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sDisallowedTags
+metadata:
+  name: disallow-latest-tag
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+  parameters:
+    disallowedTags:
+      - latest
+      - main
+      - master
+      - dev
+      - stable
+      - edge
+    exemptNamespaces:
+      - kube-system
