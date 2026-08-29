@@ -1,0 +1,72 @@
+---
+id: week-06.b.editorial
+contest: week-06
+slot: B
+kind: editorial
+title: "Editorial: The Fredkin Budget"
+points: 200
+difficulty: medium
+---
+
+## The intended solution
+
+Two identities, composed.
+
+The first turns an exchange into a flip:
+
+$$
+\mathrm{CSWAP}(0;\,1,2) = \mathrm{CNOT}(2 \to 1)\;\mathrm{CCX}(0,1 \to 2)\;\mathrm{CNOT}(2 \to 1).
+$$
+
+Trace it on basis states. The first CNOT leaves qubit 1 holding $b \oplus c$. The
+Toffoli flips qubit 2 by $a \wedge (b \oplus c)$, so qubit 2 becomes
+$c \oplus a(b \oplus c)$, which is $c$ when $a = 0$ and $b$ when $a = 1$. The
+second CNOT then makes qubit 1 hold $(b \oplus c) \oplus$ its new partner, which
+is $b$ when $a = 0$ and $c$ when $a = 1$. Exchange when the control is set, and
+nothing otherwise.
+
+The second identity turns the Toffoli into a CCZ:
+$\mathrm{CCX}(0,1 \to 2) = H_2\,\mathrm{CCZ}\,H_2$, and the CCZ is the
+seven-$T$, six-CNOT circuit from Week 1 Problem D.
+
+Total: two outer CNOTs, two Hadamards, and the thirteen-op CCZ, giving 17 ops,
+depth 13, eight two-qubit gates and a T-count of seven. The operator is exactly
+CSWAP, no global phase.
+
+## Why the naive answers are too expensive
+
+Three of them show up.
+
+Writing `cswap` directly is rejected by the gate set, for the same reason `ccz`
+was rejected in Week 1: a fault-tolerant machine has no such instruction.
+
+Building the controlled SWAP as three controlled-CNOTs, one per CNOT of the
+SWAP, gives three Toffolis where one suffices. That is a T-count of 21 and
+eighteen CNOTs, roughly three times the budget on both axes, and it is by far the
+most common overspend because it follows so naturally from "a SWAP is three
+CNOTs, so a controlled SWAP is three controlled CNOTs".
+
+Running a generic three-qubit synthesis routine on the $8 \times 8$ matrix
+produces a correct circuit with a T-count in the dozens, because generic
+synthesis has no way to notice the permutation structure.
+
+## Why the outer CNOTs are free
+
+Worth noticing: the two outer CNOTs cost two two-qubit gates and zero $T$ gates.
+Under an error-correcting code the $T$ gates dominate the cost by orders of
+magnitude, so a rewrite that trades three Toffolis for one Toffoli plus two
+CNOTs cuts the real cost by a factor of three, and the two extra CNOTs do not
+register.
+
+## Common wrong answers
+
+Conjugating with $\mathrm{CNOT}(1 \to 2)$ instead of $\mathrm{CNOT}(2 \to 1)$
+puts the parity on the wrong wire, and the two outer CNOTs then cancel each other
+around the Toffoli instead of folding it. What comes back is the bare Toffoli:
+$110$ and $111$ exchanged, $101$ and $110$ untouched. The gate is a legitimate
+Toffoli and it is not a Fredkin.
+
+Putting the Hadamards on qubit 1 rather than on the Toffoli's target, qubit 2,
+turns the CCZ into a controlled flip aimed at the wrong wire. The result is still
+a permutation matrix, which makes it look plausible, and it exchanges $101$ with
+$111$ rather than $101$ with $110$.

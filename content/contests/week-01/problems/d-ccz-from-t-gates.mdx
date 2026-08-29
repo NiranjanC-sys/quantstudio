@@ -95,11 +95,36 @@ penalty minute per rejected submission.
 Your `solve` is in scope. This is the exact translation the judge uses:
 
 ```python
-@@SNIPPET:week-01-d@@
+import numpy as np
+from qiskit import QuantumCircuit
+from qiskit.circuit.library import standard_gates as sg
+from qiskit.quantum_info import Operator
+
+NAMES = {"t": sg.TGate, "tdg": sg.TdgGate, "x": sg.XGate}
+
+def build(ir):
+    """RedQuant IR -> Qiskit. Wire q becomes Qiskit wire n-1-q, because qubit 0
+    is our most significant bit and Qiskit's least. With that one change the
+    amplitude arrays line up index for index."""
+    n = ir["qubits"]
+    w = lambda q: n - 1 - q
+    qc = QuantumCircuit(n)
+    for op in ir["ops"]:
+        g = NAMES[op["gate"]](*op.get("params", []))
+        controls = op.get("controls", [])
+        if controls:
+            g = g.control(len(controls))
+        qc.append(g, [w(q) for q in controls + op["targets"]])
+    return qc
+
+u = Operator(build(solve())).data
+print("diagonal:", [int(round(u[i, i].real)) for i in range(8)])
+print("largest off-diagonal entry:", round(float(abs(u - np.diag(np.diag(u))).max()), 12))
 ```
 
 Output:
 
 ```text
-@@OUTPUT:week-01-d@@
+diagonal: [1, 1, 1, 1, 1, 1, 1, -1]
+largest off-diagonal entry: 0.0
 ```

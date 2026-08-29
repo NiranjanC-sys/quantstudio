@@ -725,6 +725,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .rq-iv-diff-easy { color: var(--success); }
 .rq-iv-diff-medium { color: var(--warning); }
+.rq-iv-diff-medium-hard { color: var(--accent-strong); }
 .rq-iv-diff-hard { color: var(--danger); }
 .rq-iv-meta {
   display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 0 80px;

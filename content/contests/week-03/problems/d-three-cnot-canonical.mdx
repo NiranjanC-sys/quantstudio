@@ -101,11 +101,42 @@ rejected submission.
 Your `solve` is in scope. This is the exact translation the judge uses:
 
 ```python
-@@SNIPPET:week-03-d@@
+import numpy as np
+from qiskit import QuantumCircuit
+from qiskit.circuit.library import standard_gates as sg
+from qiskit.quantum_info import Operator
+
+NAMES = {"ry": sg.RYGate, "rz": sg.RZGate, "x": sg.XGate}
+
+def build(ir):
+    """RedQuant IR -> Qiskit. Wire q becomes Qiskit wire n-1-q, because qubit 0
+    is our most significant bit and Qiskit's least. With that one change the
+    amplitude arrays line up index for index."""
+    n = ir["qubits"]
+    w = lambda q: n - 1 - q
+    qc = QuantumCircuit(n)
+    for op in ir["ops"]:
+        g = NAMES[op["gate"]](*op.get("params", []))
+        controls = op.get("controls", [])
+        if controls:
+            g = g.control(len(controls))
+        qc.append(g, [w(q) for q in controls + op["targets"]])
+    return qc
+
+target = QuantumCircuit(2)
+target.rxx(np.pi / 3, 0, 1)
+target.ryy(np.pi / 4, 0, 1)
+target.rzz(np.pi / 5, 0, 1)
+t = Operator(target).data
+u = Operator(build(solve())).data
+phase = u[0, 0] / t[0, 0]
+print("global phase:", complex(round(phase.real, 6), round(phase.imag, 6)))
+print("matches the canonical gate:", bool(np.allclose(u, phase * t)))
 ```
 
 Output:
 
 ```text
-@@OUTPUT:week-03-d@@
+global phase: (0.707107+0.707107j)
+matches the canonical gate: True
 ```

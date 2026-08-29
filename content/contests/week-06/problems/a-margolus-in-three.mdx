@@ -1,0 +1,128 @@
+---
+id: week-06.a
+contest: week-06
+slot: A
+title: Margolus In Three
+points: 100
+difficulty: easy
+tags: [toffoli, relative-phase, margolus, cnot-count]
+---
+
+A Toffoli costs six CNOTs. A Toffoli that is allowed to be wrong by one sign
+costs three. That sounds like a bad trade until you notice where Toffolis
+actually appear: in compute and uncompute pairs, around a scratch register, and a
+sign that the compute introduces the uncompute takes straight back out. Halving
+the CNOT count of every such pair is one of the largest free wins in circuit
+synthesis, and the gate that provides it is the Margolus gate.
+
+## Task
+
+Return a three-qubit circuit whose unitary agrees with the Toffoli
+$\mathrm{CCX}(0, 1 \to 2)$ on every matrix entry except one: the entry at row
+$011$, column $011$, which must be $-1$ where the Toffoli has $+1$. Use at most
+three CNOTs.
+
+That single sign is the definition of a relative-phase Toffoli. It is not a
+global phase and it is not an error to be fixed: it is what the circuit costs
+three CNOTs instead of six to buy.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. A CNOT is an `x` gate carrying one control, and
+$R_y$ carries its angle in `params`:
+
+```python
+{"id": "r1", "gate": "ry", "targets": [2], "params": [0.7853981633974483]}
+{"id": "cx1", "gate": "x", "targets": [2], "controls": [0]}
+```
+
+The judge materialises the full $8 \times 8$ operator, diffs it against the
+Toffoli entry by entry with no global phase divided out, and checks that the only
+disagreement is the one named above.
+
+Qubit 0 is the most significant bit, so row and column index $i$ assigns qubit
+$q$ the value `(i >> (2 - q)) & 1`, and $011$ is index 3.
+
+## Worked example
+
+The reference solution is four $R_y(\pm\pi/4)$ rotations on qubit 2 split by
+three CNOTs: $R_y(\pi/4)$, CNOT from qubit 0, $R_y(\pi/4)$, CNOT from qubit 1,
+$R_y(-\pi/4)$, CNOT from qubit 0, $R_y(-\pi/4)$. Each CNOT conjugates the
+rotation that follows it, flipping its sign in the branches where its control is
+1, so the four quarter turns sum to a full $X$ on qubit 2 only when both controls
+are 1 and cancel otherwise.
+
+Running it and diffing against the Toffoli gives:
+
+```text
+entries that differ from the Toffoli: [('011', '011', -1.0, 1.0)]
+```
+
+One entry, exactly as specified. The circuit has 7 ops, depth 7 and three
+two-qubit gates.
+
+## Constraints
+
+- `qubits` is exactly 3 and `clbits` is exactly 0. No ancilla.
+- At most three two-qubit gates.
+- No gate may touch three wires at once, so `ccx` and `ccz` are rejected.
+- Allowed gates: `ry`, `rz`, `h`, `x`, and `x` carrying a single control.
+- No `measure`, no `reset`, no classical conditions.
+
+## Scoring
+
+100 points for the first accepted submission. The judge runs a `custom_python`
+check comparing the materialised operator against the Toffoli and asserting
+exactly one differing entry, at $(011, 011)$ and equal to $-1$, then
+`resource_bound` with `max_two_qubit_gates` of 3, then `gate_set_subset` over the
+list above. A submission producing the true Toffoli is a rejection, not a bonus:
+it cannot be done in three CNOTs, so it means the gate count was cheated. No
+partial credit, one penalty minute per rejected submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+import numpy as np
+from qiskit import QuantumCircuit
+from qiskit.circuit.library import standard_gates as sg
+from qiskit.quantum_info import Operator
+
+NAMES = {"ry": sg.RYGate, "x": sg.XGate}
+
+def build(ir):
+    """RedQuant IR -> Qiskit. Wire q becomes Qiskit wire n-1-q, because qubit 0
+    is our most significant bit and Qiskit's least. With that one change the
+    amplitude arrays line up index for index."""
+    n = ir["qubits"]
+    w = lambda q: n - 1 - q
+    qc = QuantumCircuit(n)
+    for op in ir["ops"]:
+        g = NAMES[op["gate"]](*op.get("params", []))
+        controls = op.get("controls", [])
+        if controls:
+            g = g.control(len(controls))
+        qc.append(g, [w(q) for q in controls + op["targets"]])
+    return qc
+
+u = Operator(build(solve())).data
+ccx = np.eye(8, dtype=complex)[[0, 1, 2, 3, 4, 5, 7, 6]]
+diff = [(format(i, "03b"), format(j, "03b"), complex(u[i, j]), complex(ccx[i, j]))
+        for i in range(8) for j in range(8) if abs(u[i, j] - ccx[i, j]) > 1e-9]
+print("entries that differ from the Toffoli:", [(a, b, round(c.real, 6), round(d.real, 6))
+                                                for a, b, c, d in diff])
+```
+
+Output:
+
+```text
+entries that differ from the Toffoli: [('011', '011', -1.0, 1.0)]
+```

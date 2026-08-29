@@ -1,0 +1,69 @@
+---
+id: week-05.a.editorial
+contest: week-05
+slot: A
+kind: editorial
+title: "Editorial: The Repetition Encoder"
+points: 100
+difficulty: easy
+---
+
+## The intended solution
+
+Three ops:
+
+```text
+ry(pi/4)  on qubit 0
+CNOT 0 -> 1
+CNOT 0 -> 2
+```
+
+$R_y(\theta)$ sends $\ket0$ to $\cos(\theta/2)\ket0 + \sin(\theta/2)\ket1$, so
+$\theta = \pi/4$ gives $\cos(\pi/8)\ket0 + \sin(\pi/8)\ket1$, that is
+$0.92388$ and $0.382683$. The two CNOTs then map $\ket{000} \mapsto \ket{000}$
+and $\ket{100} \mapsto \ket{111}$, and linearity carries the superposition along:
+
+$$
+(\alpha\ket0 + \beta\ket1)\ket{00} \;\longmapsto\; \alpha\ket{000} + \beta\ket{111}.
+$$
+
+Depth 3, two two-qubit gates, and the probabilities come out at $0.853553$ and
+$0.146447$.
+
+## Why the halving matters
+
+The single most common failure is $R_y(\pi/8)$ instead of $R_y(\pi/4)$. The
+angle in $R_y$ is the Bloch-sphere rotation, which is twice the angle that
+appears in the amplitudes, so if you want $\cos(\pi/8)$ you ask for $R_y(\pi/4)$.
+Getting it wrong gives $\cos(\pi/16) = 0.980785$ and $\sin(\pi/16) = 0.19509$,
+a state that is normalised, supported on the right two codewords, and wrong.
+`statevector_equals` at a tolerance of $10^{-9}$ catches it immediately; a
+histogram at a few thousand shots very nearly does not.
+
+## Why there is no naive alternative
+
+There is not much to overspend on here, but there is one instructive wrong
+instinct: to prepare the logical qubit on wire 0 and then try to *copy* it onto
+wires 1 and 2. There is no unitary that does that. The no-cloning theorem says
+so, and the reason is the same linearity that makes the CNOT circuit work: any
+map that sends $\ket0 \mapsto \ket{000}$ and $\ket1 \mapsto \ket{111}$ must send
+$\alpha\ket0 + \beta\ket1$ to $\alpha\ket{000} + \beta\ket{111}$, not to
+$(\alpha\ket0+\beta\ket1)^{\otimes 3}$. The second of those has cross terms like
+$\ket{001}$ with amplitude $\alpha^2\beta$, and the encoder produces none.
+
+That difference is what makes the code useful rather than what makes it
+impossible. A copy would let you learn the logical state by measuring one wire;
+the entangled encoding does not, and that is exactly why a single-qubit error can
+be detected without collapsing the logical information.
+
+## Common wrong answers
+
+Chaining the CNOTs, 0 to 1 and then 1 to 2, produces the same state at the same
+depth of 3 and is equally accepted. Using `h` instead of `ry` prepares an equal
+superposition, giving $0.707107$ on both codewords, which is a legal encoded
+state and not the requested one.
+
+Applying the CNOTs first and the rotation afterwards gives
+$\cos(\pi/8)\ket{000} + \sin(\pi/8)\ket{100}$: the rotation happens after the
+correlation is set up, so it only touches wire 0 and the code space is never
+entered.

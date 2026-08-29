@@ -86,11 +86,37 @@ one penalty minute per rejected submission.
 Your `solve` is in scope. This is the exact translation the judge uses:
 
 ```python
-@@SNIPPET:week-03-a@@
+import numpy as np
+from qiskit import QuantumCircuit
+from qiskit.circuit.library import standard_gates as sg
+from qiskit.quantum_info import Operator
+from qiskit.circuit.library import SwapGate
+
+NAMES = {"x": sg.XGate}
+
+def build(ir):
+    """RedQuant IR -> Qiskit. Wire q becomes Qiskit wire n-1-q, because qubit 0
+    is our most significant bit and Qiskit's least. With that one change the
+    amplitude arrays line up index for index."""
+    n = ir["qubits"]
+    w = lambda q: n - 1 - q
+    qc = QuantumCircuit(n)
+    for op in ir["ops"]:
+        g = NAMES[op["gate"]](*op.get("params", []))
+        controls = op.get("controls", [])
+        if controls:
+            g = g.control(len(controls))
+        qc.append(g, [w(q) for q in controls + op["targets"]])
+    return qc
+
+u = Operator(build(solve())).data
+print(np.round(u.real, 6).astype(int).tolist())
+print("is SWAP:", bool(np.allclose(u, Operator(SwapGate()).data)))
 ```
 
 Output:
 
 ```text
-@@OUTPUT:week-03-a@@
+[[1, 0, 0, 0], [0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, 1]]
+is SWAP: True
 ```

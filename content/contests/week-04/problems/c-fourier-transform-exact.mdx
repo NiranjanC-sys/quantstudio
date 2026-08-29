@@ -1,0 +1,143 @@
+---
+id: week-04.c
+contest: week-04
+slot: C
+title: The Exact Fourier Transform
+points: 300
+difficulty: medium-hard
+tags: [qft, dft, bit-reversal, controlled-phase]
+---
+
+Almost every drawing of the quantum Fourier transform ends with a row of SWAP
+gates, and almost every explanation of them says "this fixes the bit order". It
+is worth being precise about what that means, because there are two different
+unitaries in play and only one of them is the discrete Fourier transform. Leave
+the swaps out and you have not chosen a convention. You have built a different
+matrix.
+
+## Task
+
+Return a three-qubit circuit whose unitary is exactly the $8 \times 8$ discrete
+Fourier transform
+
+$$
+F_{jk} = \frac{1}{\sqrt 8}\, e^{2\pi i jk/8},
+$$
+
+where $j$ and $k$ are basis indices with qubit 0 as the most significant bit.
+Exactly, not up to a global phase and not up to a permutation of the outputs.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. Controlled phase rotations are the `cp` gate, and
+`swap` is available:
+
+```python
+{"id": "r01", "gate": "cp", "targets": [0, 1], "params": [1.5707963267948966]}
+{"id": "rev", "gate": "swap", "targets": [0, 2]}
+```
+
+The judge materialises the full $8 \times 8$ operator and compares it against
+$F$ entry by entry, with `up_to_global_phase` set to false.
+
+Qubit 0 is the most significant bit, so basis index $j$ assigns qubit $q$ the
+value `(j >> (2 - q)) & 1`.
+
+## Worked example
+
+The reference solution is `h` on qubit 0, `cp(pi/2)` between qubits 0 and 1,
+`cp(pi/4)` between 0 and 2, `h` on qubit 1, `cp(pi/2)` between 1 and 2, `h` on
+qubit 2, then one `swap` between qubits 0 and 2. Seven ops, depth 6, four
+two-qubit gates. Running it gives:
+
+```text
+is the exact DFT, not the bit-reversed one: True
+```
+
+and applying it to $\ket{101}$, which is basis index 5, gives the fifth column:
+
+| basis state | amplitude |
+| --- | --- |
+| $\ket{000}$ | $0.353553$ |
+| $\ket{001}$ | $-0.25 - 0.25i$ |
+| $\ket{010}$ | $0.353553i$ |
+| $\ket{011}$ | $0.25 - 0.25i$ |
+| $\ket{100}$ | $-0.353553$ |
+| $\ket{101}$ | $0.25 + 0.25i$ |
+| $\ket{110}$ | $-0.353553i$ |
+| $\ket{111}$ | $-0.25 + 0.25i$ |
+
+Every entry has modulus $1/\sqrt 8 = 0.353553$, and the phases advance by
+$2\pi \cdot 5/8$ per step, which is what $F_{j5}$ says they should do.
+
+## Constraints
+
+- `qubits` is exactly 3 and `clbits` is exactly 0.
+- At most four two-qubit gates, which is three controlled phases plus the swap. There is no budget for a three-CNOT expansion of the swap.
+- Allowed gates: `h`, `cp`, `swap`, `p`, `rz`.
+- No `measure`, no `reset`, no classical conditions.
+
+## Scoring
+
+300 points for the first accepted submission. The judge runs `unitary_equals`
+against $F$ with `up_to_global_phase` set to **false** and a tolerance of
+$10^{-9}$, then `resource_bound` with `max_two_qubit_gates` of 4, then
+`gate_set_subset` over the list above. The strict phase comparison is
+deliberate: the QFT is used inside larger circuits where a phase on this block
+becomes a relative phase overall. No partial credit, one penalty minute per
+rejected submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+import numpy as np
+from qiskit import QuantumCircuit
+from qiskit.circuit.library import standard_gates as sg
+from qiskit.quantum_info import Operator
+
+NAMES = {"cp": sg.CPhaseGate, "h": sg.HGate, "swap": sg.SwapGate}
+
+def build(ir):
+    """RedQuant IR -> Qiskit. Wire q becomes Qiskit wire n-1-q, because qubit 0
+    is our most significant bit and Qiskit's least. With that one change the
+    amplitude arrays line up index for index."""
+    n = ir["qubits"]
+    w = lambda q: n - 1 - q
+    qc = QuantumCircuit(n)
+    for op in ir["ops"]:
+        g = NAMES[op["gate"]](*op.get("params", []))
+        controls = op.get("controls", [])
+        if controls:
+            g = g.control(len(controls))
+        qc.append(g, [w(q) for q in controls + op["targets"]])
+    return qc
+
+u = Operator(build(solve())).data
+dft = np.array([[np.exp(2j * np.pi * j * k / 8) for k in range(8)] for j in range(8)]) / np.sqrt(8)
+print("is the exact DFT, not the bit-reversed one:", bool(np.allclose(u, dft)))
+for i, amp in enumerate(u[:, 0b101]):
+    print(f"|{i:03b}>", complex(round(amp.real, 6) + 0.0, round(amp.imag, 6) + 0.0))
+```
+
+Output:
+
+```text
+is the exact DFT, not the bit-reversed one: True
+|000> (0.353553+0j)
+|001> (-0.25-0.25j)
+|010> 0.353553j
+|011> (0.25-0.25j)
+|100> (-0.353553+0j)
+|101> (0.25+0.25j)
+|110> -0.353553j
+|111> (-0.25+0.25j)
+```

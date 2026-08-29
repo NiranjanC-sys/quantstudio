@@ -1,0 +1,78 @@
+---
+id: week-04.b.editorial
+contest: week-04
+slot: B
+kind: editorial
+title: "Editorial: Three Bits Of Phase"
+points: 200
+difficulty: medium
+---
+
+## The intended solution
+
+Four steps, fourteen ops, seven two-qubit gates.
+
+1. `x` on qubit 3, preparing the eigenvector $\ket 1$ of $U = P(2\pi\varphi)$.
+2. `h` on each of the three counting qubits.
+3. One controlled phase per counting qubit, with counting qubit $k$ carrying
+   angle $2\pi\varphi\,2^{\,n-1-k}$. For $\varphi = 3/8$ and $n = 3$ that is
+   $3\pi$, then $3\pi/2$, then $3\pi/4$.
+4. The three-qubit inverse QFT on the counting register: a swap of qubits 0 and
+   2, then `h` and the conjugate controlled phases in reverse order.
+
+The outcome is $\ket{0111}$ with probability 1: counting register $011 = 3$, and
+$3/8$ is the phase.
+
+Step 3 is the whole problem. The textbook writes $U^{2^{\,n-1-k}}$ and draws
+$2^{\,n-1-k}$ copies of the controlled-$U$ box, because in general you cannot
+raise a black-box unitary to a power more cheaply than by applying it repeatedly.
+When $U$ is a phase gate you can: $P(\lambda)^m = P(m\lambda)$, so the whole tower
+collapses into one gate with a scaled angle. Three controlled phases instead of
+$1 + 2 + 4 = 7$.
+
+## Why the naive answer blows the budget
+
+Count the naive circuit. Seven controlled-$U$ gates for step 3, plus three
+controlled phases and one swap inside the inverse QFT, is eleven two-qubit gates
+against a ceiling of seven. The circuit is correct and produces exactly the same
+state; it fails `resource_bound`, which is the honest failure mode, because on
+hardware the difference is real. In Shor's algorithm the same distinction is the
+difference between $O(n^3)$ and $O(n^4)$ modular multiplications.
+
+The other place people overspend is the inverse QFT. Writing it as the forward
+QFT followed by an inversion, or building it from a generic circuit inverter that
+does not simplify, easily doubles the four two-qubit gates it needs.
+
+## Why the answer is exact
+
+The general phase estimation bound promises the nearest $n$-bit approximation
+with probability at least $4/\pi^2 \approx 0.405$, and better with more counting
+qubits. That bound is about phases which are *not* exactly representable. Here
+$\varphi = 3/8 = 0.011_2$ terminates in three binary digits, the state before the
+inverse QFT is exactly the Fourier basis state for $j = 3$, and the inverse QFT
+maps it to $\ket{011}$ with amplitude 1. Probability 1, not 0.405 and not 0.95.
+
+That is also why the eigenvector qubit must come back unentangled. If your
+circuit leaves qubit 3 correlated with the counting register, you have applied
+something other than a controlled power of $U$, and the state check will catch it
+even though the counting marginal may still look right.
+
+## Common wrong answers
+
+Reversing the angle assignment, giving counting qubit 0 the smallest power
+instead of the largest, and omitting the swap at the head of the inverse QFT are
+the same mistake wearing two hats, and they produce the identical wrong state.
+The probability stops being deterministic and spreads over five outcomes:
+
+| outcome | probability |
+| --- | --- |
+| $\ket{0111}$ | $0.728553$ |
+| $\ket{1111}$ | $0.125$ |
+| $\ket{1001}$ | $0.073223$ |
+| $\ket{0101}$ | $0.036612$ |
+| $\ket{1101}$ | $0.036612$ |
+
+The peak is still on the right answer, which is precisely why a check that only
+looks at the most likely outcome would accept this and an amplitude check does
+not. Because qubit 0 is the most significant bit here, the power assignment has
+to be checked rather than assumed.

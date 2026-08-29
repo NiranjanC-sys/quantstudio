@@ -1,0 +1,78 @@
+---
+id: week-06.a.editorial
+contest: week-06
+slot: A
+kind: editorial
+title: "Editorial: Margolus In Three"
+points: 100
+difficulty: easy
+---
+
+## The intended solution
+
+Four quarter turns and three CNOTs:
+
+```text
+ry( pi/4)  2
+CNOT 0 -> 2
+ry( pi/4)  2
+CNOT 1 -> 2
+ry(-pi/4)  2
+CNOT 0 -> 2
+ry(-pi/4)  2
+```
+
+Seven ops, depth 7, three CNOTs. The operator agrees with the Toffoli everywhere
+except the diagonal entry at $\ket{011}$, which is $-1$ instead of $+1$.
+
+The mechanism is conjugation. $X R_y(\phi) X = R_y(-\phi)$, so a CNOT sitting
+before a rotation flips that rotation's sign in exactly the branches where its
+control reads 1. Materialise the operator and read off the $2 \times 2$ block it
+applies to qubit 2 in each of the four control branches:
+
+| $x_0 x_1$ | block on qubit 2 |
+| --- | --- |
+| $00$ | $I$ |
+| $01$ | $Z$ |
+| $10$ | $I$ |
+| $11$ | $X$ |
+
+Only the $11$ branch accumulates a full $\pi$ of rotation, which is the $X$ the
+Toffoli is supposed to apply. Two of the other three branches cancel completely.
+The $01$ branch cancels as a rotation and leaves a $Z$ behind, and that $Z$ is
+the whole difference between this gate and the Toffoli: it is the $-1$ at entry
+$(011, 011)$ and nothing else.
+
+## Why the naive answer is too expensive
+
+The true Toffoli is six CNOTs and seven $T$ gates, and six CNOTs is the proven
+minimum for an exact ancilla-free implementation. Three is not a smarter version
+of that: it is a different gate. The insight is knowing when a different gate is
+good enough.
+
+The answer is: whenever the Toffoli appears in a compute and uncompute pair
+around a scratch register. If the same relative phase is introduced by the
+compute and removed by the uncompute, the pair is exactly equivalent to two true
+Toffolis, and you have halved the two-qubit gate count of that block for free.
+Multi-controlled gate constructions, comparators, and most oracle scaffolding are
+built out of exactly such pairs.
+
+## Common wrong answers
+
+Getting the CNOT order wrong is the whole failure surface here. Keeping the sign
+pattern $+, +, -, -$ but controlling the three CNOTs from qubits 0, 0 and 1
+instead of 0, 1 and 0 leaves the $11$ branch correct and breaks the other two:
+the $01$ and $10$ branches come out as Hadamard-like blocks with every entry at
+$0.707107$, so the gate is not a permutation matrix at all. Any entry of modulus
+$0.707107$ anywhere in the operator means the branch bookkeeping is wrong.
+
+Using $\pi/2$ rotations instead of $\pi/4$ makes each branch overshoot by a
+factor of two, and the result is a clean permutation matrix that is not the gate
+you wanted: it flips qubit 2 whenever qubit 1 reads 1, regardless of qubit 0,
+which is a plain CNOT from wire 1. It is a good reminder that a permutation
+matrix is not evidence of correctness.
+
+Submitting the true Toffoli, whether by writing `ccx` or by building the six-CNOT
+circuit, is rejected twice: once by the gate-set check or the CNOT bound, and
+once by the check that entry $(011, 011)$ is $-1$. This problem wants the cheap
+gate, not the correct one.

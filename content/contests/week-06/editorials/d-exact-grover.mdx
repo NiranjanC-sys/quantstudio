@@ -1,0 +1,84 @@
+---
+id: week-06.d.editorial
+contest: week-06
+slot: D
+kind: editorial
+title: "Editorial: Exact Grover"
+points: 400
+difficulty: hard
+---
+
+## The intended solution
+
+Keep the shape of Grover and change the two reflections into two rotations of a
+smaller, matched angle.
+
+Ordinary Grover's oracle multiplies the marked amplitude by $-1$ and its
+diffusion multiplies the $\ket{000}$ amplitude by $-1$: both are phase rotations
+of angle $\pi$. Long's variant replaces both with $e^{i\varphi}$, the same
+$\varphi$ in each, chosen so that $J$ iterations rotate through exactly the right
+total. For $J$ iterations with $\sin\beta = \sqrt{M/N}$,
+
+$$
+\varphi = 2\arcsin\!\left(\frac{\sin\big(\pi/(4J+2)\big)}{\sin\beta}\right),
+$$
+
+which for $J = 2$, $M = 1$, $N = 8$ evaluates to $2.1268800471555034$ radians,
+or $121.86$ degrees. Each iteration then turns the state slightly less far than
+an ordinary iteration would, and after two of them the state is exactly
+$\ket{101}$.
+
+The circuit is a Hadamard layer, then twice over: phase $\varphi$ on the marked
+state, Hadamard layer, phase $\varphi$ on $\ket{000}$, Hadamard layer. Each phase
+is a doubly controlled `p` gate conjugated by $X$ gates on the wires that read 0
+in the string being phased. Thirty-five ops, depth 17, four gates on three wires,
+and the printed probability on $\ket{101}$ is $1.0$ at twelve decimal places.
+
+## Why the naive answer stalls
+
+Run ordinary Grover and evaluate the success probability rather than quoting
+$\tfrac{\pi}{4}\sqrt N$:
+
+| iterations | probability on $\ket{101}$ |
+| --- | --- |
+| $1$ | $0.78125$ |
+| $2$ | $0.9453125$ |
+| $3$ | $0.330078125$ |
+
+Two is the best integer and it is $0.945$, not 1. The reason is arithmetic, not
+implementation: the rotation angle is $2\arcsin(1/\sqrt8) = 0.7227$ radians, the
+continuous optimum number of iterations is $\pi/(2\theta) - 1/2 = 1.6734$, and
+$1.6734$ is not an integer. You cannot round your way to certainty.
+
+The usual response is to accept $0.945$ and repeat on failure, which costs an
+expected $1/0.945$ runs and, worse, requires a way to check the answer. When the
+oracle is expensive or the check is not free, exactness is worth real money. It
+is also the difference between a subroutine you can call inside a larger
+amplitude amplification and one you cannot, because a $5.5$ percent failure
+probability compounds.
+
+## Why phase matching, specifically
+
+The naive fix is to rotate one of the two reflections by $\varphi$ and leave the
+other at $\pi$. That does not work, and the reason has a name: the phase-matching
+condition. The oracle rotation and the diffusion rotation must be equal, and
+equal in sign, or the two reflections stop composing into a rotation of the
+two-dimensional search subspace and the state leaks out of it. Long's derivation
+starts from that condition and solves for the angle that makes $J$ iterations
+land exactly.
+
+## Common wrong answers
+
+Using $\varphi$ on the oracle and $\pi$ on the diffusion, in either arrangement,
+breaks phase matching and drops the success probability to $0.48538$, far below
+the $0.945312$ that plain Grover would have given. Using $+\varphi$ on one and
+$-\varphi$ on the other is worse still, at $0.002039$: the two rotations very
+nearly cancel.
+
+Changing $J$ without changing $\varphi$ is the other trap, and it fails harder
+than it looks. The angle formula needs
+$\sin(\pi/(4J+2)) \le \sin\beta$ to have a real solution at all. At $J = 1$ that
+ratio is $\sin(\pi/6)/\sqrt{1/8} = 1.41421$, so there is no real $\varphi$:
+one iteration cannot reach certainty on eight items no matter what phase you
+choose. At $J = 2$ the ratio is $\sin(\pi/10)/\sqrt{1/8} = 0.874$ and the
+solution exists. The angle and the iteration count are a matched pair.

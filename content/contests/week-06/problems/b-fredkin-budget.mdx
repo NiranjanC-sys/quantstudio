@@ -1,0 +1,128 @@
+---
+id: week-06.b
+contest: week-06
+slot: B
+title: The Fredkin Budget
+points: 200
+difficulty: medium
+tags: [fredkin, cswap, toffoli, t-count, clifford-t]
+---
+
+The controlled SWAP, or Fredkin gate, is the workhorse of reversible computing
+and the core of the swap test. Written naively it is three controlled swaps or a
+generic three-qubit synthesis, and it is expensive. Written well it is a Toffoli
+with two CNOTs around it, and the Toffoli in the middle is the same seven-$T$
+circuit that Week 1 asked for.
+
+## Task
+
+Return a three-qubit circuit whose unitary is exactly the Fredkin gate
+
+$$
+\mathrm{CSWAP}(0;\, 1, 2): \quad \ket{0}\ket{b}\ket{c} \mapsto \ket{0}\ket{b}\ket{c},
+\qquad \ket{1}\ket{b}\ket{c} \mapsto \ket{1}\ket{c}\ket{b},
+$$
+
+with qubit 0 as the control and qubits 1 and 2 as the pair being exchanged, using
+at most eight two-qubit gates, a T-count of at most seven, and no gate touching
+three wires at once.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. A CNOT is an `x` gate carrying one control. `t` is
+$\mathrm{diag}(1, e^{i\pi/4})$ and `tdg` is its inverse:
+
+```python
+{"id": "z2", "gate": "tdg", "targets": [2]}
+```
+
+The judge materialises the full $8 \times 8$ operator and compares it against the
+Fredkin matrix, which is the identity with rows $101$ and $110$ exchanged.
+
+Qubit 0 is the most significant bit, so the control is the top bit of the basis
+index.
+
+## Worked example
+
+The identity to start from is
+
+$$
+\mathrm{CSWAP}(0;\, 1, 2) = \mathrm{CNOT}(2 \to 1)\;\mathrm{CCX}(0, 1 \to 2)\;\mathrm{CNOT}(2 \to 1),
+$$
+
+reading right to left, that is with the first CNOT applied first in circuit
+order. The outer CNOTs turn the exchange into a single controlled flip: after
+the first one qubit 1 holds $b \oplus c$, the Toffoli flips qubit 2 by
+$a(b \oplus c)$, and the second CNOT completes the exchange.
+
+The Toffoli in the middle is the seven-$T$, six-CNOT CCZ conjugated by Hadamards
+on its target. Running the whole circuit gives:
+
+```text
+is exactly CSWAP: True
+```
+
+Exactly, with no global phase to divide out. The circuit has 17 ops, depth 13,
+eight two-qubit gates and a T-count of seven.
+
+## Constraints
+
+- `qubits` is exactly 3 and `clbits` is exactly 0. No ancilla.
+- At most eight two-qubit gates.
+- T-count at most 7, counting `t` and `tdg` together.
+- No gate may touch three wires at once, so `cswap`, `ccx` and `ccz` are all rejected.
+- Allowed gates: `h`, `s`, `sdg`, `t`, `tdg`, `x`, `z`, `cz`, and `x` carrying a single control.
+- No `measure`, no `reset`, no classical conditions.
+
+## Scoring
+
+200 points for the first accepted submission. The judge runs `unitary_equals`
+against the Fredkin matrix with `up_to_global_phase` set to true and a tolerance
+of $10^{-9}$, then `resource_bound` with `max_two_qubit_gates` of 8 and
+`max_t_count` of 7, then `gate_set_subset` over the list above. No partial
+credit, one penalty minute per rejected submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+import numpy as np
+from qiskit import QuantumCircuit
+from qiskit.circuit.library import standard_gates as sg
+from qiskit.quantum_info import Operator
+
+NAMES = {"h": sg.HGate, "t": sg.TGate, "tdg": sg.TdgGate, "x": sg.XGate}
+
+def build(ir):
+    """RedQuant IR -> Qiskit. Wire q becomes Qiskit wire n-1-q, because qubit 0
+    is our most significant bit and Qiskit's least. With that one change the
+    amplitude arrays line up index for index."""
+    n = ir["qubits"]
+    w = lambda q: n - 1 - q
+    qc = QuantumCircuit(n)
+    for op in ir["ops"]:
+        g = NAMES[op["gate"]](*op.get("params", []))
+        controls = op.get("controls", [])
+        if controls:
+            g = g.control(len(controls))
+        qc.append(g, [w(q) for q in controls + op["targets"]])
+    return qc
+
+u = Operator(build(solve())).data
+cswap = np.eye(8, dtype=complex)[[0, 1, 2, 3, 4, 6, 5, 7]]
+print("is exactly CSWAP:", bool(np.allclose(u, cswap)))
+```
+
+Output:
+
+```text
+is exactly CSWAP: True
+```

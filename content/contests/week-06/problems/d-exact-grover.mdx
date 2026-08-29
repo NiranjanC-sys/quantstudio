@@ -1,0 +1,139 @@
+---
+id: week-06.d
+contest: week-06
+slot: D
+title: Exact Grover
+points: 400
+difficulty: hard
+tags: [grover, exact-search, phase-matching, long-algorithm]
+---
+
+Grover on eight items with one marked stalls at $0.945$. Two iterations overshoot
+the target and three walk back past it, because the rotation angle
+$2\arcsin(1/\sqrt8)$ does not divide $\pi/2$ a whole number of times. For decades
+the standard advice was to accept the shortfall and repeat on failure. Long's
+phase-matched variant does better: replace the two sign flips with two equal
+partial phase rotations, chosen so that the shortened iterations land exactly on
+the target.
+
+## Task
+
+There are $N = 8$ basis states on three qubits and $M = 1$ is marked:
+$\ket{101}$. Return a three-qubit circuit that starts from $\ket{000}$ and ends
+with $\ket{101}$ carrying probability 1, using exactly $J = 2$ iterations.
+
+Each iteration is a phase rotation of angle $\varphi$ on the marked state
+followed by a phase rotation of the same angle $\varphi$ on $\ket{000}$,
+conjugated by Hadamard layers, with
+
+$$
+\varphi = 2\arcsin\!\left(\frac{\sin\!\big(\pi/(4J+2)\big)}{\sin\beta}\right),
+\qquad \sin\beta = \sqrt{M/N}.
+$$
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. A doubly controlled phase is a `p` gate carrying
+two controls:
+
+```python
+{"id": "o0p", "gate": "p", "targets": [2], "controls": [0, 1], "params": [2.1268800471555034]}
+```
+
+which multiplies the amplitude of $\ket{111}$ by $e^{i\varphi}$ and leaves the
+other seven basis states alone. To phase a different basis state, conjugate with
+$X$ gates on the wires that read 0 in it.
+
+Qubit 0 is the most significant bit, so the marked string $101$ means qubit 0
+reads 1, qubit 1 reads 0 and qubit 2 reads 1.
+
+## Worked example
+
+Substituting $J = 2$, $M = 1$ and $N = 8$:
+
+$$
+\sin\beta = \sqrt{1/8}, \qquad \beta = 0.3613671, \qquad
+\varphi = 2\arcsin\!\left(\frac{\sin(\pi/10)}{\sqrt{1/8}}\right) = 2.1268800471555034 .
+$$
+
+That is $121.86$ degrees, noticeably less than the $\pi$ an ordinary Grover sign
+flip applies, and the shortfall is exactly what stops the two iterations from
+overshooting. Running the reference solution gives:
+
+```text
+|101> probability 1.0
+```
+
+with every other basis state at zero to twelve decimal places. For comparison,
+the same circuit with $\varphi = \pi$, which is ordinary Grover, gives:
+
+| iterations | probability on $\ket{101}$ |
+| --- | --- |
+| $1$ | $0.78125$ |
+| $2$ | $0.9453125$ |
+| $3$ | $0.330078125$ |
+
+The circuit has 35 ops, depth 17 and four gates touching three wires at once, two
+per iteration.
+
+## Constraints
+
+- `qubits` is exactly 3 and `clbits` is exactly 0. No ancilla.
+- Exactly $J = 2$ iterations, so at most four gates touching three wires at once.
+- Circuit depth at most 18.
+- Allowed gates: `h`, `x`, `z`, `p`, `cz`, `ccz`, and `p` or `x` carrying one or two controls.
+- No `measure`, no `reset`, no classical conditions.
+
+## Scoring
+
+400 points for the first accepted submission. The judge runs `statevector_equals`
+against $\ket{101}$ with `up_to_global_phase` set to true and a tolerance of
+$10^{-9}$, so $0.9453$ is a rejection and so is $0.99999$, then `resource_bound`
+with `max_depth` of 18 and `max_qubits` of 3, then a `custom_python` check
+asserting `METRICS["multiQubitGates"] <= 4`, then `gate_set_subset`. No partial
+credit, one penalty minute per rejected submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+from qiskit import QuantumCircuit
+from qiskit.circuit.library import standard_gates as sg
+from qiskit.quantum_info import Statevector
+
+NAMES = {"h": sg.HGate, "p": sg.PhaseGate, "x": sg.XGate}
+
+def build(ir):
+    """RedQuant IR -> Qiskit. Wire q becomes Qiskit wire n-1-q, because qubit 0
+    is our most significant bit and Qiskit's least. With that one change the
+    amplitude arrays line up index for index."""
+    n = ir["qubits"]
+    w = lambda q: n - 1 - q
+    qc = QuantumCircuit(n)
+    for op in ir["ops"]:
+        g = NAMES[op["gate"]](*op.get("params", []))
+        controls = op.get("controls", [])
+        if controls:
+            g = g.control(len(controls))
+        qc.append(g, [w(q) for q in controls + op["targets"]])
+    return qc
+
+sv = Statevector(build(solve())).data
+for i, amp in enumerate(sv):
+    if abs(amp) ** 2 > 1e-12:
+        print(f"|{i:03b}>", "probability", round(abs(amp) ** 2, 12))
+```
+
+Output:
+
+```text
+|101> probability 1.0
+```

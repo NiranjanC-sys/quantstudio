@@ -1,0 +1,162 @@
+---
+id: week-05.c
+contest: week-05
+slot: C
+title: Decode The Syndrome
+points: 300
+difficulty: medium-hard
+tags: [error-correction, syndrome-decoding, coherent-correction, toffoli]
+---
+
+Textbook error correction reads the syndrome, looks it up in a table, and
+applies the matching Pauli. That works when the error is a definite thing that
+either happened or did not. Real noise is not like that: the fault is in
+superposition, every branch has a different syndrome, and a classical `if`
+statement cannot be written against a value that does not have one. The
+correction has to be a circuit.
+
+## Task
+
+Return a seven-qubit circuit: data at 0, 1 and 2, syndrome ancillas at 3 and 4,
+and two fault qubits at 5 and 6. It must
+
+1. encode $\cos\tfrac{\pi}{8}\ket 0 + \sin\tfrac{\pi}{8}\ket 1$ into the
+   three-qubit repetition code,
+2. apply the fault model below verbatim,
+3. extract the two adjacent parities onto the ancillas,
+4. correct the data coherently, with no measurement anywhere,
+
+so that the data register ends holding
+$\cos\tfrac{\pi}{8}\ket{000} + \sin\tfrac{\pi}{8}\ket{111}$ exactly, unentangled
+from the other four wires.
+
+## The fault model
+
+Copy these ops into your circuit unchanged. They put the two fault qubits into a
+uniform superposition of four branches and apply, in those branches, no error, an
+$X$ on data qubit 0, an $X$ on data qubit 1 and an $X$ on data qubit 2.
+
+```python
+{"id": "n0", "gate": "h", "targets": [5]},
+{"id": "n1", "gate": "h", "targets": [6]},
+{"id": "n2", "gate": "x", "targets": [6]},
+{"id": "n3", "gate": "x", "targets": [0], "controls": [5, 6]},
+{"id": "n4", "gate": "x", "targets": [6]},
+{"id": "n5", "gate": "x", "targets": [1], "controls": [5, 6]},
+{"id": "n6", "gate": "x", "targets": [5]},
+{"id": "n7", "gate": "x", "targets": [2], "controls": [5, 6]},
+{"id": "n8", "gate": "x", "targets": [5]},
+```
+
+Each branch carries probability $0.25$, so the data register is damaged with
+probability $0.75$ and the correction has to work on all four branches at once.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. A Toffoli is an `x` gate carrying two controls:
+
+```python
+{"id": "c11", "gate": "x", "targets": [1], "controls": [3, 4]}
+```
+
+To trigger on a syndrome containing a zero, conjugate the relevant ancilla with
+$X$ gates before and after the Toffoli.
+
+Qubit 0 is the most significant bit, so the data register is the top three bits
+of the basis index, the ancillas the next two, and the fault wires the bottom
+two.
+
+## Worked example
+
+The syndrome for parity $(q_0 \oplus q_1,\; q_1 \oplus q_2)$ under a single bit
+flip is:
+
+| error | ancilla 3 | ancilla 4 | correction |
+| --- | --- | --- | --- |
+| none | $0$ | $0$ | nothing |
+| $X$ on qubit 0 | $1$ | $0$ | $X$ on qubit 0 |
+| $X$ on qubit 1 | $1$ | $1$ | $X$ on qubit 1 |
+| $X$ on qubit 2 | $0$ | $1$ | $X$ on qubit 2 |
+
+so the correction is three Toffolis: one on syndrome $11$ with no conjugation,
+one on $10$ with ancilla 4 conjugated, one on $01$ with ancilla 3 conjugated.
+Running the reference solution and marginalising over the data register gives:
+
+```text
+data register: {'000': 0.853553, '111': 0.146447}
+cos(pi/8)^2 = 0.853553
+```
+
+The data has been restored to $\cos^2(\pi/8)$ and $\sin^2(\pi/8)$ exactly, and
+the full state factorises: the data register is unentangled from the ancillas
+and the fault wires, whose four surviving combinations are $0000$, $0101$,
+$1010$ and $1111$ at $0.25$ each, syndrome correlated with fault as the table
+says. The circuit has 23 ops, depth 15, six two-qubit gates and six Toffolis.
+
+## Constraints
+
+- `qubits` is exactly 7 and `clbits` is exactly 0.
+- The nine fault-model ops appear verbatim, in that order.
+- At most three Toffolis in the correction, on top of the three the fault model uses.
+- No `measure`, no `reset`, no classical conditions. A correction that reads the syndrome and branches on it is exactly the thing this problem exists to rule out.
+- Allowed gates: `h`, `x`, `ry`, and `x` carrying one or two controls.
+
+## Scoring
+
+300 points for the first accepted submission. The judge runs a `custom_python`
+check that reconstructs the reduced state of the data register from
+`STATEVECTOR` and asserts it equals
+$\cos\tfrac{\pi}{8}\ket{000} + \sin\tfrac{\pi}{8}\ket{111}$ as a pure state to
+within $10^{-9}$, which fails if the data is left entangled with anything, then
+`resource_bound` with `max_qubits` of 7, then `gate_set_subset` over the list
+above. No partial credit, one penalty minute per rejected submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+import numpy as np
+from qiskit import QuantumCircuit
+from qiskit.circuit.library import standard_gates as sg
+from qiskit.quantum_info import Statevector
+
+NAMES = {"h": sg.HGate, "ry": sg.RYGate, "x": sg.XGate}
+
+def build(ir):
+    """RedQuant IR -> Qiskit. Wire q becomes Qiskit wire n-1-q, because qubit 0
+    is our most significant bit and Qiskit's least. With that one change the
+    amplitude arrays line up index for index."""
+    n = ir["qubits"]
+    w = lambda q: n - 1 - q
+    qc = QuantumCircuit(n)
+    for op in ir["ops"]:
+        g = NAMES[op["gate"]](*op.get("params", []))
+        controls = op.get("controls", [])
+        if controls:
+            g = g.control(len(controls))
+        qc.append(g, [w(q) for q in controls + op["targets"]])
+    return qc
+
+sv = Statevector(build(solve())).data
+data = {}
+for i, amp in enumerate(sv):
+    key = format(i >> 4, "03b")
+    data[key] = data.get(key, 0.0) + abs(amp) ** 2
+print("data register:", {k: round(float(v), 6) for k, v in sorted(data.items()) if v > 1e-9})
+print("cos(pi/8)^2 =", round(np.cos(np.pi / 8) ** 2, 6))
+```
+
+Output:
+
+```text
+data register: {'000': 0.853553, '111': 0.146447}
+cos(pi/8)^2 = 0.853553
+```

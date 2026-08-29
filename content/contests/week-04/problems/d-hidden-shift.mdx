@@ -1,0 +1,139 @@
+---
+id: week-04.d
+contest: week-04
+slot: D
+title: Hidden Shift
+points: 400
+difficulty: hard
+tags: [hidden-shift, bent-function, fourier, oracle, deterministic]
+---
+
+The hidden shift problem: you are given two oracles, $f$ and $g$, promised to
+satisfy $g(x) = f(x \oplus s)$ for some unknown $s$, and you have to find $s$.
+For a general $f$ this is hard. For a *bent* function, one whose Fourier
+transform has entries of uniform magnitude, it collapses to a fixed three-layer
+circuit that returns $s$ with probability 1 and calls each oracle once. This is
+the smallest interesting instance.
+
+## Task
+
+Let
+
+$$
+\mathrm{IP}_2(x_0 x_1 x_2 x_3) = x_0 x_1 \oplus x_2 x_3,
+$$
+
+the inner product on four bits. It is bent, and it is self-dual: its Fourier
+transform is itself. The hidden shift is $s = 1011$, with $s_0$ on qubit 0.
+
+Return a four-qubit circuit that starts from $\ket{0000}$ and ends holding
+$\ket{1011}$ with probability 1, built from the shifted oracle
+$(-1)^{\mathrm{IP}_2(x \oplus s)}$, the unshifted oracle
+$(-1)^{\mathrm{IP}_2(x)}$, and Hadamard layers.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. Both oracles are phase oracles, and each is two
+`cz` gates:
+
+```python
+{"id": "fa", "gate": "cz", "targets": [0, 1]}
+{"id": "fb", "gate": "cz", "targets": [2, 3]}
+```
+
+because $(-1)^{x_0x_1 \oplus x_2x_3} = (-1)^{x_0x_1}(-1)^{x_2x_3}$. The shift is
+an $X$ conjugation: to evaluate the oracle at $x \oplus s$, apply $X$ to every
+wire where $s$ has a 1, call the oracle, and apply the same $X$ layer again.
+
+Qubit 0 is the most significant bit, so $s = 1011$ means $X$ on wires 0, 2 and 3.
+
+## Worked example
+
+The algorithm is three Hadamard layers with one oracle in each gap. In circuit
+order, first applied first:
+
+```text
+H on all four wires
+shifted oracle:  X layer for s, cz(0,1), cz(2,3), X layer for s
+H on all four wires
+unshifted oracle: cz(0,1), cz(2,3)
+H on all four wires
+```
+
+The order is not interchangeable, and this is where the problem is won or lost.
+It is exact because $\mathrm{IP}_2$ is bent and self-dual: the middle Hadamard
+layer turns the shifted oracle's phase pattern into $(-1)^{s \cdot x}$ times the
+pattern of the dual, which for a self-dual function is the unshifted pattern
+itself, so the second oracle cancels it and leaves a pure Bernstein-Vazirani
+phase that the last Hadamard layer converts into $\ket{s}$.
+
+Running the reference solution gives:
+
+```text
+shift s = 1011 probability 1.0
+```
+
+with every other amplitude at zero. The circuit has 22 ops, depth 7 and four
+two-qubit gates: two `cz` per oracle, two oracles.
+
+## Constraints
+
+- `qubits` is exactly 4 and `clbits` is exactly 0. No ancilla.
+- At most four two-qubit gates, which is exactly one call to each oracle.
+- Each oracle must be built as two `cz` gates. A single four-wire phase gate is not available and would not be the inner product anyway.
+- Allowed gates: `h`, `x`, `z`, `cz`.
+- No `measure`, no `reset`, no classical conditions.
+
+## Scoring
+
+400 points for the first accepted submission. The judge runs
+`statevector_equals` against $\ket{1011}$ with `up_to_global_phase` set to true
+and a tolerance of $10^{-9}$, so anything short of a deterministic answer fails,
+then `resource_bound` with `max_two_qubit_gates` of 4 and `max_qubits` of 4,
+then `gate_set_subset` over the list above. No partial credit, one penalty
+minute per rejected submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+import numpy as np
+from qiskit import QuantumCircuit
+from qiskit.circuit.library import standard_gates as sg
+from qiskit.quantum_info import Statevector
+
+NAMES = {"cz": sg.CZGate, "h": sg.HGate, "x": sg.XGate}
+
+def build(ir):
+    """RedQuant IR -> Qiskit. Wire q becomes Qiskit wire n-1-q, because qubit 0
+    is our most significant bit and Qiskit's least. With that one change the
+    amplitude arrays line up index for index."""
+    n = ir["qubits"]
+    w = lambda q: n - 1 - q
+    qc = QuantumCircuit(n)
+    for op in ir["ops"]:
+        g = NAMES[op["gate"]](*op.get("params", []))
+        controls = op.get("controls", [])
+        if controls:
+            g = g.control(len(controls))
+        qc.append(g, [w(q) for q in controls + op["targets"]])
+    return qc
+
+sv = Statevector(build(solve())).data
+best = int(np.argmax(np.abs(sv)))
+print("shift s =", format(best, "04b"), "probability", round(abs(sv[best]) ** 2, 6))
+```
+
+Output:
+
+```text
+shift s = 1011 probability 1.0
+```

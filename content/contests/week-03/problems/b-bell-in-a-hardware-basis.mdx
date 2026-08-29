@@ -99,11 +99,41 @@ one penalty minute per rejected submission.
 Your `solve` is in scope. This is the exact translation the judge uses:
 
 ```python
-@@SNIPPET:week-03-b@@
+import numpy as np
+from qiskit import QuantumCircuit
+from qiskit.circuit.library import standard_gates as sg
+from qiskit.quantum_info import Statevector
+
+NAMES = {"cz": sg.CZGate, "rz": sg.RZGate, "sx": sg.SXGate}
+
+def build(ir):
+    """RedQuant IR -> Qiskit. Wire q becomes Qiskit wire n-1-q, because qubit 0
+    is our most significant bit and Qiskit's least. With that one change the
+    amplitude arrays line up index for index."""
+    n = ir["qubits"]
+    w = lambda q: n - 1 - q
+    qc = QuantumCircuit(n)
+    for op in ir["ops"]:
+        g = NAMES[op["gate"]](*op.get("params", []))
+        controls = op.get("controls", [])
+        if controls:
+            g = g.control(len(controls))
+        qc.append(g, [w(q) for q in controls + op["targets"]])
+    return qc
+
+sv = Statevector(build(solve())).data
+for i, amp in enumerate(sv):
+    if abs(amp) > 1e-9:
+        print(f"|{i:02b}>", complex(round(amp.real, 6) + 0.0, round(amp.imag, 6) + 0.0))
+target = np.array([1, 0, 0, 1]) / np.sqrt(2)
+overlap = np.vdot(target, sv)
+print("|<Bell|psi>| =", round(abs(overlap), 12))
 ```
 
 Output:
 
 ```text
-@@OUTPUT:week-03-b@@
+|00> (-0.5-0.5j)
+|11> (-0.5-0.5j)
+|<Bell|psi>| = 1.0
 ```

@@ -1,0 +1,128 @@
+---
+id: week-05.a
+contest: week-05
+slot: A
+title: The Repetition Encoder
+points: 100
+difficulty: easy
+tags: [error-correction, repetition-code, encoding, no-cloning]
+---
+
+The three-qubit repetition code is the first error-correcting code anyone
+learns, and it is also the first place the no-cloning theorem gets misquoted.
+The encoder does not copy a qubit. It spreads one two-dimensional subspace across
+three wires so that a single bit flip moves the state somewhere you can detect
+and undo, and the fact that the encoding map exists at all does not contradict
+no-cloning, because it is not a copy of anything.
+
+## Task
+
+Return a three-qubit circuit that starts from $\ket{000}$ and produces the
+encoded logical state
+
+$$
+\ket{\psi_L} = \cos\tfrac{\pi}{8}\,\ket{000} + \sin\tfrac{\pi}{8}\,\ket{111},
+$$
+
+which is the encoding of the logical qubit
+$\cos\tfrac{\pi}{8}\ket{0} + \sin\tfrac{\pi}{8}\ket{1}$ under the map
+$\ket{0} \mapsto \ket{000}$, $\ket{1} \mapsto \ket{111}$.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. $R_y(\theta)$ carries its angle in `params` and
+sends $\ket 0$ to $\cos(\theta/2)\ket 0 + \sin(\theta/2)\ket 1$:
+
+```python
+{"id": "prep", "gate": "ry", "targets": [0], "params": [0.7853981633974483]}
+```
+
+Qubit 0 is the most significant bit, so $\ket{111}$ is basis index 7 and
+$\ket{000}$ is index 0.
+
+## Worked example
+
+The reference solution is three ops. $R_y(\pi/4)$ on qubit 0 prepares the
+logical qubit, since $\pi/4$ halved is $\pi/8$. Then a CNOT from qubit 0 to qubit
+1 and a CNOT from qubit 0 to qubit 2 spread it. Running it gives:
+
+| basis state | amplitude | probability |
+| --- | --- | --- |
+| $\ket{000}$ | $0.92388$ | $0.853553$ |
+| $\ket{111}$ | $0.382683$ | $0.146447$ |
+
+with every other amplitude at zero. Those are $\cos(\pi/8) = 0.9238795325112867$
+and $\sin(\pi/8) = 0.3826834323650898$, and the probabilities are
+$\cos^2(\pi/8) = 0.853553$ and $\sin^2(\pi/8) = 0.146447$. The circuit has 3 ops,
+depth 3 and two two-qubit gates.
+
+<Callout tone="note" title="Why this is not cloning">
+A cloner would take $\alpha\ket0 + \beta\ket1$ on qubit 0 and produce
+$(\alpha\ket0 + \beta\ket1)^{\otimes 3}$, which contains cross terms like
+$\ket{001}$. This circuit produces only $\ket{000}$ and $\ket{111}$: it entangles
+rather than duplicates, and measuring any single wire destroys the logical
+state instead of revealing it.
+</Callout>
+
+## Constraints
+
+- `qubits` is exactly 3 and `clbits` is exactly 0.
+- At most two two-qubit gates. Two is the minimum: three wires need two
+  correlations to be tied together.
+- Circuit depth at most 3.
+- Allowed gates: `ry`, `rz`, `h`, `x`, and `x` carrying a single control.
+- No `measure`, no `reset`, no classical conditions.
+
+## Scoring
+
+100 points for the first accepted submission. The judge runs `statevector_equals`
+against $\ket{\psi_L}$ with `up_to_global_phase` set to false, because the sign
+of each amplitude is part of the encoding, and a tolerance of $10^{-9}$. Then
+`resource_bound` with `max_two_qubit_gates` of 2 and `max_depth` of 3, then
+`gate_set_subset`. No partial credit, one penalty minute per rejected submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+from qiskit import QuantumCircuit
+from qiskit.circuit.library import standard_gates as sg
+from qiskit.quantum_info import Statevector
+
+NAMES = {"ry": sg.RYGate, "x": sg.XGate}
+
+def build(ir):
+    """RedQuant IR -> Qiskit. Wire q becomes Qiskit wire n-1-q, because qubit 0
+    is our most significant bit and Qiskit's least. With that one change the
+    amplitude arrays line up index for index."""
+    n = ir["qubits"]
+    w = lambda q: n - 1 - q
+    qc = QuantumCircuit(n)
+    for op in ir["ops"]:
+        g = NAMES[op["gate"]](*op.get("params", []))
+        controls = op.get("controls", [])
+        if controls:
+            g = g.control(len(controls))
+        qc.append(g, [w(q) for q in controls + op["targets"]])
+    return qc
+
+sv = Statevector(build(solve())).data
+for i, amp in enumerate(sv):
+    if abs(amp) > 1e-9:
+        print(f"|{i:03b}>", round(amp.real, 6), "probability", round(abs(amp) ** 2, 6))
+```
+
+Output:
+
+```text
+|000> 0.92388 probability 0.853553
+|111> 0.382683 probability 0.146447
+```

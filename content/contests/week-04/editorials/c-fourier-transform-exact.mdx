@@ -1,0 +1,78 @@
+---
+id: week-04.c.editorial
+contest: week-04
+slot: C
+kind: editorial
+title: "Editorial: The Exact Fourier Transform"
+points: 300
+difficulty: medium-hard
+---
+
+## The intended solution
+
+Seven ops in the standard pattern, most significant qubit first:
+
+```text
+h  0
+cp(pi/2)  0, 1
+cp(pi/4)  0, 2
+h  1
+cp(pi/2)  1, 2
+h  2
+swap 0, 2
+```
+
+Depth 6, four two-qubit gates, and the resulting operator is the discrete
+Fourier matrix exactly, with no leftover global phase.
+
+The recursive structure is worth stating once. Qubit $q$ gets a Hadamard, which
+writes the bit $x_q$ into a relative phase of $e^{i\pi x_q}$, and then one
+controlled phase from each less significant qubit, contributing
+$e^{2\pi i x_r / 2^{\,r-q+1}}$. Summing the contributions across all qubits gives
+the phase $2\pi i jk/8$ that the matrix demands, but assembled in the wrong wire
+order: the transform naturally writes the most significant output bit onto the
+least significant wire.
+
+## Why the swap is not a convention
+
+That last sentence is the problem. Without the final `swap`, the circuit computes
+a perfectly good unitary $\tilde F$ satisfying $\tilde F = R F$, where $R$ is the
+bit-reversal permutation on basis indices. $R$ is not a global phase and it is
+not a relabelling of the basis you are free to adopt later, because the QFT is
+almost never the last thing in a circuit. Feed $\tilde F$ into a phase estimation
+routine and the counting register reads its answer backwards; feed it into an
+arithmetic circuit and the carries go the wrong way.
+
+There are exactly two defensible positions: emit the swap, or track the reversal
+explicitly everywhere downstream. This problem takes the first, and
+`up_to_global_phase` is set to false so that neither the phase nor the
+permutation can be waved away.
+
+On three qubits the bit reversal is a single `swap` of qubits 0 and 2, since
+qubit 1 is its own mirror image. On $n$ qubits it is $\lfloor n/2 \rfloor$ swaps.
+
+## Why the naive answer is too expensive
+
+The naive route to a $2^n \times 2^n$ unitary is generic synthesis: run a
+Householder or cosine-sine decomposition on the matrix and emit whatever comes
+out. For $n = 3$ that is dozens of two-qubit gates against a ceiling of four,
+and the count grows as $O(4^n)$ rather than the QFT's $O(n^2)$. The whole reason
+the Fourier transform is useful in a quantum algorithm is that it is one of the
+few large unitaries with a small circuit, and finding that circuit by search is
+not how anyone gets it.
+
+The other overspend is decomposing the `swap` into three CNOTs. That is the
+right move when the hardware has no swap, and here it costs three two-qubit
+gates where the budget has room for one.
+
+## Common wrong answers
+
+Using $\pi/4$ where $\pi/2$ belongs, or applying the controlled phases in the
+opposite direction along the register, produces a unitary whose entries all have
+the right modulus $0.353553$ and the wrong phases. The failure message names an
+amplitude with the right magnitude and a wrong argument, which is the signature
+of an angle error rather than a structural one.
+
+Reaching for `cz` instead of `cp(pi)` is a different error with the same look:
+`cz` is `cp` at $\lambda = \pi$, and the QFT on three qubits never needs
+$\lambda = \pi$.

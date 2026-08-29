@@ -91,11 +91,38 @@ query register. No partial credit, one penalty minute per rejected submission.
 Your `solve` is in scope. This is the exact translation the judge uses:
 
 ```python
-@@SNIPPET:week-02-c@@
+from qiskit import QuantumCircuit
+from qiskit.circuit.library import standard_gates as sg
+from qiskit.quantum_info import Statevector
+
+NAMES = {"h": sg.HGate, "x": sg.XGate}
+
+def build(ir):
+    """RedQuant IR -> Qiskit. Wire q becomes Qiskit wire n-1-q, because qubit 0
+    is our most significant bit and Qiskit's least. With that one change the
+    amplitude arrays line up index for index."""
+    n = ir["qubits"]
+    w = lambda q: n - 1 - q
+    qc = QuantumCircuit(n)
+    for op in ir["ops"]:
+        g = NAMES[op["gate"]](*op.get("params", []))
+        controls = op.get("controls", [])
+        if controls:
+            g = g.control(len(controls))
+        qc.append(g, [w(q) for q in controls + op["targets"]])
+    return qc
+
+sv = Statevector(build(solve())).data
+probs = [0.0] * 8
+for i, amp in enumerate(sv):
+    probs[i >> 1] += abs(amp) ** 2
+for s, p in enumerate(probs):
+    if p > 1e-9:
+        print("query register", format(s, "03b"), "probability", round(p, 6))
 ```
 
 Output:
 
 ```text
-@@OUTPUT:week-02-c@@
+query register 101 probability 1.0
 ```

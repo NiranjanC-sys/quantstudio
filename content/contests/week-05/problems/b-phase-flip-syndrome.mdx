@@ -1,0 +1,138 @@
+---
+id: week-05.b
+contest: week-05
+slot: B
+title: Phase-Flip Syndrome
+points: 200
+difficulty: medium
+tags: [error-correction, phase-flip-code, stabiliser, syndrome-extraction]
+---
+
+The bit-flip code catches $X$ errors and is blind to $Z$. The phase-flip code is
+the same code read in the $X$ basis: it catches $Z$ and is blind to $X$. Its
+stabilisers are $X_0X_1$ and $X_1X_2$, and extracting them is the same
+parity-onto-an-ancilla trick as before, performed in a rotated frame. This
+problem is that rotation, done explicitly, with a known error planted so you can
+check the answer.
+
+## Task
+
+Return a five-qubit circuit, data qubits at indices 0, 1 and 2 and syndrome
+ancillas at indices 3 and 4, that
+
+1. encodes the logical state
+   $\cos\tfrac{\pi}{8}\ket{0_L} + \sin\tfrac{\pi}{8}\ket{1_L}$ into the
+   phase-flip code, whose codewords are $\ket{0_L} = \ket{+++}$ and
+   $\ket{1_L} = \ket{---}$,
+2. suffers a $Z$ error on data qubit 1,
+3. extracts the two stabiliser parities onto the ancillas.
+
+The ancillas must end holding $\ket{11}$ with probability 1, which is the
+syndrome of a $Z$ on the middle qubit: it anticommutes with both $X_0X_1$ and
+$X_1X_2$.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. The planted error is written explicitly as part
+of your circuit:
+
+```python
+{"id": "fault", "gate": "z", "targets": [1]}
+```
+
+Syndrome extraction is CNOTs into the ancillas, one per data qubit in each
+stabiliser:
+
+```python
+{"id": "s0a", "gate": "x", "targets": [3], "controls": [0]}
+{"id": "s0b", "gate": "x", "targets": [3], "controls": [1]}
+```
+
+Qubit 0 is the most significant bit, so the two ancillas are the bottom two bits
+of the basis index, and the syndrome reads as ancilla 3 then ancilla 4.
+
+## Worked example
+
+The reference solution encodes the logical qubit into the bit-flip code first,
+$R_y(\pi/4)$ then two CNOTs, then applies Hadamards to all three data wires to
+move into the phase-flip code. It plants the `z` on qubit 1, rotates the data
+back with three more Hadamards so the parities become $Z$-type again, extracts
+them with four CNOTs, and rotates back once more. Summing the ancilla marginal
+gives:
+
+```text
+syndrome distribution: {'00': 0.0, '01': 0.0, '10': 0.0, '11': 1.0}
+```
+
+Deterministically $11$: no probability anywhere else. The circuit has 17 ops,
+depth 10 and six two-qubit gates.
+
+The data register does not come back in the computational basis: after the final
+Hadamard layer it sits in the $X$ basis with weight on all eight strings, which
+is correct and expected. The syndrome is what is being checked.
+
+## Constraints
+
+- `qubits` is exactly 5 and `clbits` is exactly 0.
+- At most six two-qubit gates: two for the encoder and four for the two parity extractions.
+- The error is exactly one `z` on qubit 1, applied while the state is in the encoded phase-flip form.
+- Allowed gates: `h`, `x`, `z`, `ry`, and `x` carrying a single control.
+- No `measure`, no `reset`, no classical conditions. The syndrome is left in the ancillas, not read out.
+
+## Scoring
+
+200 points for the first accepted submission. The judge runs a `custom_python`
+check that marginalises `PROBABILITIES` over the two ancilla wires and asserts
+$P(11) = 1$ to within $10^{-9}$, then `resource_bound` with
+`max_two_qubit_gates` of 6 and `max_qubits` of 5, then `gate_set_subset` over
+the list above, then a second `custom_python` check asserting that the gate
+counts contain exactly one `z`, so that the error cannot be quietly omitted and
+the answer hard-coded. No partial credit, one penalty minute per rejected
+submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+from qiskit import QuantumCircuit
+from qiskit.circuit.library import standard_gates as sg
+from qiskit.quantum_info import Statevector
+
+NAMES = {"h": sg.HGate, "ry": sg.RYGate, "x": sg.XGate, "z": sg.ZGate}
+
+def build(ir):
+    """RedQuant IR -> Qiskit. Wire q becomes Qiskit wire n-1-q, because qubit 0
+    is our most significant bit and Qiskit's least. With that one change the
+    amplitude arrays line up index for index."""
+    n = ir["qubits"]
+    w = lambda q: n - 1 - q
+    qc = QuantumCircuit(n)
+    for op in ir["ops"]:
+        g = NAMES[op["gate"]](*op.get("params", []))
+        controls = op.get("controls", [])
+        if controls:
+            g = g.control(len(controls))
+        qc.append(g, [w(q) for q in controls + op["targets"]])
+    return qc
+
+sv = Statevector(build(solve())).data
+syndrome = {}
+for i, amp in enumerate(sv):
+    key = format(i & 0b11, "02b")
+    syndrome[key] = syndrome.get(key, 0.0) + abs(amp) ** 2
+print("syndrome distribution:", {k: round(float(v), 6) for k, v in sorted(syndrome.items())})
+```
+
+Output:
+
+```text
+syndrome distribution: {'00': 0.0, '01': 0.0, '10': 0.0, '11': 1.0}
+```

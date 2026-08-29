@@ -1,0 +1,76 @@
+---
+id: week-04.d.editorial
+contest: week-04
+slot: D
+kind: editorial
+title: "Editorial: Hidden Shift"
+points: 400
+difficulty: hard
+---
+
+## The intended solution
+
+Three Hadamard layers, two oracles, in this order and no other:
+
+```text
+H on all four wires
+X on wires 0, 2, 3      (the shift, s = 1011)
+cz 0,1   cz 2,3         (IP2)
+X on wires 0, 2, 3      (undo the shift)
+H on all four wires
+cz 0,1   cz 2,3         (IP2 again, unshifted)
+H on all four wires
+```
+
+Twenty-two ops, depth 7, four two-qubit gates, and the state comes out as
+$\ket{1011}$ with probability 1.
+
+The oracle is two `cz` gates because
+$(-1)^{x_0x_1 \oplus x_2x_3} = (-1)^{x_0x_1}\,(-1)^{x_2x_3}$, and each factor is
+what a CZ on that pair applies. The shift is an $X$ conjugation: $X$ on the wires
+where $s$ has a 1, oracle, $X$ back.
+
+Why it terminates exactly: write $\hat f$ for the Fourier transform of
+$(-1)^{f(x)}$. After the first Hadamard layer and the shifted oracle, the
+register holds $\sum_x (-1)^{f(x \oplus s)}\ket{x}$ up to normalisation. The
+second Hadamard layer turns that into $\sum_y (-1)^{s \cdot y}\hat f(y)\ket{y}$.
+Bentness means every $\hat f(y)$ has the same magnitude, so nothing has been
+lost; self-duality means $\hat f = (-1)^{f}$, so the second oracle cancels it
+exactly, leaving $\sum_y (-1)^{s\cdot y}\ket{y}$. That is a Bernstein-Vazirani
+state, and one more Hadamard layer returns $\ket{s}$.
+
+$\mathrm{IP}_2$ is both bent and self-dual, which is why the circuit has no
+correction terms. For a bent function that is not self-dual you apply the dual
+$\hat f$ as the second oracle instead, and the algorithm still terminates in one
+call to each.
+
+## Why the naive answer is too slow
+
+Classically, finding $s$ means correlating $f$ and $g$. The best known general
+approach evaluates both on enough points to detect the correlation, which for
+$n$ bits costs $\Omega(2^{n/2})$ queries even with the bent promise. The quantum
+circuit uses one call to each oracle, independent of $n$. At $n = 4$ that is
+four queries against sixteen or so, which is why the problem is graded on the
+gate budget: with four `cz` gates allowed there is exactly one call to each
+oracle available and no room to sample.
+
+The other naive move is to try a Grover search over the sixteen candidate shifts,
+each iteration testing one $s$ by comparing the two oracles. That is
+$O(2^{n/2})$ iterations of a circuit that already contains both oracles, so it
+is quadratically worse than the direct algorithm and hundreds of gates larger.
+
+## Common wrong answers
+
+Applying the unshifted oracle first and the shifted oracle second is the failure
+that costs the most contest time, because it is deterministic, confident and
+plausible. It returns $\ket{0111}$ with probability 1 instead of $\ket{1011}$.
+Those two strings differ in the first and third positions, so on a symmetric
+shift the mistake would be invisible; $1011$ was chosen so that it is not.
+
+Applying the $X$ layer only before the oracle and not after leaves the register
+shifted for the rest of the circuit, and the run returns $\ket{0000}$ with
+probability 1: all the structure cancels and you get the input back. Putting the
+$X$ layer on the wires where $s$ has a 0 rather than a 1 returns the complement,
+$\ket{0100}$, also with probability 1. Every failure mode here is deterministic
+and none of them looks like noise, so the only way to catch them is to compare
+against the string you were promised.

@@ -1,0 +1,67 @@
+---
+id: week-04.a.editorial
+contest: week-04
+slot: A
+kind: editorial
+title: "Editorial: Simon's Period"
+points: 100
+difficulty: easy
+---
+
+## The intended solution
+
+Hadamard the query register, call the oracle once, Hadamard the query register
+again. Nine ops, depth 4, three CNOTs.
+
+The oracle is the only part that needs thought, and it is linear algebra rather
+than circuit design. $f(x) = (x_0 \oplus x_1,\, x_2)$ writes two output bits:
+the first is the parity of query bits 0 and 1, so it is two CNOTs into output
+qubit 3; the second is a copy of query bit 2, so it is one CNOT into output
+qubit 4.
+
+Why the sampled strings come out orthogonal to $s$: after the oracle the state
+is $\tfrac{1}{\sqrt 8}\sum_x \ket{x}\ket{f(x)}$. Group the eight $x$ values into
+four pairs $\{x, x \oplus s\}$ that share an output value. The final Hadamard
+layer sends each pair to
+
+$$
+\tfrac{1}{\sqrt 8}\left[(-1)^{x \cdot z} + (-1)^{(x \oplus s)\cdot z}\right]\ket{z},
+$$
+
+and the bracket is $\pm 2$ when $z \cdot s = 0$ and exactly $0$ otherwise. Half
+the strings are extinguished by interference, and the surviving four are equally
+likely: $000$, $001$, $110$ and $111$, each at $0.25$.
+
+## Why the naive answer is too slow
+
+Classically, finding $s$ means finding a collision. There are $2^n$ inputs and
+$2^{n-1}$ output values, so by the birthday bound you need about $2^{n/2}$
+evaluations before two of them agree, and that is a proven lower bound up to
+constants. At $n = 3$ the difference is invisible, four classical queries versus
+three quantum runs. At $n = 60$ it is the difference between a billion
+evaluations and sixty.
+
+The tempting shortcut inside the circuit is to skip the oracle and simply
+Hadamard twice. That produces $\ket{000}$ with probability 1, which is technically
+a string orthogonal to $s$, and it is orthogonal to every other string too. The
+check requires the full uniform distribution over all four valid strings, so a
+circuit that only ever returns the trivial constraint fails on the marginal.
+
+## What the run does not give you
+
+One run gives one constraint. $000$ is a valid outcome and carries no
+information, so on average you need slightly more than $n - 1$ runs to collect
+$n - 1$ independent constraints. Solving that system over $\mathrm{GF}(2)$ leaves
+a one-dimensional null space spanned by $s$, and that classical step is where the
+answer actually appears. Anyone who expects to read $s$ off a single measurement
+has misremembered which algorithm this is: Bernstein-Vazirani returns the string,
+Simon returns a constraint on it.
+
+## Common wrong answers
+
+Hadamarding the output register as well, and applying the oracle after the
+second Hadamard layer instead of between the two, both fail the same way: the
+query marginal collapses onto $000$ with probability 1. That is the most
+dangerous wrong answer in the set, because $000$ is a legal Simon outcome and a
+single sampled run of a broken circuit looks exactly like an unlucky run of a
+working one. Check the whole marginal, not one shot.

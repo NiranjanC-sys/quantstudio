@@ -1,0 +1,77 @@
+---
+id: week-05.c.editorial
+contest: week-05
+slot: C
+kind: editorial
+title: "Editorial: Decode The Syndrome"
+points: 300
+difficulty: medium-hard
+---
+
+## The intended solution
+
+Encode, let the fault model run, extract the two parities, then apply the lookup
+table as three Toffolis:
+
+```text
+CNOT 0->3 ; CNOT 1->3          ancilla 3 = q0 XOR q1
+CNOT 1->4 ; CNOT 2->4          ancilla 4 = q1 XOR q2
+
+CCX (3,4) -> 1                 syndrome 11: flip data qubit 1
+X 4 ; CCX (3,4) -> 0 ; X 4     syndrome 10: flip data qubit 0
+X 3 ; CCX (3,4) -> 2 ; X 3     syndrome 01: flip data qubit 2
+```
+
+Twenty-three ops, depth 15, six two-qubit gates and six Toffolis, three of which
+belong to the fault model. The data register comes out at $0.853553$ on
+$\ket{000}$ and $0.146447$ on $\ket{111}$, and the full seven-qubit state
+factorises as the restored data tensored with a uniform superposition of the four
+syndrome-and-fault combinations $0000$, $0101$, $1010$ and $1111$.
+
+The $X$ conjugation is the only technique in the problem. A Toffoli fires when
+both controls read 1, so to fire on syndrome $10$ you flip ancilla 4 before it
+and flip it back afterwards. Flipping it back matters: without the second $X$ the
+ancilla is left in the wrong state and the next Toffoli in the sequence triggers
+on the wrong branch.
+
+## Why the naive answer does not exist
+
+The naive answer is `if syndrome == 0b10: apply X to qubit 0`. It is not slow, it
+is not deep, it is unavailable. The fault qubits are in superposition, so the
+syndrome is in superposition, and there is no value to branch on. Measuring the
+ancillas to obtain one would collapse the fault branches, which changes the state
+you were asked to correct rather than correcting it.
+
+The circuit above works precisely because it never asks which branch it is in. In
+the branch where the syndrome is $10$, the first and third Toffolis have a
+control reading 0 and do nothing while the second fires; in the branch where the
+syndrome is $00$, none of them fires. Every branch gets its own correction, in
+superposition, and afterwards the data register is unentangled from the ancillas
+again, which is what makes the reduced state pure.
+
+That last point is the check. A submission that gets the marginal probabilities
+right but leaves the data entangled with the fault wires has not corrected
+anything: it has spread the error into a mixture. This is why the judge
+reconstructs the reduced state and demands purity rather than comparing
+histograms.
+
+## Why the ancillas are left dirty on purpose
+
+At the end of the circuit the ancillas still hold the syndrome and the fault
+qubits still hold their branch label. That is fine here, because they are
+unentangled from the data. In a real code cycle you would reset them before the
+next round, and the reason you can is exactly that they factorise.
+
+## Common wrong answers
+
+Forgetting the closing $X$ on a conjugated ancilla is the most common bug and the
+hardest to see, because the first Toffoli of the three still behaves correctly
+and only the later ones misfire.
+
+Mapping syndrome $10$ to qubit 2 and $01$ to qubit 0, that is reading the two
+ancillas in the opposite order, applies a correction to the wrong wire in two of
+the four branches. The data marginal comes out as $0.426777$ on each of
+$\ket{000}$ and $\ket{101}$ and $0.073223$ on each of $\ket{010}$ and
+$\ket{111}$: two branches were repaired, two were pushed further out of the code
+space, and the data is now entangled with the fault wires. Weight on $\ket{010}$
+or $\ket{101}$ is the tell, since neither is a codeword.

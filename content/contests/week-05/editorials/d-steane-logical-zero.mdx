@@ -1,0 +1,73 @@
+---
+id: week-05.d.editorial
+contest: week-05
+slot: D
+kind: editorial
+title: "Editorial: Steane Logical Zero"
+points: 400
+difficulty: hard
+---
+
+## The intended solution
+
+Treat the three generators as a classical encoder and transcribe it.
+
+$$
+g_1 = 1010101, \qquad g_2 = 0110011, \qquad g_3 = 0001111
+$$
+
+Positions 0, 1 and 3 are free, because each is a 1 in exactly one generator.
+Everything else is a parity of the free bits, read off the columns:
+
+```text
+h 0 ; h 1 ; h 3
+
+CNOT 0->2 ; CNOT 0->4 ; CNOT 0->6
+CNOT 1->2 ; CNOT 1->5 ; CNOT 1->6
+CNOT 3->4 ; CNOT 3->5 ; CNOT 3->6
+```
+
+Twelve ops, depth 6, nine CNOTs, and the state is the uniform superposition over
+the eight codewords at amplitude $0.353553$ each.
+
+The reason it works in one line: the Hadamards put the free register into
+$\tfrac{1}{\sqrt8}\sum_{u \in \{0,1\}^3}\ket{u}$, and the CNOT block is the
+linear map $u \mapsto uG$ written reversibly. A linear map applied to a uniform
+superposition gives a uniform superposition over the image, which is exactly the
+codeword set, with every amplitude equal and positive.
+
+The count is not a coincidence either. There are nine 1s in the generator matrix
+outside the three free columns, and each one is one CNOT. If you write the
+generators in a different but equivalent basis, the free columns move and the
+CNOT count changes: this basis is the one that gives nine.
+
+## Why the naive answer is far too expensive
+
+Two naive routes, both correct and both hopeless.
+
+The first is generic state preparation. Ask a library for a circuit producing a
+given 128-amplitude vector and you get a Schmidt or multiplexor cascade with a
+CNOT count in the hundreds, because generic routines cost $O(2^n)$ and do not
+know that this particular vector is a linear code. Nine against several hundred
+is the difference between a preparation you can afford every cycle and one you
+cannot afford at all.
+
+The second is stabiliser projection: prepare $\ket{0}^{\otimes 7}$, then measure
+each of the three $X$-type stabilisers and apply corrections. That is the
+textbook fault-tolerant preparation and it is the right answer in a real machine,
+where you also want to catch preparation errors. Here it needs three ancillas,
+six CNOTs per stabiliser measurement, mid-circuit measurement and classical
+feedforward, none of which the problem allows and all of which cost more than the
+unitary circuit when you are not worried about faults during preparation.
+
+## Common wrong answers
+
+Choosing the free positions wrongly is the main trap. Positions 0, 1 and 3 are
+free for this generator matrix; picking 0, 1 and 2 does not work, because
+position 2 is a 1 in both $g_1$ and $g_2$, so it is not a free coordinate and the
+CNOT pattern derived from that choice produces the wrong eight strings.
+
+Adding a Hadamard on a parity qubit as well as the free ones doubles the support
+to sixteen strings, half of which are not codewords. The count is the quick
+check: if your circuit produces anything other than exactly eight nonzero
+amplitudes at $0.353553$, stop and recount the generator matrix.

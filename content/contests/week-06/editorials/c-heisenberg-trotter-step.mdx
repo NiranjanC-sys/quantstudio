@@ -1,0 +1,84 @@
+---
+id: week-06.c.editorial
+contest: week-06
+slot: C
+kind: editorial
+title: "Editorial: One Trotter Step"
+points: 300
+difficulty: medium-hard
+---
+
+## The intended solution
+
+Recognise the bond exponential as a fractional SWAP, then build the fractional
+SWAP in three gates.
+
+$XX + YY + ZZ$ has eigenvalue $+1$ on the three triplet states and $-3$ on the
+singlet. $\mathrm{SWAP}$ has eigenvalue $+1$ on the triplet and $-1$ on the
+singlet. Two operators with the same eigenvectors and a linear relation between
+the eigenvalues, so
+
+$$
+e^{-i\theta(XX+YY+ZZ)/2} = e^{-i\theta/2}\;\mathrm{SWAP}^{\,2\theta/\pi},
+$$
+
+with $\alpha = 2\theta/\pi = 1/3$ at $\theta = \pi/6$.
+
+Now use the fact that $\mathrm{SWAP}$ is a conjugation:
+$\mathrm{SWAP} = \mathrm{CNOT}(i \to j)\;\mathrm{CNOT}(j \to i)\;\mathrm{CNOT}(i \to j)$,
+and conjugation commutes with taking powers, so only the middle factor is raised:
+
+$$
+\mathrm{SWAP}^{\alpha} = \mathrm{CNOT}(i \to j)\;\mathrm{CNOT}(j \to i)^{\alpha}\;\mathrm{CNOT}(i \to j).
+$$
+
+$\mathrm{CNOT}^{\alpha}$ is a controlled $R_x(\pi\alpha)$ together with a phase
+$P(\pi\alpha/2)$ on the control wire, and the phase is a single-qubit gate. So
+each bond is CNOT, controlled $R_x(\pi/3)$, phase, CNOT: three two-qubit gates.
+Two bonds, six two-qubit gates, eight ops, depth 8.
+
+Applied to $\ket{100}$ the step gives $0.75$ on $\ket{100}$, $0.1875$ on
+$\ket{010}$ and $0.0625$ on $\ket{001}$: the magnon has started to hop, and no
+weight leaves the single-excitation sector because the Heisenberg interaction
+commutes with total $Z$.
+
+## Why the naive answer costs double
+
+The obvious construction applies the three Pauli terms of each bond separately:
+$R_{ZZ}(\theta)$, $R_{XX}(\theta)$, $R_{YY}(\theta)$, each of which compiles to
+CNOT, single-qubit rotation, CNOT. Six two-qubit gates per bond, twelve for the
+step, against a budget of six.
+
+Peephole simplification helps a little and not enough. Adjacent terms on the same
+bond share their basis-change layers, and the inner CNOT pair of consecutive
+$R_{PP}$ blocks cancels, which takes twelve down to about eight. Getting to six
+requires the structural observation that the three terms together form a root of
+SWAP, which no local rewrite will find for you.
+
+Multiply the saving by the number of Trotter steps a real simulation runs, which
+is thousands, and by the number of bonds in a real lattice, and the factor of two
+is the difference between a circuit that fits on hardware and one that does not.
+
+## Why the global phase is allowed here
+
+The identity carries $e^{-i\theta/2}$ per bond, so the circuit built from
+fractional SWAPs differs from the mathematical Trotter step by $e^{i\theta}$
+overall, $e^{i\pi/6}$ at this step size. That is unobservable, and it stays
+unobservable when the step is repeated, because repeating multiplies the same
+scalar. If you ever make the step *controlled*, for instance inside phase
+estimation, the scalar becomes a relative phase and has to be tracked, which is
+why the identity is worth writing down with its prefactor rather than waving at.
+
+## Common wrong answers
+
+Applying the bonds in the other order, $(1,2)$ before $(0,1)$, gives a different
+unitary. First-order Trotter is order dependent by construction: that is the
+entire source of its error, and the problem fixes the order so that the answer is
+well defined.
+
+Using $\alpha = \theta$ rather than $2\theta/\pi$ is the usual arithmetic slip.
+It produces a legitimate fractional SWAP at the wrong power: applied to
+$\ket{100}$ it gives $0.462965$, $0.248628$ and $0.288407$ where the correct step
+gives $0.75$, $0.1875$ and $0.0625$. The single-excitation sector is still
+respected, so the structure looks right and every number is wrong in the first
+decimal place.
