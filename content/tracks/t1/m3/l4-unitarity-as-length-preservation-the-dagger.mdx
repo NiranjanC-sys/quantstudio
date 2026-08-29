@@ -1,0 +1,173 @@
+---
+id: t1.m3.l4
+title: Unitarity as Length Preservation; the Dagger
+type: concept
+track: t1
+module: t1.m3
+level: L1
+minutes: 12
+objectives:
+  - Prove that a length-preserving linear map on C^2 satisfies U^dagger U = I
+  - Compute the dagger of a product of gates and reverse the circuit order
+  - Show that every quantum gate is invertible and name its inverse
+prerequisites: [t1.m3.l3]
+sources:
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: Preskill, Ph219/CS219 Quantum Computation lecture notes (Caltech)
+    url: http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html
+tags: [gates, unitarity]
+---
+
+T1.M1.L4 showed that a real gate must be orthogonal, because it has to keep
+states on the unit circle. The complex version of that argument gives unitarity,
+and it is worth doing carefully once, because the same step is what makes every
+quantum circuit reversible and every algorithm in T1.M10 possible.
+
+## From lengths to inner products
+
+Let $U$ be a linear map on $\C^2$ with $\lVert U\ket{\psi} \rVert = \lVert \ket{\psi} \rVert$
+for every $\ket{\psi}$. Squaring,
+
+$$
+\bra{\psi} U^{\dagger} U \ket{\psi} = \braket{\psi}{\psi}
+\qquad \text{for all } \ket{\psi} .
+$$
+
+Write $M = U^{\dagger}U - I$, so the hypothesis is $\bra{\psi} M \ket{\psi} = 0$
+for every $\ket{\psi}$, with $M$ Hermitian. Feed it $\ket{\psi} = \ket{a} + \ket{b}$
+and expand:
+
+$$
+0 = \bra{a}M\ket{a} + \bra{b}M\ket{b} + \bra{a}M\ket{b} + \bra{b}M\ket{a}
+= \bra{a}M\ket{b} + \bra{b}M\ket{a} .
+$$
+
+Now feed it $\ket{a} + i\ket{b}$, which gives
+$-i\bra{a}M\ket{b} + i\bra{b}M\ket{a} = 0$, that is
+$\bra{a}M\ket{b} = \bra{b}M\ket{a}$. Combining the two lines forces
+$\bra{a}M\ket{b} = 0$ for all $\ket{a}$ and $\ket{b}$, hence $M = 0$ and
+
+$$
+U^{\dagger} U = I .
+$$
+
+<Margin label="Why the complex step is needed">
+Over $\R$ the first equation alone would leave the antisymmetric part of $M$
+undetermined. The trick of substituting $\ket{a} + i\ket{b}$ has no real
+analogue, which is why the real proof of T1.M1.L4 needed the inner-product
+argument instead. Both routes reach the same conclusion.
+</Margin>
+
+The converse is immediate: if $U^{\dagger}U = I$ then
+$\lVert U\ket{\psi}\rVert^2 = \bra{\psi}U^{\dagger}U\ket{\psi} = \braket{\psi}{\psi}$.
+So **unitary** and **length preserving** are the same condition, and the Born
+rule is what makes it compulsory.
+
+Two equivalent readings of $U^{\dagger}U = I$ are worth carrying. The columns of
+$U$ are orthonormal, since entry $(j,k)$ of $U^{\dagger}U$ is the inner product
+of columns $j$ and $k$. And $|\det U| = 1$, since
+$\det(U^{\dagger})\det(U) = |\det U|^2 = 1$.
+
+## The dagger
+
+$U^{\dagger}$ is the conjugate transpose: transpose, then conjugate every entry.
+For the gates of this module,
+
+| gate | dagger | note |
+| --- | --- | --- |
+| $X, Y, Z, H$ | itself | Hermitian and unitary, so self-inverse |
+| $S$ | $S^{\dagger} = \mathrm{diag}(1, -i)$ | the registry calls it `sdg` |
+| $T$ | $T^{\dagger} = \mathrm{diag}(1, e^{-i\pi/4})$ | `tdg` |
+| $P(\lambda)$ | $P(-\lambda)$ | negate the phase |
+| $R_a(\theta)$ | $R_a(-\theta)$ | rotate the other way |
+| $U(\theta,\varphi,\lambda)$ | $U(-\theta, -\lambda, -\varphi)$ | note the swap |
+
+Since $U^{\dagger}U = I$, the dagger *is* the inverse: $U^{-1} = U^{\dagger}$.
+Every quantum gate is invertible, and its inverse is another quantum gate, which
+is not true of classical logic: AND has no inverse, and T0.M6.L3 is about the
+cost of making it reversible.
+
+## Reversing a circuit
+
+Gates compose by matrix multiplication with the *first* gate on the right, so a
+circuit applying $A$, then $B$, then $C$ has matrix $CBA$. Daggering reverses
+products:
+
+$$
+(CBA)^{\dagger} = A^{\dagger} B^{\dagger} C^{\dagger} .
+$$
+
+Read as a circuit, that says: to undo a circuit, apply the daggered gates in the
+reverse order. Both reversals are needed, and dropping either one is a common
+bug.
+
+Take $V$ to be $R_y(0.9)$, then $T$, then $H$. Its inverse is $H$, then
+$T^{\dagger}$, then $R_y(-0.9)$. Running $V$ alone gives amplitudes
+$0.854195 + 0.217483i$ and $0.419229 - 0.217483i$; running $V$ followed by its
+inverse must give $\ket{0}$ back exactly.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="Ry(0.9), T, H, then H, T-dagger, Ry(-0.9). Six gates, and the state is back at |0> with amplitude 1."
+  ir={{
+    version: 1,
+    name: "circuit-and-inverse",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "a", gate: "ry", targets: [0], params: [0.9] },
+      { id: "b", gate: "t", targets: [0] },
+      { id: "c", gate: "h", targets: [0] },
+      { id: "d", gate: "h", targets: [0] },
+      { id: "e", gate: "tdg", targets: [0] },
+      { id: "f", gate: "ry", targets: [0], params: [-0.9] }
+    ]
+  }}
+/>
+
+The middle two Hadamards annihilate, then $T^{\dagger}T = I$, then the two
+rotations cancel. Every step is an inverse pair meeting in the middle, which is
+what makes the identity easy to see by eye in a drawn circuit.
+
+<Callout tone="gotcha" title="Order matters twice">
+Applying $A^{\dagger}, B^{\dagger}, C^{\dagger}$ in that order gives
+$C^{\dagger}B^{\dagger}A^{\dagger}$, which is $(ABC)^{\dagger}$, not
+$(CBA)^{\dagger}$. Unless the gates commute, it does not undo the original
+circuit. In code the fix is one line, `reversed(ops)` with each gate daggered,
+and forgetting the `reversed` produces a circuit that is unitary, well formed,
+and wrong.
+</Callout>
+
+## What unitarity rules out
+
+Three operations you might want and cannot have, all for this reason.
+
+You cannot delete information. A gate mapping both $\ket{0}$ and $\ket{1}$ to
+$\ket{0}$ would send two orthogonal vectors to the same vector, destroying an
+inner product of 0 and violating length preservation on their difference.
+
+You cannot copy an unknown state. T1.M5.L4 proves this from linearity, and
+unitarity is what forces the cloning map to be linear in the first place.
+
+You cannot renormalise mid-circuit. Since every gate preserves length exactly,
+there is never anything to renormalise until a measurement, which is not a gate.
+
+<Check question="A student wants to undo the circuit $S$, then $H$, then $T$. They write $S^{\dagger}$, then $H$, then $T^{\dagger}$. Does it work, and what does their circuit actually compute?">
+It does not. The original matrix is $THS$, so the inverse is
+$S^{\dagger}H T^{\dagger}$, which as a circuit is $T^{\dagger}$ first, then $H$,
+then $S^{\dagger}$. Their version has matrix
+$T^{\dagger} H S^{\dagger}$, and composing it with the original gives
+$T^{\dagger} H S^{\dagger} T H S$, which does not simplify to the identity
+because $H$ and the diagonal gates do not commute. Their circuit is a perfectly
+legal unitary; it simply is not the inverse of anything they intended.
+</Check>
+
+## Where this comes from
+
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 2.1.6 and postulate 2, for the equivalence of unitarity with
+  inner-product preservation and for the adjoint conventions used throughout.
+- [Preskill, Ph219](http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html),
+  chapter 2, which derives unitarity from the requirement that probabilities be
+  conserved rather than postulating it, the emphasis taken here.

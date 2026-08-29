@@ -14,7 +14,7 @@
  *
  * Usage: `pnpm --filter @redquant/api db:seed`
  */
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import pg from 'pg';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { createPasswordHasher } from '../auth/password.js';
@@ -473,7 +473,10 @@ export async function seed(db: Db, env: Env): Promise<SeedSummary> {
       currentPeriodStart: new Date(),
       currentPeriodEnd: new Date(Date.now() + 365 * 86_400_000),
     })
-    .onConflictDoNothing({ target: subscriptions.orgId });
+    // `subscriptions_org_key` is a *partial* unique index (`where org_id is not
+    // null`), which an `ON CONFLICT (org_id)` target cannot match; the bare form
+    // catches it and keeps the seed re-runnable.
+    .onConflictDoNothing();
 
   const demoPassword = 'redquant-demo-password';
   const passwordHash = await passwords.hash(demoPassword);

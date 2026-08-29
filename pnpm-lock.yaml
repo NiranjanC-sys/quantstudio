@@ -135,6 +135,9 @@ importers:
       '@react-three/fiber':
         specifier: ^9.1.2
         version: 9.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.171.0)
+      '@redquant/content':
+        specifier: workspace:*
+        version: link:../../packages/content
       '@redquant/design':
         specifier: workspace:*
         version: link:../../packages/design

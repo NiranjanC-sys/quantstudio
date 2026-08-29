@@ -101,6 +101,27 @@ def _wrap(theta: float) -> float:
     return 0.0 if abs(a) < ANGLE_EPS else a
 
 
+def _wrap_su2(theta: float) -> float:
+    """Fold an angle into (-2pi, 2pi]. The period of Rz and Ry is 4pi, not 2pi.
+
+    ``_wrap`` folds to (-pi, pi], which is right whenever only the *rotation*
+    matters, because Rz(theta + 2pi) == -Rz(theta) and a sign is a global phase.
+    Inside :func:`controlled_u_ops` it is not right: the A, B, C rotations there
+    are applied to the target unconditionally, so a sign picked up by wrapping
+    beta from -pi to +pi multiplies the whole operator by -1. On its own that is
+    still only a global phase -- but :func:`multi_controlled_ops` then *controls*
+    that operator, and a global phase on a controlled block is a relative phase,
+    which is an outright wrong circuit. Folding modulo 4pi keeps the angles
+    bounded without ever changing the sign.
+    """
+    a = math.fmod(theta, 4.0 * math.pi)
+    if a <= -2.0 * math.pi:
+        a += 4.0 * math.pi
+    if a > 2.0 * math.pi:
+        a -= 4.0 * math.pi
+    return 0.0 if abs(a) < ANGLE_EPS else a
+
+
 def _is_diagonal(u: Matrix) -> bool:
     return abs(u[0, 1]) < 1e-12 and abs(u[1, 0]) < 1e-12
 
@@ -218,22 +239,22 @@ def controlled_u_ops(u: Matrix, control: int, target: int) -> list[Op]:
     alpha, beta, gamma, delta = zyz(u)
     ops: list[Op] = []
     # C = Rz((delta - beta) / 2)
-    if _wrap((delta - beta) / 2.0):
-        ops.append(_op("rz", [target], [_wrap((delta - beta) / 2.0)]))
+    if _wrap_su2((delta - beta) / 2.0):
+        ops.append(_op("rz", [target], [_wrap_su2((delta - beta) / 2.0)]))
     ops.append(_op("cx", [control, target]))
     # B = Ry(-gamma/2) Rz(-(delta + beta)/2)  -> circuit order rz then ry
-    if _wrap(-(delta + beta) / 2.0):
-        ops.append(_op("rz", [target], [_wrap(-(delta + beta) / 2.0)]))
-    if _wrap(-gamma / 2.0):
-        ops.append(_op("ry", [target], [_wrap(-gamma / 2.0)]))
+    if _wrap_su2(-(delta + beta) / 2.0):
+        ops.append(_op("rz", [target], [_wrap_su2(-(delta + beta) / 2.0)]))
+    if _wrap_su2(-gamma / 2.0):
+        ops.append(_op("ry", [target], [_wrap_su2(-gamma / 2.0)]))
     ops.append(_op("cx", [control, target]))
     # A = Rz(beta) Ry(gamma/2)  -> circuit order ry then rz
-    if _wrap(gamma / 2.0):
-        ops.append(_op("ry", [target], [_wrap(gamma / 2.0)]))
-    if _wrap(beta):
-        ops.append(_op("rz", [target], [_wrap(beta)]))
-    if _wrap(alpha):
-        ops.append(_op("p", [control], [_wrap(alpha)]))
+    if _wrap_su2(gamma / 2.0):
+        ops.append(_op("ry", [target], [_wrap_su2(gamma / 2.0)]))
+    if _wrap_su2(beta):
+        ops.append(_op("rz", [target], [_wrap_su2(beta)]))
+    if _wrap_su2(alpha):
+        ops.append(_op("p", [control], [_wrap_su2(alpha)]))
     return ops
 
 

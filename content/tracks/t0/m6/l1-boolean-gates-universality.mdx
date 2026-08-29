@@ -1,0 +1,181 @@
+---
+id: t0.m6.l1
+title: Boolean Gates and Universality
+type: concept
+track: t0
+module: t0.m6
+level: L0
+minutes: 12
+objectives:
+  - Write the truth table of AND, OR, NOT, XOR and NAND
+  - Prove that NAND alone is universal for Boolean functions
+  - Express XOR using only NAND gates and count them
+prerequisites: [t0.m1.l1]
+sources:
+  - label: O'Donnell, 15-859BB Quantum Computation (CMU)
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [classical, boolean]
+---
+
+There are $2^{2^n}$ Boolean functions on $n$ inputs: 16 of them for $n = 2$,
+256 for $n = 3$, and about $1.8 \times 10^{19}$ by the time $n$ reaches 6.
+Building hardware for each one separately is hopeless, so the entire discipline
+rests on a finiteness result: a small fixed set of gates suffices to express all
+of them. Knowing exactly how
+small, and why, is the classical rehearsal for the universal gate sets of
+T1.M8.
+
+## The five gates
+
+| $a$ | $b$ | AND | OR | XOR | NAND | NOT $a$ |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | 0 | 0 | 0 | 0 | 1 | 1 |
+| 0 | 1 | 0 | 1 | 1 | 1 | 1 |
+| 1 | 0 | 0 | 1 | 1 | 1 | 0 |
+| 1 | 1 | 1 | 1 | 0 | 0 | 0 |
+
+NAND is the negation of AND, so its column is the AND column flipped. XOR is
+addition modulo 2, which is why it is often written $a \oplus b$.
+
+<Margin label="Counting functions">
+A function on $n$ bits is fixed by its output on each of the $2^n$ input rows,
+and each output is one of 2 values, giving $2^{2^n}$ functions. This grows so
+fast that almost every Boolean function needs a circuit of size exponential in
+$n$, a counting argument due to Shannon. The functions we can actually compute
+are a vanishing minority.
+</Margin>
+
+## Universality
+
+A gate set is **universal** when every Boolean function can be written as a
+circuit over it. The set $\{\text{AND}, \text{OR}, \text{NOT}\}$ is universal by
+an explicit construction: given any truth table, write one AND term per row that
+outputs 1, with each input either plain or negated to select that row, then OR
+the terms together. That is disjunctive normal form, and it always works,
+though it may need $2^n$ terms.
+
+**Claim.** NAND alone is universal.
+
+**Proof.** It suffices to build AND, OR and NOT from NAND. Write
+$a \barwedge b$ for NAND.
+
+$$
+\text{NOT } a = a \barwedge a,
+$$
+
+since $a \barwedge a = \lnot(a \land a) = \lnot a$. Then
+
+$$
+a \land b = \lnot(a \barwedge b) = (a \barwedge b) \barwedge (a \barwedge b),
+$$
+
+using the NOT just built. For OR, use De Morgan's law
+$a \lor b = \lnot(\lnot a \land \lnot b)$, which is exactly a NAND of the two
+negations:
+
+$$
+a \lor b = (a \barwedge a) \barwedge (b \barwedge b) .
+$$
+
+All three are available, so every function in disjunctive normal form can be
+rewritten over NAND. $\blacksquare$
+
+The same argument works for NOR. Those two are the only 2-input gates that are
+universal on their own, a fact worth checking against intuition: AND alone can
+never produce a 1 from all-zero inputs, and XOR alone is linear over
+$\mathbb{F}_2$, so it can only ever compute affine functions.
+
+## XOR from NAND, counted
+
+Four NANDs suffice. Let
+
+$$
+c = a \barwedge b, \qquad d = a \barwedge c, \qquad e = b \barwedge c,
+\qquad \text{out} = d \barwedge e .
+$$
+
+Verify on all four rows:
+
+| $a$ | $b$ | $c$ | $d$ | $e$ | out | $a \oplus b$ |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | 0 | 1 | 1 | 1 | 0 | 0 |
+| 0 | 1 | 1 | 1 | 0 | 1 | 1 |
+| 1 | 0 | 1 | 0 | 1 | 1 | 1 |
+| 1 | 1 | 0 | 1 | 1 | 0 | 0 |
+
+Every row matches. Four is also optimal: three 2-input NAND gates cannot compute
+XOR, which can be checked by exhausting the small number of three-gate wirings.
+
+## The reversible complication
+
+A quantum circuit cannot contain an AND gate, and the reason is visible in the
+truth table: AND maps four inputs to two outputs, so it is not injective, and no
+unitary can implement a non-injective map. The standard repair is to keep the
+inputs and write the answer into a third wire, which is exactly the Toffoli
+gate:
+
+$$
+(a, b, c) \longmapsto (a,\; b,\; c \oplus ab) .
+$$
+
+Setting $c = 0$ leaves $ab$ in the third slot, so Toffoli computes AND
+reversibly. Setting $c = 1$ leaves $1 \oplus ab$, which is NAND, so Toffoli
+computes the universal gate directly. Here it is with both inputs set to 1.
+
+<Simulate
+  show="probabilities"
+  caption="Two X gates set qubits 0 and 1, then a Toffoli writes their AND into qubit 2. The output 111 reads a=1, b=1, a AND b = 1."
+  ir={{
+    version: 1,
+    name: "toffoli-and",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "x0", gate: "x", targets: [0] },
+      { id: "x1", gate: "x", targets: [1] },
+      { id: "tof", gate: "ccx", targets: [0, 1, 2] }
+    ]
+  }}
+>
+
+| state | probability |
+| --- | --- |
+| $111$ | $1.000000$ |
+
+</Simulate>
+
+Change either $X$ to nothing and the third qubit stays 0, because
+$0 \oplus ab = 0$ whenever $ab = 0$.
+
+<Callout tone="note" title="Universality is cheap, efficiency is not">
+Universality says a circuit exists. It says nothing about its size. Disjunctive
+normal form can need $2^n$ terms, and Shannon's counting argument says most
+functions really do need exponentially many gates. The interesting question is
+never "can this be computed" but "with how many gates and how much depth", which
+is T0.M6.L2.
+</Callout>
+
+<Check question="Express the 3-input majority function, which outputs 1 when at least two of $a$, $b$, $c$ are 1, using AND and OR. How many NAND gates would a direct translation cost?">
+Majority is 1 exactly when some pair agrees on 1, so
+
+$$
+\text{MAJ}(a,b,c) = (a \land b) \lor (a \land c) \lor (b \land c) .
+$$
+
+That uses 3 ANDs and 2 ORs, five gates. Translating directly, each AND costs 2
+NANDs and each OR costs 3 NANDs, giving $3 \times 2 + 2 \times 3 = 12$ NAND
+gates. Better constructions exist, because consecutive negations cancel: the
+inner NOT of an AND can be absorbed into the following OR, which is exactly the
+optimisation a logic synthesiser performs.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), whose
+  opening lectures set up classical circuits and universality before any qubit
+  appears, the ordering used here.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  sections 3.1 and 3.2.5, for Boolean universality and the reversible repair via
+  the Toffoli gate.

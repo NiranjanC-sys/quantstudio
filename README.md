@@ -1,6 +1,6 @@
 # RedQuant
 
-**Learn quantum computing by building it.** A 306 lesson curriculum benchmarked
+**Learn quantum computing by building it.** A 331 lesson curriculum benchmarked
 against 20 university syllabi, a circuit builder that simulates as you type,
 autograded labs, and weekly rated contests.
 
@@ -11,7 +11,7 @@ autograded labs, and weekly rated contests.
 | Path | What it is | State |
 |---|---|---|
 | `docs/research/01-curriculum-benchmark.md` | 20 primary sources (Caltech, MIT, Berkeley, Stanford, CMU, Oxford, Waterloo, Delft, IBM, Google, Microsoft, Xanadu, QWorld) and the five teaching gaps they share | complete |
-| `docs/research/02-syllabus.md` | The curriculum: 8 tracks, 64 modules, 306 lessons over a prerequisite DAG, plus 7 persona roadmaps and the assessment and mastery model | complete |
+| `docs/research/02-syllabus.md` | The curriculum: 8 tracks, 74 modules, 331 lessons over a prerequisite DAG, plus 7 persona roadmaps and the assessment and mastery model | complete |
 | `docs/architecture/system-design.md` | Capacity model, topology, data model, contest correctness, plans and entitlements, identity, degradation ladder, sandbox, observability, cost, all sized for 50,000 concurrent users | complete |
 | `docs/PRODUCT-PLAN.md` | Feature inventory, build phases, content production plan, team and cost | complete |
 | `DESIGN.md` | The design system specification: five locks, tokens for both themes, type scale, motion, component specs, anti-slop ban list | complete |

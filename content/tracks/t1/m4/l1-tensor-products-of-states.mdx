@@ -1,0 +1,198 @@
+---
+id: t1.m4.l1
+title: Tensor Products of States
+type: concept
+track: t1
+module: t1.m4
+level: L1
+minutes: 13
+objectives:
+  - Compute the tensor product of two single-qubit states as a length-4 vector
+  - Read a basis index as a bitstring with qubit 0 as the most significant bit
+  - Show that the tensor product of two normalised states is normalised
+prerequisites: [t1.m2.l1, t0.m5.l3]
+sources:
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [multi-qubit, tensor]
+---
+
+Two classical bits are described by two variables. Two qubits are described by
+one vector of four numbers, and the reason is not that quantum states are
+mysterious: it is that the space of states of a composite system is a tensor
+product rather than a Cartesian product. This lesson does the arithmetic and
+fixes the index convention that every later lesson depends on.
+
+## The product, entry by entry
+
+If qubit 0 is in $\ket{\psi} = (a_0, a_1)$ and qubit 1 is in
+$\ket{\phi} = (b_0, b_1)$, the joint state is
+
+$$
+\ket{\psi} \otimes \ket{\phi}
+= \begin{pmatrix} a_0 b_0 \\ a_0 b_1 \\ a_1 b_0 \\ a_1 b_1 \end{pmatrix} .
+$$
+
+The pattern is: take each entry of the first vector in turn and multiply the
+whole second vector by it. For three qubits the same rule gives 8 entries, and
+for $n$ qubits it gives $2^n$.
+
+The four rows are labelled by the four two-bit strings in the order
+$\ket{00}, \ket{01}, \ket{10}, \ket{11}$, and the labelling is what makes the
+formula memorable: row $\ket{q_0 q_1}$ holds the product of the amplitude of
+$q_0$ in the first factor and the amplitude of $q_1$ in the second.
+
+<Margin label="Convention, stated once">
+Qubit 0 is the most significant bit. Basis index $i$ assigns qubit $q$ the value
+`(i >> (n - 1 - q)) & 1`, so $\ket{10}$ is index 2 and the leftmost symbol in a
+ket is always qubit 0. Cirq and Nielsen and Chuang agree with this; Qiskit
+reverses it. Every amplitude table in this track is printed in this order.
+</Margin>
+
+## A worked pair
+
+Let qubit 0 be in $(0.6, 0.8)$, prepared by $R_y(1.8545904)$, and qubit 1 in
+$\ket{+} = (0.707107, 0.707107)$. Then
+
+$$
+\begin{pmatrix} 0.6 \\ 0.8 \end{pmatrix} \otimes
+\begin{pmatrix} 0.707107 \\ 0.707107 \end{pmatrix}
+= \begin{pmatrix}
+0.6 \times 0.707107 \\ 0.6 \times 0.707107 \\
+0.8 \times 0.707107 \\ 0.8 \times 0.707107
+\end{pmatrix}
+= \begin{pmatrix} 0.424264 \\ 0.424264 \\ 0.565685 \\ 0.565685 \end{pmatrix} .
+$$
+
+Squaring gives probabilities $0.18, 0.18, 0.32, 0.32$, which sum to 1. Notice
+that each is a product of a single-qubit probability with another:
+$0.18 = 0.36 \times 0.5$ and $0.32 = 0.64 \times 0.5$. Product states have
+product distributions, and the two qubits are statistically independent.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="Ry(1.8545904) on qubit 0 and H on qubit 1. Four amplitudes, each a product of one from each factor."
+  ir={{
+    version: 1,
+    name: "tensor-product",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "r0", gate: "ry", targets: [0], params: [1.8545904360032246] },
+      { id: "h1", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+## Ordering is not a detail
+
+Put a Hadamard on qubit 1 alone and the state is
+$\ket{0} \otimes \ket{+} = (0.707107, 0.707107, 0, 0)$: the non-zero amplitudes
+sit on $\ket{00}$ and $\ket{01}$. Put it on qubit 0 alone instead and the state
+is $\ket{+} \otimes \ket{0} = (0.707107, 0, 0.707107, 0)$, with the non-zero
+amplitudes on $\ket{00}$ and $\ket{10}$. Same gate, same number of qubits,
+different vector.
+
+<Simulate
+  show="amplitudes"
+  caption="H on qubit 1 only. The superposition is in the second, least significant, position."
+  ir={{
+    version: 1,
+    name: "h-on-q1",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h1", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+<Simulate
+  show="amplitudes"
+  caption="H on qubit 0 only. The same superposition now appears in the first, most significant, position."
+  ir={{
+    version: 1,
+    name: "h-on-q0",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+<Callout tone="warning" title="Where the SDKs disagree">
+Qiskit prints the same two states as `|00>, |10>` and `|00>, |01>` respectively,
+because it puts qubit 0 in the least significant position. Nothing physical
+differs; the bitstrings are reversed. Any time you compare a printed
+counts dictionary across tools, reverse the strings first. T0.M5.L3 is entirely
+about this hazard, and it is the single most common source of wrong answers when
+porting a circuit.
+</Callout>
+
+## Normalisation is automatic
+
+If both factors are normalised, so is the product. Sum the squared moduli of the
+four entries and factor:
+
+$$
+\sum_{j,k} |a_j b_k|^2
+= \sum_{j,k} |a_j|^2 |b_k|^2
+= \left( \sum_j |a_j|^2 \right)\left( \sum_k |b_k|^2 \right)
+= 1 \times 1 = 1 .
+$$
+
+The double sum factored because every term is a product of one index with the
+other, which is the defining feature of the tensor product. The argument does
+not depend on the number of qubits, so a product of $n$ normalised states is
+normalised, and the state $\ket{0}^{\otimes n}$ that every circuit starts in is
+a legitimate state of the whole register.
+
+The same factoring applies to inner products:
+
+$$
+\left( \bra{\psi_1} \otimes \bra{\phi_1} \right)
+\left( \ket{\psi_2} \otimes \ket{\phi_2} \right)
+= \braket{\psi_1}{\psi_2} \, \braket{\phi_1}{\phi_2} ,
+$$
+
+so orthogonality of either factor makes the products orthogonal. That is why the
+four states $\ket{00}, \ket{01}, \ket{10}, \ket{11}$ form an orthonormal basis:
+they are products of orthonormal pairs.
+
+## Operators tensor too
+
+A gate acting on qubit 0 only is really $A \otimes I$ on the pair, with
+
+$$
+A \otimes I = \begin{pmatrix} a_{00} I & a_{01} I \\ a_{10} I & a_{11} I \end{pmatrix}
+$$
+
+as a $4 \times 4$ matrix in $2 \times 2$ blocks. The two useful consequences:
+$(A \otimes B)(\ket{\psi} \otimes \ket{\phi}) = A\ket{\psi} \otimes B\ket{\phi}$,
+so gates on different qubits never interfere with one another and can be applied
+in either order; and $(A \otimes B)(C \otimes D) = AC \otimes BD$, so products
+factor as well. A circuit made only of single-qubit gates therefore keeps a
+product state a product state forever, which is why entanglement in T1.M4.L3
+requires a genuinely two-qubit gate.
+
+<Check question="Write $\ket{-} \otimes \ket{1}$ as a length-4 vector and give its outcome probabilities. Which basis states have zero amplitude?">
+$\ket{-} = (0.707107, -0.707107)$ and $\ket{1} = (0, 1)$, so the product is
+$(0.707107 \times 0,\ 0.707107 \times 1,\ -0.707107 \times 0,\ -0.707107 \times 1)$,
+that is $(0,\ 0.707107,\ 0,\ -0.707107)$. The probabilities are
+$0, 0.5, 0, 0.5$: outcomes $\ket{01}$ and $\ket{11}$ are equally likely and
+$\ket{00}$ and $\ket{10}$ never occur, which is qubit 1 being $\ket{1}$ with
+certainty. The minus sign is invisible in the probabilities and would matter
+after a Hadamard on qubit 0.
+</Check>
+
+## Where this comes from
+
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses),
+  Basics of quantum information, for the composite-system postulate and the
+  worked index arithmetic.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 2.1.7, for the tensor product of vectors and operators and the
+  identities $(A \otimes B)(C \otimes D) = AC \otimes BD$ used above.

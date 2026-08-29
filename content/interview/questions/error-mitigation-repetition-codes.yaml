@@ -1,0 +1,686 @@
+# Benchmark pattern 6: error mitigation and repetition codes. Extrapolation
+# coefficients, readout inversion matrices, syndrome tables and logical error
+# rates below were all computed numerically.
+
+questions:
+  - id: iq-051
+    title: Implement zero-noise extrapolation and give the coefficients
+    kind: coding
+    prompt: |
+      Implement zero-noise extrapolation for an expectation value. Show me the
+      scale factors you pick, the extrapolation you fit, and the exact
+      coefficients that the fit reduces to. Then tell me what it costs you in
+      shots.
+    difficulty: easy
+    pattern: Error mitigation and repetition codes
+    topics: [zero-noise-extrapolation, richardson, error-mitigation, shot-budget]
+    companies: [IBM, Q-CTRL, Google Quantum AI, Rigetti]
+    modelAnswer: |
+      Zero-noise extrapolation runs the same logical circuit at several
+      artificially amplified noise levels and extrapolates the expectation
+      value back to zero noise. Amplification is usually unitary folding:
+      replace a gate G by G G^dagger G, which is logically identity-preserving
+      but triples the exposure to noise, giving scale factor 3 for that gate.
+      Scale factor 2 comes from folding half the gates.
+
+      With scale factors lambda_1..lambda_k, Richardson extrapolation fits the
+      unique degree k-1 polynomial through the k points and evaluates it at
+      lambda = 0. That is a linear functional, so it collapses to fixed
+      coefficients c_i with sum c_i = 1:
+
+          scales [1, 2]        ->  c = [2, -1]
+          scales [1, 2, 3]     ->  c = [3, -3, 1]
+          scales [1, 2, 3, 4]  ->  c = [4, -6, 4, -1]
+          scales [1, 3, 5]     ->  c = [1.875, -1.25, 0.375]
+
+      So the three-point estimate is simply
+      E_mitigated = 3*E(1) - 3*E(2) + E(3).
+
+      ```python
+      import numpy as np
+
+      def richardson_coeffs(scales):
+          A = np.array([[l ** p for l in scales] for p in range(len(scales))],
+                       dtype=float)
+          b = np.zeros(len(scales)); b[0] = 1.0
+          return np.linalg.solve(A, b)
+      ```
+
+      The cost is the part candidates skip. The coefficients alternate in sign
+      and grow, so the variance of the estimator is amplified by sum c_i^2 when
+      each point is measured with independent shots:
+
+          [1, 2]        ->  5x  shot overhead
+          [1, 2, 3]     ->  19x
+          [1, 2, 3, 4]  ->  69x
+
+      Going from two points to four costs nearly fourteen times the shots for a
+      modest reduction in bias. Combined with the fact that folding also makes
+      the deepest circuit three or four times longer, the practical sweet spot
+      is two or three scale factors. Anyone proposing five points has not
+      costed it.
+
+      Sanity check on a solvable model: if the noisy expectation decays as
+      exp(-0.1*lambda) with true value 1, the raw value at lambda = 1 is
+      0.904837, the two-point estimate is 0.990944, and the three-point
+      estimate is 0.999138. The bias falls by roughly an order of magnitude per
+      added point, and the variance rises by roughly a factor of four. That
+      trade is the whole design decision.
+    followUps:
+      - When would you use exponential rather than polynomial extrapolation?
+      - How does unitary folding interact with a transpiler that cancels adjacent inverse gates?
+      - Your mitigated value comes out above the physical maximum of the observable. What do you do?
+    commonMistakes:
+      - Reporting a mitigated value without a variance estimate, when the variance is the main cost of the method.
+      - Letting the transpiler run after folding, which cancels G G^dagger G back to G and silently disables the whole method.
+      - Using many scale factors on the assumption that more points always means a better fit. The variance grows much faster than the bias falls.
+    references:
+      - label: Temme, Bravyi and Gambetta, Error mitigation for short-depth quantum circuits
+        url: https://arxiv.org/abs/1612.02058
+      - label: "LaRose et al, Mitiq: A software package for error mitigation on noisy quantum computers"
+        url: https://arxiv.org/abs/2009.04417
+
+  - id: iq-052
+    title: Build a measurement error mitigation matrix and invert it
+    kind: coding
+    prompt: |
+      Your qubit has a 3 percent chance of reading 1 when the true state is 0
+      and a 7 percent chance of reading 0 when the true state is 1. Build the
+      calibration matrix, use it to correct an observed distribution, and tell
+      me how this scales to n qubits and where it breaks.
+    difficulty: easy
+    pattern: Error mitigation and repetition codes
+    topics: [readout-error, calibration-matrix, measurement-mitigation, conditioning]
+    companies: [IBM, Rigetti, IonQ, Q-CTRL]
+    modelAnswer: |
+      Build A with A[measured][true]. With e01 = P(read 1 | true 0) = 0.03 and
+      e10 = P(read 0 | true 1) = 0.07:
+
+          A = [[0.97, 0.07],
+               [0.03, 0.93]]
+
+      Its inverse, computed rather than guessed, is
+
+          A^-1 = [[ 1.033333333, -0.077777778],
+                  [-0.033333333,  1.077777778]]
+
+      Take a true distribution of [0.5, 0.5]. The device reports
+      A @ [0.5, 0.5] = [0.52, 0.48], which gives an unmitigated <Z> of 0.04
+      when the true <Z> is exactly 0. That 0.04 bias is entirely readout
+      asymmetry, and it does not shrink with more shots. Applying A^-1 to the
+      observed vector returns [0.5, 0.5] exactly.
+
+      Scaling to n qubits, the full matrix is 2^n by 2^n and calibrating it
+      needs 2^n preparation circuits, which is hopeless past about 10 qubits.
+      Two escapes. First, the tensored approximation: calibrate each qubit
+      independently and take the Kronecker product, needing only 2n circuits.
+      That is exact when readout errors are uncorrelated across qubits, and
+      readout crosstalk is precisely where it fails. Second, for a specific
+      observable you do not need the full matrix at all, only the correction to
+      that observable's expectation, which can be estimated with a small
+      number of calibration circuits.
+
+      Where it breaks, concretely. The tensored matrix has condition number
+      growing with n: for this single-qubit A the condition number is 1.120156,
+      and the tensor powers give 1.254750 at n = 2, 1.405517 at n = 3,
+      1.574399 at n = 4 and 1.975478 at n = 6. That growth is gentle here
+      because the errors are small; with 20 percent readout error it becomes
+      severe fast, and inversion amplifies shot noise proportionally. Worse,
+      A^-1 applied to a noisy empirical distribution routinely produces
+      negative probabilities, which is why production implementations solve a
+      constrained least squares problem instead of inverting.
+    followUps:
+      - Write the constrained least squares version and say why it is preferred over raw inversion.
+      - How would you detect readout crosstalk that invalidates the tensored approximation?
+      - How often should the calibration be refreshed, and what tells you it has gone stale?
+    commonMistakes:
+      - Building the matrix transposed, so the correction moves the distribution in the wrong direction. Fix the convention as A[measured][true] and test it on a known input.
+      - Reporting negative probabilities after inversion instead of solving a constrained fit.
+      - Assuming the tensored approximation is exact. It is exact only without readout crosstalk, and crosstalk is common on dense chips.
+    references:
+      - label: Bravyi et al, Mitigating measurement errors in multi-qubit experiments
+        url: https://arxiv.org/abs/2006.14044
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+
+  - id: iq-053
+    title: Encode a logical qubit in the three-qubit repetition code
+    kind: coding
+    prompt: |
+      Write the encoder for the three-qubit bit-flip repetition code, show what
+      it does to an arbitrary single-qubit state, and state precisely which
+      errors it corrects and which it does not. Qubit 0 is the most significant
+      bit.
+    difficulty: easy
+    pattern: Error mitigation and repetition codes
+    topics: [repetition-code, encoding, bit-flip, stabilizers]
+    companies: [IBM, Google Quantum AI, Quantinuum, Alice and Bob]
+    modelAnswer: |
+      The encoder is two CNOTs from the data qubit onto two fresh |0> qubits:
+
+      ```python
+      import cirq
+
+      def encode() -> cirq.Circuit:
+          q = cirq.LineQubit.range(3)
+          return cirq.Circuit(cirq.CNOT(q[0], q[1]), cirq.CNOT(q[0], q[2]))
+      ```
+
+      It maps alpha|0> + beta|1> to alpha|000> + beta|111>. I checked it on a
+      concrete state: preparing the data qubit with Ry(2*arcsin(sqrt(0.3)))
+      gives amplitudes 0.836660027 on |000> and 0.547722558 on |111> and
+      nothing anywhere else, which is exactly sqrt(0.7) and sqrt(0.3).
+
+      Crucially this is not cloning. The output is an entangled state in which
+      neither individual qubit carries alpha and beta; tracing out any two
+      qubits leaves a maximally mixed state. Saying "we make three copies" is
+      wrong and interviewers listen for it.
+
+      What it corrects: any single X error on any one of the three qubits. The
+      stabilizers are Z0Z1 and Z1Z2, and measuring them gives a two-bit
+      syndrome that identifies which qubit flipped without revealing alpha or
+      beta.
+
+      What it does not correct, and this is the important half of the answer:
+
+      * Phase errors. A Z on any qubit maps alpha|000> + beta|111> to
+        alpha|000> - beta|111>, which commutes with both stabilizers, so the
+        syndrome is (0,0) and the error is invisible. The code has zero
+        distance against Z.
+      * Two or more X errors. Weight-two X patterns produce the same syndromes
+        as weight-one patterns, so the decoder corrects them into a logical X.
+      * Y errors, since Y = iXZ carries the undetectable Z component.
+
+      The fix for phase errors is the dual code with H conjugation, stabilizers
+      X0X1 and X1X2, correcting Z but not X. Concatenating the two gives the
+      nine-qubit Shor code, which corrects an arbitrary single-qubit error.
+      That progression, bit-flip then phase-flip then concatenate, is the
+      answer to "how do you get to a real code".
+    followUps:
+      - Write the phase-flip version and say exactly what changes.
+      - Show why correcting X and Z separately suffices to correct an arbitrary single-qubit error.
+      - How would you verify the encoder on hardware without full tomography?
+    commonMistakes:
+      - Describing the encoding as copying the state, which contradicts no-cloning and misses that the output is entangled.
+      - Claiming the code corrects any single-qubit error. It corrects single X errors only and is completely blind to Z.
+      - Measuring the individual qubits to find the error, which collapses the logical state. You must measure the stabilizers instead.
+    references:
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+      - label: Terhal, Quantum Error Correction for Quantum Memories
+        url: https://arxiv.org/abs/1302.3428
+
+  - id: iq-054
+    title: Write the syndrome table and the decoder
+    kind: coding
+    prompt: |
+      For the three-qubit bit-flip code with stabilizers Z0Z1 and Z1Z2, write
+      out the complete syndrome table for all eight X error patterns, then
+      write the decoder. Explain what happens on the ambiguous rows.
+    difficulty: medium
+    pattern: Error mitigation and repetition codes
+    topics: [syndrome-decoding, stabilizers, repetition-code, degeneracy]
+    companies: [IBM, Google Quantum AI, Quantinuum, Alice and Bob]
+    modelAnswer: |
+      With qubit 0 the most significant bit, s1 = e0 xor e1 and
+      s2 = e1 xor e2 where ei is 1 if qubit i suffered an X error. The full
+      table, computed exhaustively:
+
+          error 000  ->  syndrome (0,0)   weight 0
+          error 001  ->  syndrome (0,1)   weight 1
+          error 010  ->  syndrome (1,1)   weight 1
+          error 011  ->  syndrome (1,0)   weight 2
+          error 100  ->  syndrome (1,0)   weight 1
+          error 101  ->  syndrome (1,1)   weight 2
+          error 110  ->  syndrome (0,1)   weight 2
+          error 111  ->  syndrome (0,0)   weight 3
+
+      Four syndromes, eight error patterns, so every syndrome is shared by
+      exactly two errors: one of weight w and one of weight 3-w. The decoder
+      picks the lower-weight member, which is minimum weight decoding, correct
+      whenever p < 1/2.
+
+      ```python
+      def decode(s1: int, s2: int) -> int:
+          """Return the index of the qubit to flip, or -1 for no correction."""
+          return {(0, 0): -1, (1, 0): 0, (1, 1): 1, (0, 1): 2}[(s1, s2)]
+      ```
+
+      The ambiguous rows are the whole story. Syndrome (1,0) is produced both by
+      an X on qubit 0 and by X errors on qubits 1 and 2. The decoder guesses
+      qubit 0. When the true error was the weight-two pattern, the correction
+      completes it to 111, which is a logical X: the encoded state flips and no
+      syndrome remains to warn you. That is a logical error, and it is silent.
+
+      The probability of that happening is the logical error rate. Summing over
+      patterns of weight 2 and 3, p_L = 3p^2(1-p) + p^3 = 3p^2 - 2p^3:
+
+          p = 0.001  ->  2.998e-06
+          p = 0.005  ->  7.475e-05
+          p = 0.01   ->  0.000298
+          p = 0.05   ->  0.00725
+          p = 0.10   ->  0.028
+          p = 0.50   ->  0.5
+
+      At p = 0.5 encoding gains nothing, which is the break-even point, and it
+      falls out of the algebra: 3p^2 - 2p^3 = p has roots at 0, 0.5 and 1.
+      Below 0.5 the code helps, above it the code hurts. And note the ratio at
+      p = 0.001 is 0.003, so the code buys roughly two and a half orders of
+      magnitude at that error rate, which is the quantitative version of "the
+      code helps".
+    followUps:
+      - Extend the table to five qubits and give the logical error rate.
+      - What changes if the syndrome measurement itself is faulty?
+      - How does minimum weight decoding generalise to the surface code?
+    commonMistakes:
+      - Reading the syndrome as a binary number and indexing a table with it, which for this code maps (1,0) and (0,1) to the wrong qubits. Write the table out and check it.
+      - Believing the decoder can always succeed. It fails on exactly the weight-two patterns, and it fails silently.
+      - Forgetting the bit convention, which swaps the roles of qubits 0 and 2 in the table and gives a decoder that works for symmetric errors only.
+    references:
+      - label: Terhal, Quantum Error Correction for Quantum Memories
+        url: https://arxiv.org/abs/1302.3428
+      - label: PyMatching decoder
+        url: https://github.com/oscarhiggott/PyMatching
+
+  - id: iq-055
+    title: Compare distance 3, 5 and 7 repetition codes quantitatively
+    kind: coding
+    prompt: |
+      Give me the logical error rate for repetition codes of distance 3, 5 and
+      7 as a function of the physical error rate, evaluate it at several
+      values, and tell me at what physical error rate increasing the distance
+      stops helping.
+    difficulty: medium
+    pattern: Error mitigation and repetition codes
+    topics: [code-distance, threshold, logical-error-rate, scaling]
+    companies: [IBM, Google Quantum AI, Alice and Bob, PsiQuantum]
+    modelAnswer: |
+      For a distance d = n repetition code with independent X errors at rate p,
+      a logical error occurs when a majority of qubits flip:
+
+          p_L(n) = sum over k from (n+1)/2 to n of C(n,k) p^k (1-p)^(n-k)
+
+      Evaluated:
+
+          p       d=3          d=5           d=7
+          0.001   2.998e-06    9.985e-09     3.492e-11
+          0.005   7.475e-05    1.241e-06     2.161e-08
+          0.01    2.980e-04    9.851e-06     3.417e-07
+          0.02    1.184e-03    7.762e-05     5.336e-06
+          0.05    7.250e-03    1.158e-03     1.936e-04
+          0.10    2.800e-02    8.560e-03     2.728e-03
+          0.50    0.5          0.5           0.5
+
+      Two things to read off. First, the leading behaviour is
+      p_L ~ C(n, (n+1)/2) * p^((n+1)/2), so each increase of the distance by 2
+      gains one more power of p. At p = 0.001 going from d = 3 to d = 5 buys
+      about 300x and going to d = 7 buys another 286x. At p = 0.1 the same
+      steps buy only 3.3x and 3.1x. Distance is worth much more when p is
+      small, which is the whole reason hardware error rates matter more than
+      code choice.
+
+      Second, the threshold. Every column meets at p = 0.5, and above 0.5
+      increasing the distance makes things worse. The repetition code's
+      threshold is exactly 1/2 under this idealised model where syndrome
+      measurement is perfect. That number is unrealistically generous, and
+      saying so is part of a good answer: with faulty syndrome extraction you
+      need repeated rounds of measurement and the threshold drops
+      substantially. The surface code's threshold under circuit-level noise
+      lands near 1 percent, not 50 percent, and that gap is entirely the cost of
+      measuring the syndrome with the same faulty gates.
+
+      The other honest caveat: the repetition code is not a quantum code. It
+      protects one basis only, so p_L above is the bit-flip error rate while
+      the phase-flip rate is untouched and in fact grows with n, because there
+      are n qubits each able to dephase. Quoting the table without that caveat
+      overstates the result.
+    followUps:
+      - Redo the analysis with imperfect syndrome measurement and repeated rounds.
+      - Why is the surface code threshold near 1 percent rather than near 50 percent?
+      - What happens to the phase error rate as you increase n?
+    commonMistakes:
+      - Presenting the repetition code threshold of 1/2 as if it were comparable to a surface code threshold. The models are not comparable.
+      - Extrapolating the improvement per distance step measured at p = 0.1 down to p = 0.001, where the gain is two orders of magnitude larger.
+      - Omitting that the phase error rate gets worse as n grows, so the code trades one error channel for another.
+    references:
+      - label: "Fowler et al, 'Surface codes: Towards practical large-scale quantum computation'"
+        url: https://arxiv.org/abs/1208.0928
+      - label: Google Quantum AI, Suppressing quantum errors by scaling a surface code logical qubit
+        url: https://arxiv.org/abs/2207.06431
+
+  - id: iq-056
+    title: Measure a stabilizer without destroying the logical state
+    kind: coding
+    prompt: |
+      Write the circuit that measures the stabilizer Z0Z1 of the repetition
+      code using an ancilla, explain why it does not collapse the encoded
+      superposition, and say what changes when the ancilla measurement itself
+      is unreliable.
+    difficulty: medium
+    pattern: Error mitigation and repetition codes
+    topics: [syndrome-extraction, ancilla, stabilizer-measurement, fault-tolerance]
+    companies: [IBM, Google Quantum AI, Quantinuum, Alice and Bob]
+    modelAnswer: |
+      Two CNOTs onto a fresh ancilla, then measure the ancilla:
+
+      ```python
+      import cirq
+
+      def measure_z0z1():
+          q = cirq.LineQubit.range(3)
+          anc = cirq.LineQubit(3)
+          return cirq.Circuit(
+              cirq.CNOT(q[0], anc), cirq.CNOT(q[1], anc),
+              cirq.measure(anc, key='s1'),
+          )
+      ```
+
+      The ancilla starts in |0> and each CNOT adds the parity of its control, so
+      the ancilla ends in |e0 xor e1>, which is exactly the eigenvalue of Z0Z1
+      encoded as a bit. Measuring it returns the parity and nothing else.
+
+      The reason it does not collapse the logical state is that Z0Z1 commutes
+      with the logical operators. The codespace is spanned by |000> and |111>,
+      and both are +1 eigenstates of Z0Z1, so a superposition
+      alpha|000> + beta|111> is also a +1 eigenstate. Measuring an observable
+      that a state is already an eigenstate of returns the eigenvalue with
+      certainty and leaves the state untouched. The measurement learns about the
+      error, not about alpha and beta. If instead you measured Z0 alone you
+      would learn which branch you are in and destroy the superposition; that
+      is the distinction the question is testing.
+
+      When the ancilla measurement is unreliable everything changes. A single
+      faulty syndrome bit makes the decoder apply a correction where none was
+      needed, injecting an error rather than removing one. The standard response
+      is to repeat the syndrome extraction d times for a distance d code and
+      decode over the resulting space-time graph rather than over a single
+      round. That is why surface code experiments talk about rounds and why the
+      decoding problem becomes matching in three dimensions rather than two.
+
+      There is a second, subtler failure. A single X error on the ancilla in the
+      middle of the two CNOTs propagates back onto the data through the second
+      CNOT, turning one ancilla fault into a data error. That is why the naive
+      circuit above is not fault tolerant, and why real syndrome extraction uses
+      either a cat state ancilla with verification, in the Shor style, or flag
+      qubits that detect the dangerous propagation paths.
+    followUps:
+      - Show how an X on the ancilla between the two CNOTs propagates to the data.
+      - Describe flag qubit syndrome extraction and what it costs.
+      - How many rounds of syndrome measurement do you need for a distance 5 code, and why?
+    commonMistakes:
+      - Measuring individual data qubits to find the error, which collapses the logical superposition and destroys the information the code was protecting.
+      - Treating a single noisy syndrome reading as trustworthy, so the decoder introduces errors on false syndromes.
+      - Assuming the two-CNOT extraction circuit is fault tolerant. Ancilla faults propagate to the data through the later CNOT.
+    references:
+      - label: Terhal, Quantum Error Correction for Quantum Memories
+        url: https://arxiv.org/abs/1302.3428
+      - label: Stim stabilizer circuit simulator
+        url: https://github.com/quantumlib/Stim
+
+  - id: iq-057
+    title: Choose between mitigation and correction for a given workload
+    kind: coding
+    prompt: |
+      A team wants to run a 40-qubit, depth-500 expectation value estimation on
+      current hardware. They ask whether to invest in error mitigation or error
+      correction. Give them a decision, with the reasoning and the numbers that
+      drive it.
+    difficulty: medium
+    pattern: Error mitigation and repetition codes
+    topics: [error-mitigation, error-correction, trade-offs, resource-estimation]
+    companies: [IBM, Q-CTRL, Google Quantum AI, Multiverse Computing]
+    modelAnswer: |
+      Mitigation, and it is not close, but the reasoning matters more than the
+      verdict.
+
+      Error correction is not available to them at this size. A distance 3
+      surface code patch costs on the order of 17 to 25 physical qubits per
+      logical qubit and needs repeated syndrome rounds with real-time decoding.
+      Forty logical qubits at distance 3 is roughly 700 to 1000 physical qubits
+      before magic state factories, and distance 3 only suppresses errors by
+      about one order of magnitude, which is not enough for depth 500. Error
+      correction becomes the right answer when the target logical error rate per
+      operation is below what any amount of mitigation can reach, and that
+      crossover sits well beyond current device sizes.
+
+      Mitigation is available, and its cost is shots rather than qubits. The
+      relevant numbers:
+
+      * Readout mitigation is close to free: 2n calibration circuits for the
+        tensored approximation, so 80 circuits, and it removes a bias that does
+        not shrink with shots. Always do this.
+      * Zero-noise extrapolation with three scale factors costs 19x the shots
+        for the variance alone, plus the deepest folded circuit is three times
+        longer, so the wall clock cost is closer to 50x. That is affordable if
+        the base experiment is minutes, not if it is hours.
+      * Probabilistic error cancellation gives an unbiased estimator but the
+        sampling overhead scales as exp(2*gamma) where gamma sums the negativity
+        of the quasiprobability decomposition over all gates. At depth 500 that
+        overhead is typically prohibitive, and saying so with the exponential in
+        hand is the mark of someone who has costed it.
+      * Dynamical decoupling on idle qubits is nearly free and often the largest
+        single win on devices with long idle periods.
+
+      So the recommendation: readout mitigation plus dynamical decoupling first,
+      measure the improvement, then add two-point ZNE and check whether the
+      variance is affordable. Do not reach for PEC at depth 500.
+
+      The caveat to state plainly: mitigation does not scale. Every method here
+      has an overhead that grows with circuit volume, and at some depth the
+      required shot count exceeds any budget. Mitigation buys time until
+      correction is available; it is not an alternative to it.
+    followUps:
+      - At what circuit volume would you change the recommendation to error correction?
+      - How would you measure whether dynamical decoupling is actually helping on their device?
+      - What would you tell them if the observable were a single Pauli string rather than a full Hamiltonian?
+    commonMistakes:
+      - Proposing error correction at a scale where the physical qubit budget does not exist, without checking the arithmetic.
+      - Quoting mitigation as free. Every method costs shots, and the cost grows with circuit volume.
+      - Reaching for the most sophisticated method first. Readout mitigation and dynamical decoupling usually deliver more than ZNE for a fraction of the cost.
+    references:
+      - label: Endo et al, Hybrid quantum-classical algorithms and quantum error mitigation
+        url: https://arxiv.org/abs/2011.01382
+      - label: Cerezo et al, Variational Quantum Algorithms
+        url: https://arxiv.org/abs/2012.09265
+
+  - id: iq-058
+    title: Diagnose a mitigation pipeline that makes results worse
+    kind: coding
+    prompt: |
+      A colleague reports that turning on zero-noise extrapolation makes their
+      expectation values less accurate against a known reference, not more.
+      Everything is implemented from a standard library. Debug it.
+    difficulty: hard
+    pattern: Error mitigation and repetition codes
+    topics: [debugging, zero-noise-extrapolation, transpilation, variance]
+    companies: [IBM, Q-CTRL, Rigetti, Classiq]
+    modelAnswer: |
+      Four causes account for almost all of these reports. Check them in this
+      order.
+
+      1. The transpiler undid the folding. Unitary folding inserts
+         G G^dagger G, which any optimising pass recognises as G and cancels.
+         If the folding happens before transpilation, the amplified circuits are
+         identical to the unamplified one, all scale factors give the same
+         expectation value, and the Richardson fit of a constant is that
+         constant plus pure noise amplified by the coefficients. The symptom is
+         distinctive: the mitigated value is noisier than the raw value but not
+         systematically shifted. Fix by folding after transpilation, or by
+         pinning the folded gates against optimisation.
+
+      2. The variance, not the bias, is dominating. With three scale factors the
+         coefficients are [3, -3, 1] and the variance multiplier is
+         sum c_i^2 = 19. If each point is measured with the same shot count as
+         the original experiment, the mitigated estimate has roughly 4.4 times
+         the standard error. Against a known reference, a value with 4x the
+         error bar will often look "less accurate" while being less biased. Ask
+         for the error bars before believing the report at all.
+
+      3. The noise is not well modelled by a polynomial in the scale factor. ZNE
+         assumes the expectation value is a smooth function of an effective
+         noise strength that folding scales linearly. Coherent errors do not
+         behave that way: over-rotation accumulates as a phase, not as a
+         depolarising rate, and folding G G^dagger G can cancel a coherent error
+         rather than amplify it. On a device with significant coherent error,
+         ZNE can extrapolate in the wrong direction. Test by checking whether
+         E(lambda) is monotone in lambda; if it is not, the model is wrong.
+
+      4. Readout error was never removed. Readout error is a bias at the
+         measurement layer that folding does not amplify, so extrapolation
+         cannot remove it and the residual bias survives with the amplified
+         variance. Always apply readout mitigation before ZNE, never instead
+         of it.
+
+      The diagnostic sequence that separates these: print the raw expectation
+      value at each scale factor with error bars. If the values are identical,
+      it is cause 1. If they are ordered and smooth but the mitigated error bar
+      is large, it is cause 2. If they are not monotone, it is cause 3. If they
+      are smooth and the extrapolated value misses by a constant offset
+      independent of the scale factors, it is cause 4.
+    followUps:
+      - How would you distinguish coherent from incoherent error on their device?
+      - What shot allocation across scale factors minimises the variance of the final estimate?
+      - When is exponential extrapolation the better model, and how would you decide?
+    commonMistakes:
+      - Comparing mitigated and unmitigated point estimates without error bars, which cannot distinguish added variance from added bias.
+      - Folding before transpilation, so the amplified circuits are optimised back to the original.
+      - Applying ZNE while leaving readout error uncorrected, which leaves a bias that extrapolation is structurally unable to remove.
+    references:
+      - label: "LaRose et al, Mitiq: A software package for error mitigation on noisy quantum computers"
+        url: https://arxiv.org/abs/2009.04417
+      - label: Mitiq documentation
+        url: https://mitiq.readthedocs.io/
+
+  - id: iq-059
+    title: Explain probabilistic error cancellation and cost it
+    kind: coding
+    prompt: |
+      Describe probabilistic error cancellation: what it assumes, what it
+      produces, and what it costs. Contrast it with zero-noise extrapolation
+      on the specific axes of bias, variance and calibration burden.
+    difficulty: hard
+    pattern: Error mitigation and repetition codes
+    topics: [probabilistic-error-cancellation, quasiprobability, tomography, error-mitigation]
+    companies: [IBM, Q-CTRL, Google Quantum AI, Quantinuum]
+    modelAnswer: |
+      Probabilistic error cancellation writes the ideal gate as a
+      quasiprobability combination of noisy gates that you can actually run.
+      If the noise channel is known, the inverse channel is well defined as a
+      linear map but is not itself a physical channel; it can, however, be
+      decomposed as sum_i q_i E_i with real coefficients q_i that sum to 1 but
+      are not all positive, and physical channels E_i. Sampling E_i with
+      probability |q_i|/gamma, where gamma = sum |q_i|, and weighting each
+      shot's outcome by gamma * sign(q_i) gives an unbiased estimator of the
+      ideal expectation value.
+
+      Compare the three axes directly.
+
+      Bias. PEC is unbiased by construction, provided the noise model is
+      correct. ZNE is biased by whatever the extrapolation model fails to
+      capture. This is PEC's one decisive advantage.
+
+      Variance. PEC's sampling overhead is gamma^2 per mitigated gate, and
+      gammas multiply across a circuit, so the shot overhead for a circuit is
+      exp(2 * sum of per-gate log gamma), an exponential in circuit volume. ZNE
+      has a fixed multiplier per scale factor set: 5 for two points, 19 for
+      three, 69 for four, independent of depth. So ZNE's overhead is constant
+      in depth and PEC's is exponential. At small depth PEC wins on accuracy;
+      past some crossover it is unaffordable.
+
+      Calibration burden. PEC needs an accurate characterisation of the noise
+      channel for every gate you intend to invert, which in practice means
+      gate set tomography or a structured learning procedure such as sparse
+      Pauli-Lindblad learning. That is a substantial experiment that must be
+      repeated as the device drifts. ZNE needs no noise model at all, only the
+      ability to fold gates. That difference in operational burden is usually
+      what decides which one a team actually deploys.
+
+      The honest summary: PEC is the more principled method and the less
+      practical one at depth. Use it on short circuits where an unbiased
+      estimate matters and the noise model is trustworthy. Use ZNE when you
+      need something that works today at moderate depth with no
+      characterisation campaign. Use readout mitigation and dynamical decoupling
+      regardless, because they are nearly free.
+    followUps:
+      - What does gamma equal for a single-qubit depolarising channel with error rate p?
+      - How would sparse Pauli-Lindblad noise learning reduce the calibration burden?
+      - At what circuit depth does PEC become unaffordable on a device with 1 percent two-qubit error?
+    commonMistakes:
+      - Calling PEC unbiased without the qualifier that it is unbiased only if the noise model is correct. Model error reintroduces bias.
+      - Quoting the sampling overhead as gamma rather than gamma squared, understating the shot cost.
+      - Ignoring the characterisation cost, which is often the reason a team cannot use PEC even where it would win.
+    references:
+      - label: Temme, Bravyi and Gambetta, Error mitigation for short-depth quantum circuits
+        url: https://arxiv.org/abs/1612.02058
+      - label: Endo et al, Hybrid quantum-classical algorithms and quantum error mitigation
+        url: https://arxiv.org/abs/2011.01382
+
+  - id: iq-060
+    title: Design a repetition code experiment that proves the code works
+    kind: coding
+    prompt: |
+      You have hardware with roughly 1 percent single-qubit error and want to
+      publish a claim that your distance 3 repetition code memory beats the
+      unencoded qubit. Design the experiment, state the metric, and say what
+      would falsify the claim.
+    difficulty: hard
+    pattern: Error mitigation and repetition codes
+    topics: [experiment-design, repetition-code, benchmarking, falsifiability]
+    companies: [IBM, Google Quantum AI, Alice and Bob, Quantinuum]
+    modelAnswer: |
+      The metric is logical error rate per round of syndrome extraction, and
+      the comparison is against the physical error rate of the single best
+      qubit on the device over the same wall-clock duration. Both halves of
+      that sentence matter: per round, and against the best qubit, not the
+      average.
+
+      Experiment structure. Prepare the logical state, run R rounds of syndrome
+      extraction with R swept from 1 to a few tens, decode offline over the
+      space-time graph, then measure the data qubits transversally and compare
+      the decoded logical value against the prepared one. Fit the logical error
+      probability as a function of R; it should be
+      (1 - exp(-2 * epsilon_L * R))/2, and epsilon_L is the number you report.
+
+      What the theory predicts. With perfect syndrome measurement and p = 0.01,
+      p_L = 3p^2 - 2p^3 = 0.000298 per round, about 34 times better than the
+      unencoded 0.01. In reality syndrome extraction uses two CNOTs and a
+      measurement per stabilizer per round, so the effective per-round error is
+      dominated by those operations, not by data qubit idling. If the CNOT
+      error is also near 1 percent, the syndrome circuit contributes more error
+      than it removes and the encoded memory can easily be worse than the
+      physical one. That is the honest prior going in.
+
+      Controls that must be in the experiment or the claim is not credible:
+
+      * Both bases. The repetition code protects one basis only. Prepare and
+        measure in the protected basis, and separately in the unprotected basis,
+        and report both. A claim that only reports the protected basis is
+        measuring the code doing the one thing it can do.
+      * Round scaling. Report epsilon_L per round, not total error for one
+        fixed R. Total error at small R can be made to look good by choosing R.
+      * Distance scaling. Run distance 3 and distance 5 on the same qubits and
+        show the logical error rate falls. If it rises, you are above threshold
+        and the code is not working, regardless of how the distance 3 number
+        compares to a physical qubit.
+      * The right baseline. The unencoded comparison must be an idle physical
+        qubit held for the same wall clock time with the same dynamical
+        decoupling applied, not a qubit measured immediately.
+
+      What would falsify the claim: logical error rate rising with distance;
+      the unprotected basis degrading faster than 1/n would explain; the
+      apparent advantage disappearing when the baseline qubit is given the same
+      dynamical decoupling; or the decoder being tuned on the same data it is
+      evaluated on, which is the most common way these results inflate.
+    followUps:
+      - How would you decode over the space-time graph, and what does it cost?
+      - Why must the number of syndrome rounds scale with the code distance?
+      - How would you show the result is not an artefact of a favourable qubit selection?
+    commonMistakes:
+      - Reporting total logical error for one fixed number of rounds rather than an error rate per round, which lets the number be tuned by choosing R.
+      - Comparing against an average physical qubit rather than the best one, which flatters the code.
+      - Reporting only the protected basis, hiding that the code makes the other basis worse.
+    references:
+      - label: Google Quantum AI, Suppressing quantum errors by scaling a surface code logical qubit
+        url: https://arxiv.org/abs/2207.06431
+      - label: Stim stabilizer circuit simulator
+        url: https://github.com/quantumlib/Stim

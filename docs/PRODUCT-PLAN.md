@@ -1,7 +1,7 @@
 # RedQuant — Product and Engineering Plan
 
 **One line.** The platform where you learn quantum computing by building it: a
-306 lesson curriculum benchmarked against 20 institutional syllabi, a circuit
+331 lesson curriculum benchmarked against 20 institutional syllabi, a circuit
 builder that simulates as you type, autograded labs, weekly rated contests, and
 an AI tutor that can read your circuit.
 
@@ -15,13 +15,13 @@ the field.
 ## Feature inventory
 
 ### Learn
-- 8 tracks, 64 modules, 306 lessons over a prerequisite DAG (not a playlist).
+- 8 tracks, 74 modules, 331 lessons over a prerequisite DAG (not a playlist).
 - Six lesson types: concept, interactive, lab, drill, checkpoint, project.
 - Typeset theory with KaTeX, marginalia definitions, and per-claim numerical
   verification the reader can re-run.
 - Spaced-repetition drills generated per module, with a forgetting-curve schedule.
 - Seven persona roadmaps, plus a personalised path from the mastery model.
-- Placement test that writes directly into the DAG and can skip up to 25 lessons.
+- Placement test that writes directly into the DAG and can skip up to 34 lessons.
 
 ### Build
 - Drag-and-drop circuit builder: 38 gates, multi-qubit drag, controls, barriers,
@@ -91,14 +91,14 @@ without verification output.
 
 ## Content production plan
 
-Authoring 306 lessons is a content-operations problem, not a coding problem. The
-plan separates *catalogue* (all 306 nodes, machine-readable, with objectives,
+Authoring 331 lessons is a content-operations problem, not a coding problem. The
+plan separates *catalogue* (all 331 nodes, machine-readable, with objectives,
 prerequisites, sources and assessment spec) from *authored prose*.
 
 | Wave | Scope | Who |
 |---|---|---|
-| W1 | Full catalogue: all 306 nodes with objectives, DAG edges, source citations, lab specs | in this build |
-| W2 | T0 + T1 fully authored (87 lessons), all labs with reference solutions and hidden tests | in this build (partial: see BUILD-STATUS.md) |
+| W1 | Full catalogue: all 331 nodes with objectives, DAG edges, source citations, lab specs | in this build |
+| W2 | T0 + T1 fully authored (92 lessons), all labs with reference solutions and hidden tests | in this build (partial: see BUILD-STATUS.md) |
 | W3 | T2, T3 authored | subject-matter authors, 8 weeks |
 | W4 | T4, T5, T6, T7 authored | 12 weeks |
 | W5 | Localisation, video, accessibility pass | 8 weeks |

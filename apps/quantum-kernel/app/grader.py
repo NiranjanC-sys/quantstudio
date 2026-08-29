@@ -683,8 +683,13 @@ def _check_distribution(a: DistributionClose, ctx: GradeContext) -> AssertionOut
             detail,
         )
 
+    # `sorted` before `max` is not cosmetic: on a tie `max` returns the first
+    # maximal element in iteration order, and set iteration order depends on
+    # PYTHONHASHSEED. Without it, a two-outcome distribution that is equally
+    # wrong on both could name a different outcome on a rerun of the same
+    # seeded contest submission.
     worst = max(
-        set(observed) | set(expected),
+        sorted(set(observed) | set(expected)),
         key=lambda k: abs(observed.get(k, 0.0) - expected.get(k, 0.0)),
     )
     parts = [

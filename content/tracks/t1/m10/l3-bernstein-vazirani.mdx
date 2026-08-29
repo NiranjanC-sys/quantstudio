@@ -1,0 +1,205 @@
+---
+id: t1.m10.l3
+title: Bernstein-Vazirani
+type: concept
+track: t1
+module: t1.m10
+level: L1
+minutes: 13
+objectives:
+  - Show that one query to a linear oracle recovers the whole hidden string
+  - Derive the output state as the basis state labelled by the hidden string
+  - Explain why the classical query cost is exactly n
+prerequisites:
+  - t1.m10.l2
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+tags: [algorithms, bernstein-vazirani]
+---
+
+Deutsch-Jozsa returned one bit and threw away a whole measured string. This
+lesson keeps the string. Change the promise from "constant or balanced" to
+"linear with an unknown coefficient vector", and the same circuit, unmodified,
+reads out all $n$ unknown bits in a single query. Classically you need $n$
+queries and there is a clean information-theoretic reason why.
+
+## The promise
+
+There is a hidden string $s \in \{0,1\}^n$, and the oracle computes
+
+$$
+f(x) = s \cdot x = s_0 x_0 \oplus s_1 x_1 \oplus \cdots \oplus s_{n-1} x_{n-1},
+$$
+
+the inner product modulo 2. Find $s$.
+
+Every such $f$ is either constant, when $s$ is the all-zeros string, or balanced,
+for every other $s$. So Bernstein-Vazirani inputs are a subset of Deutsch-Jozsa
+inputs, and the same circuit applies. The difference is what you do with the
+answer.
+
+<Margin label="Building the oracle">
+$U_f\ket{x}\ket{y} = \ket{x}\ket{y \oplus s\cdot x}$ is one CNOT from each query
+qubit $i$ with $s_i = 1$ onto the answer qubit. The oracle circuit therefore has
+exactly $|s|$ two-qubit gates, which is how the figures below encode the secret.
+</Margin>
+
+## The derivation
+
+Same three steps. Answer qubit in $\ket{-}$, Hadamards on the query register,
+oracle once, Hadamards again.
+
+Kickback turns the oracle into a phase:
+
+$$
+U_f \ket{x}\ket{-} = (-1)^{s \cdot x} \ket{x}\ket{-}.
+$$
+
+So after the oracle the query register holds
+
+$$
+\frac{1}{\sqrt{2^n}} \sum_x (-1)^{s\cdot x} \ket{x}.
+$$
+
+Apply the second Hadamard layer and collect the amplitude of the outcome $z$:
+
+$$
+A_z = \frac{1}{2^n} \sum_x (-1)^{s \cdot x} (-1)^{x \cdot z}
+    = \frac{1}{2^n} \sum_x (-1)^{x \cdot (s \oplus z)} .
+$$
+
+Now evaluate that sum. If $s \oplus z$ is the all-zeros string, every term is
+$+1$ and the sum is $2^n$, giving $A_z = 1$. Otherwise $s \oplus z$ has at least
+one bit set, say bit $j$; pair every $x$ with the string $x$ obtained by flipping
+bit $j$, the two members of each pair contribute $+1$ and $-1$, and the sum is
+exactly $0$.
+
+$$
+A_z = \begin{cases} 1 & z = s \\ 0 & z \ne s \end{cases}
+$$
+
+The output state is the basis state $\ket{s}$. Measure it and read the secret.
+There is no probability to bound and no repetition to schedule.
+
+## Reading a four-bit secret
+
+Take $s = 1011$: four query qubits, one answer qubit, and CNOTs from query qubits
+0, 2 and 3.
+
+<Circuit
+  caption="Bernstein-Vazirani with the hidden string 1011. The query register reads 1011 with probability 1."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "bv-1011",
+    qubits: 5,
+    clbits: 4,
+    ops: [
+      { id: "x", gate: "x", targets: [4] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "h3", gate: "h", targets: [3] },
+      { id: "h4", gate: "h", targets: [4] },
+      { id: "o0", gate: "x", targets: [4], controls: [0] },
+      { id: "o2", gate: "x", targets: [4], controls: [2] },
+      { id: "o3", gate: "x", targets: [4], controls: [3] },
+      { id: "g0", gate: "h", targets: [0] },
+      { id: "g1", gate: "h", targets: [1] },
+      { id: "g2", gate: "h", targets: [2] },
+      { id: "g3", gate: "h", targets: [3] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] },
+      { id: "m2", gate: "measure", targets: [2], cbits: [2] },
+      { id: "m3", gate: "measure", targets: [3], cbits: [3] }
+    ]
+  }}
+/>
+
+The two surviving strings are $\ket{10110}$ and $\ket{10111}$ at $0.5$ each. The
+first four labels are the query register and they read $1011$ in both, which is
+$s$. The fifth label is the answer qubit, still in $\ket{-}$, still untouched.
+
+Change the oracle and the reading tracks it. With CNOTs from qubits 1 and 2 only,
+the hidden string is $0110$:
+
+<Circuit
+  caption="The same circuit with CNOTs from query qubits 1 and 2. The query register now reads 0110."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "bv-0110",
+    qubits: 5,
+    clbits: 4,
+    ops: [
+      { id: "x", gate: "x", targets: [4] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "h3", gate: "h", targets: [3] },
+      { id: "h4", gate: "h", targets: [4] },
+      { id: "o1", gate: "x", targets: [4], controls: [1] },
+      { id: "o2", gate: "x", targets: [4], controls: [2] },
+      { id: "g0", gate: "h", targets: [0] },
+      { id: "g1", gate: "h", targets: [1] },
+      { id: "g2", gate: "h", targets: [2] },
+      { id: "g3", gate: "h", targets: [3] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] },
+      { id: "m2", gate: "measure", targets: [2], cbits: [2] },
+      { id: "m3", gate: "measure", targets: [3], cbits: [3] }
+    ]
+  }}
+/>
+
+Surviving strings $\ket{01100}$ and $\ket{01101}$, query register $0110$. And
+with no CNOTs at all the hidden string is $0000$, the constant case, and the query
+register reads all zeros, which is the Deutsch-Jozsa answer arriving as a special
+case.
+
+## Why classical needs exactly $n$
+
+**Upper bound.** Query $f$ on the standard basis vectors. The string with a 1 in
+position $i$ and 0 elsewhere gives $f(e_i) = s_i$. Do that $n$ times and you have
+every bit of $s$.
+
+**Lower bound.** Each classical query returns a single bit, so $k$ queries return
+at most $k$ bits of information. There are $2^n$ possible values of $s$ and they
+are all consistent with each other until distinguished, so identifying $s$
+requires at least $n$ bits, hence at least $n$ queries. The bound holds for
+randomised algorithms too, up to the usual constant for allowing error.
+
+So the separation is $n$ against 1, exact and provable, and unlike Deutsch-Jozsa
+it does not evaporate when you allow the classical algorithm to be randomised: $n$
+queries are needed either way. What it is not is exponential. Bernstein-Vazirani
+buys a linear factor, which is real but modest.
+
+<Callout tone="note" title="What the algorithm actually is">
+$H^{\otimes n}$ is the Fourier transform over the group $\{0,1\}^n$ under XOR, and
+$(-1)^{s \cdot x}$ is exactly one of its characters. So the algorithm is: encode
+the secret as a character, then Fourier transform to read off which character it
+was. That framing is the one that generalises, first to Simon in the next lesson
+and then to the whole hidden subgroup framework in T2.M6.
+</Callout>
+
+<Check question="An oracle computes $f(x) = s \cdot x \oplus 1$, the linear function with a constant offset. What does the circuit return?">
+Still $s$, with probability 1. The extra $\oplus 1$ multiplies every term of the
+superposition by $-1$, which is a global phase and unobservable, so every amplitude
+$A_z$ is negated and every probability is unchanged. You can see it in the figures:
+the two surviving amplitudes would flip from $+0.7071$ and $-0.7071$ to $-0.7071$
+and $+0.7071$, and the probabilities stay at $0.5$ each. The algorithm recovers
+$s$ but cannot tell you the offset bit, for the same reason Deutsch cannot tell
+$f(x) = 0$ from $f(x) = 1$.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), which
+  frames Bernstein-Vazirani as Fourier sampling over $\{0,1\}^n$ and sets up the
+  character-orthogonality argument used in the derivation.
+- [Microsoft Quantum Katas](https://github.com/microsoft/QuantumKatas), whose
+  oracle kata builds the linear oracle as one CNOT per set bit, exactly as the
+  figures above do.

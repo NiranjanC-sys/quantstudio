@@ -1,0 +1,238 @@
+---
+id: t1.m9.l4
+title: Interference as the Engine of Every Speedup
+type: concept
+track: t1
+module: t1.m9
+level: L1
+minutes: 14
+objectives:
+  - Trace the cancellation of wrong answers in a two-path interference calculation
+  - Explain why a quantum algorithm with no interference gives nothing over sampling
+  - Identify the interference step in Deutsch, Grover and phase estimation
+prerequisites:
+  - t1.m9.l3
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: Matuschak & Nielsen, Quantum Computing for the Very Curious
+    url: https://quantum.country/qcvc
+tags: [phase, interference]
+---
+
+The popular explanation of quantum speedup is that a superposition tries every
+answer at once. That explanation is worse than useless, because it predicts an
+exponential speedup for every problem and there is no such thing. A measurement
+returns one basis state, chosen with probability equal to a squared amplitude,
+and "trying everything" buys nothing unless the wrong answers can be made to
+cancel. Cancellation is what this lesson is about, and it is the only thing in
+the box.
+
+## Amplitudes add, probabilities do not
+
+Here is the rule that separates quantum from randomised computation. To find the
+amplitude of an outcome, sum the amplitudes of every path that reaches it, then
+square:
+
+$$
+\Pr[y] = \Big| \sum_{\text{paths } p \to y} A_p \Big|^2 .
+$$
+
+A classical randomised computation has the same structure with one difference:
+the path weights are probabilities, which are non-negative, so the sum can only
+grow. Quantum path weights are complex, so two paths of equal magnitude and
+opposite sign contribute nothing at all.
+
+<Margin label="Back to T0.M1">
+This is the $\ell_1$ against $\ell_2$ distinction from the very first lesson of
+T0, cashed out. Non-negative weights summing to 1 can never cancel. Complex
+weights whose squares sum to 1 can.
+</Margin>
+
+## Two paths, one gate apart
+
+The smallest complete example is two Hadamards. Start at $\ket{0}$ and ask for
+the amplitude of $\ket{1}$ at the end. There are exactly two paths:
+
+$$
+\ket{0} \to \ket{0} \to \ket{1}: \quad
+\frac{1}{\sqrt2} \cdot \frac{1}{\sqrt2} = +\half,
+$$
+
+$$
+\ket{0} \to \ket{1} \to \ket{1}: \quad
+\frac{1}{\sqrt2} \cdot \left(-\frac{1}{\sqrt2}\right) = -\half.
+$$
+
+They cancel exactly. The amplitude of $\ket{1}$ is $0$, so the probability is $0$.
+
+<Circuit
+  caption="Two Hadamards. The two paths to |1> cancel and the qubit is back at |0> with certainty."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "two-paths-cancel",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "a", gate: "h", targets: [0] },
+      { id: "b", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+Now put a $Z$ between them. It flips the sign of the $\ket{1}$ leg, which flips
+the sign of the second path:
+
+$$
++\half \;\longrightarrow\; +\half, \qquad
+-\half \;\longrightarrow\; +\half,
+$$
+
+so the amplitude of $\ket{1}$ becomes $1$ and the probability becomes $1$.
+
+<Circuit
+  caption="The same two paths with a Z in the middle. Now they add rather than cancel, and the outcome is certain."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "two-paths-add",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "a", gate: "h", targets: [0] },
+      { id: "z", gate: "z", targets: [0] },
+      { id: "b", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+One gate changed a sign on one path, and a certain outcome became the opposite
+certain outcome. No classical randomised process does that, because there is no
+classical operation that turns a probability negative.
+
+## The same calculation on $2^n$ paths
+
+Deutsch-Jozsa is the two-path calculation with $2^n$ paths. After the first
+Hadamard layer and the phase oracle the state of the query register is
+
+$$
+\frac{1}{\sqrt{2^n}} \sum_{x} (-1)^{f(x)} \ket{x},
+$$
+
+and the second Hadamard layer sends the amplitude of the all-zeros outcome to
+
+$$
+A_{0\cdots0} = \frac{1}{2^n} \sum_{x \in \{0,1\}^n} (-1)^{f(x)} .
+$$
+
+Every one of the $2^n$ terms is $\pm 1$. If $f$ is constant they all have the same
+sign, the sum is $\pm 2^n$, and $|A|^2 = 1$: the all-zeros string is certain. If
+$f$ is balanced, exactly half are $+1$ and half are $-1$, the sum is $0$, and
+$|A|^2 = 0$: the all-zeros string is impossible.
+
+<Circuit
+  caption="Deutsch-Jozsa on three query qubits with a constant oracle. The query register reads 000 with probability 1; the ancilla stays in |->."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "dj-constant-interference",
+    qubits: 4,
+    clbits: 3,
+    ops: [
+      { id: "x", gate: "x", targets: [3] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "h3", gate: "h", targets: [3] },
+      { id: "g0", gate: "h", targets: [0] },
+      { id: "g1", gate: "h", targets: [1] },
+      { id: "g2", gate: "h", targets: [2] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] },
+      { id: "m2", gate: "measure", targets: [2], cbits: [2] }
+    ]
+  }}
+/>
+
+Only $\ket{0000}$ and $\ket{0001}$ appear, each at $0.5$, so the three measured
+query bits are $000$ with probability 1. Seven of the eight possible query
+outcomes have been cancelled to nothing.
+
+## Delete the interference and watch the speedup disappear
+
+Take a balanced oracle, $f(x) = x_0$, implemented as a CNOT from qubit 0 onto the
+$\ket{-}$ ancilla. Measure the query register *before* the second Hadamard layer:
+
+<Circuit
+  caption="Same oracle, measured before the final Hadamards. All sixteen basis states at 6.25% each: the query register is uniform and tells you nothing."
+  show={['probabilities']}
+  ir={{
+    version: 1,
+    name: "dj-without-interference",
+    qubits: 4,
+    clbits: 3,
+    ops: [
+      { id: "x", gate: "x", targets: [3] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "h3", gate: "h", targets: [3] },
+      { id: "o", gate: "x", targets: [3], controls: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] },
+      { id: "m2", gate: "measure", targets: [2], cbits: [2] }
+    ]
+  }}
+/>
+
+Sixteen basis states, each at probability $0.0625$. The query register is
+uniform. The oracle ran, its answer is in the statevector as a sign pattern on
+half the amplitudes, and measuring here throws all of it away. What you have
+built is an expensive fair coin: exactly the sampling you could have done
+classically, for the price of a cryogenic refrigerator.
+
+<Callout tone="gotcha" title="The test to apply to any speedup claim">
+Ask where the wrong answers cancel. If nothing in the circuit produces
+destructive interference between paths leading to the same outcome, the output
+distribution is one a classical sampler could match, and there is no speedup to
+explain.
+</Callout>
+
+## Where the interference step lives
+
+Three algorithms, three names for the same layer.
+
+**Deutsch and Deutsch-Jozsa.** The final $H^{\otimes n}$. Before it the answer is
+a sign pattern; after it the answer is an amplitude.
+
+**Grover.** The diffuser, $2\ket{s}\bra{s} - I$, usually described as inversion
+about the mean. The oracle marks the target with a minus sign, and the diffuser
+converts that one sign into slightly more amplitude on the target and slightly
+less everywhere else. The reason Grover needs $O(\sqrt{N})$ iterations rather than
+one is that each round of interference moves the amplitude only a little.
+
+**Phase estimation.** The inverse quantum Fourier transform. Phase kickback writes
+$e^{2\pi i \theta k}$ onto the $k$-th basis state of the control register, and the
+inverse QFT is precisely the operator whose interference pattern concentrates that
+onto the basis state closest to $\theta$.
+
+Different problems, different oracles, same third step: convert a phase pattern
+into an amplitude pattern, so that the answers you do not want cancel.
+
+<Check question="A colleague proposes an algorithm: prepare the uniform superposition over $2^n$ inputs, apply a phase oracle, and measure. What speedup does it give?">
+None. The phase oracle is diagonal, so it changes no magnitude, and measuring
+immediately afterwards returns a uniformly random $x$ from $\{0,1\}^n$, exactly as
+in the figure above. Every phase the oracle wrote is squared away by the Born rule.
+The proposal is missing the third step, and the third step is the algorithm; the
+superposition and the oracle are only the setup that makes interference possible.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), for the
+  path-sum framing and the discipline of asking where the cancellation happens
+  before believing a speedup.
+- [Matuschak & Nielsen, *Quantum Computing for the Very Curious*](https://quantum.country/qcvc),
+  for the explicit rejection of "tries every answer at once" and the two-path
+  Hadamard calculation used here.

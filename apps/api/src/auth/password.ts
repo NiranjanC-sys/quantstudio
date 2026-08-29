@@ -58,11 +58,18 @@ export function validatePassword(
 
 /**
  * `@node-rs/argon2` declares `Algorithm`/`Version` as ambient const enums, which
- * `isolatedModules` cannot read. The numeric values are fixed by the Argon2
- * spec, so they are pinned here with the names they stand for.
+ * `isolatedModules` cannot read, so their ordinals are pinned here by name.
+ *
+ * Note the two different numbers for the same thing: the binding's `Version`
+ * enum is ordinal (`V0x10 = 0`, `V0x13 = 1`), while the PHC string spells the
+ * same version as `v=19`. Conflating them makes `hash()` throw at runtime and
+ * `needsRehash()` rehash every digest for ever, so they are separate constants.
  */
 const ARGON2ID = 2;
-const ARGON2_VERSION_0X13 = 19;
+/** `Version.V0x13`, the ordinal the native binding expects in `Options`. */
+const ARGON2_VERSION_ENUM_V0X13 = 1;
+/** The same version as it appears in a PHC digest: `$argon2id$v=19$…`. */
+const PHC_VERSION_0X13 = 19;
 
 /** `$argon2id$v=19$m=65536,t=3,p=4$<salt>$<hash>` */
 const PHC_PATTERN = /^\$argon2(id|i|d)\$v=(\d+)\$m=(\d+),t=(\d+),p=(\d+)\$/;
@@ -97,7 +104,7 @@ export interface PasswordHasher {
 export function createPasswordHasher(env: Env): PasswordHasher {
   const options: Options = {
     algorithm: ARGON2ID as NonNullable<Options['algorithm']>,
-    version: ARGON2_VERSION_0X13 as NonNullable<Options['version']>,
+    version: ARGON2_VERSION_ENUM_V0X13 as NonNullable<Options['version']>,
     memoryCost: env.ARGON2_MEMORY_KIB,
     timeCost: env.ARGON2_TIME_COST,
     parallelism: env.ARGON2_PARALLELISM,
@@ -121,7 +128,7 @@ export function createPasswordHasher(env: Env): PasswordHasher {
       if (!parsed) return true;
       return (
         parsed.variant !== 'argon2id' ||
-        parsed.version !== ARGON2_VERSION_0X13 ||
+        parsed.version !== PHC_VERSION_0X13 ||
         parsed.memoryCost < env.ARGON2_MEMORY_KIB ||
         parsed.timeCost < env.ARGON2_TIME_COST ||
         parsed.parallelism !== env.ARGON2_PARALLELISM

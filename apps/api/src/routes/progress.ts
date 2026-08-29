@@ -293,7 +293,7 @@ export const progressRoutes: FastifyPluginAsync = async (app) => {
     const input = readBody(request, completeSchema);
 
     const graph = await loadLessonGraph(db, redis.client);
-    const result = await completeLesson(db, redis.client, graph, {
+    const result = await completeLesson(db, graph, {
       userId: auth.userId,
       lessonId,
       score: input.score,

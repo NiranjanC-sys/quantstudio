@@ -493,7 +493,7 @@ export const labRoutes: FastifyPluginAsync = async (app) => {
     let completion: Awaited<ReturnType<typeof completeLesson>> | null = null;
     if (input.passed) {
       const graph = await loadLessonGraph(db, redis.client);
-      completion = await completeLesson(db, redis.client, graph, {
+      completion = await completeLesson(db, graph, {
         userId: submission.userId,
         lessonId: submission.lessonId,
         score: input.score,

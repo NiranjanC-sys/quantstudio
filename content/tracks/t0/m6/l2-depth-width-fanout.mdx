@@ -1,0 +1,174 @@
+---
+id: t0.m6.l2
+title: "Circuit Depth, Width, Fan-Out"
+type: concept
+track: t0
+module: t0.m6
+level: L0
+minutes: 12
+objectives:
+  - Compute the depth and width of a given Boolean circuit
+  - Build a fan-out tree of depth log n and explain why quantum circuits cannot copy a wire
+  - Compare a ripple-carry adder and a carry-lookahead adder on depth and gate count
+prerequisites: [t0.m6.l1]
+sources:
+  - label: O'Donnell, 15-859BB Quantum Computation (CMU)
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: Preskill, Ph219/CS219 Quantum Computation lecture notes (Caltech)
+    url: http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html
+tags: [classical, cost]
+---
+
+Two circuits computing the same function can differ by orders of magnitude in
+how long they take and how much hardware they occupy. Counting gates measures
+one of those and not the other, because gates on independent wires run at the
+same time. The two numbers that matter are depth and width, and on quantum
+hardware depth is the one that kills you, because every layer of gates is more
+time for the state to decohere.
+
+## Three cost measures
+
+For a circuit written as a directed acyclic graph of gates:
+
+- **Size** is the number of gates. It is the total work.
+- **Depth** is the number of gates on the longest path from an input to an
+  output. It is the time, assuming unlimited parallelism.
+- **Width** is the maximum number of wires alive at any one point. It is the
+  memory, and on quantum hardware it is the qubit count.
+
+Consider computing $a_1 \land a_2 \land a_3 \land a_4$ with 2-input ANDs. The
+left-associated chain has size 3 and depth 3. The balanced tree has size 3 and
+depth 2. Same gate count, one fewer layer, and the gap grows: for $n$ inputs the
+chain has depth $n-1$ while the tree has depth $\lceil \log_2 n \rceil$.
+
+<Margin label="Depth is not fungible with size">
+A circuit of size $s$ has depth at most $s$ and at least $\log_2 s$ when gates
+have bounded fan-in, because each gate can at most double the number of inputs
+influencing a wire. Optimising for one measure routinely worsens the other, so a
+compiler always needs to know which one you are paying for.
+</Margin>
+
+## Fan-out
+
+A classical wire can be split and fed to as many gates as you like. Physically
+that split has a cost, and if each buffer drives at most 2 loads, delivering one
+bit to $n$ places needs a tree of $n - 1$ buffers and depth
+$\lceil \log_2 n\rceil$. For $n = 8$ that is 7 buffers and 3 levels.
+
+Quantum circuits cannot do this at all for unknown states. The no-cloning
+theorem, proved in T1.M5, says no unitary $U$ satisfies
+$U(\ket{\psi}\otimes\ket{0}) = \ket{\psi}\otimes\ket{\psi}$ for every
+$\ket{\psi}$. The CNOT gate looks like it should: it maps $\ket{00}$ to
+$\ket{00}$ and $\ket{10}$ to $\ket{11}$, copying a classical bit perfectly. Feed
+it a superposition and watch what happens instead.
+
+<Simulate
+  show="amplitudes"
+  caption="H on qubit 0 then CNOT. A copier would produce |+>|+>, which has four equal amplitudes. This has two."
+  ir={{
+    version: 1,
+    name: "cnot-is-not-a-copier",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "cx", gate: "x", targets: [1], controls: [0] }
+    ]
+  }}
+/>
+
+The result has amplitude $0.707107$ on $\ket{00}$ and on $\ket{11}$, and zero
+elsewhere. Two genuine copies of $\ket{+}$ would be the product state
+$\ket{+}\ket{+}$, which has amplitude $0.5$ on all four basis states, as the
+$H \otimes H$ figure in T0.M5.L1 shows. CNOT produced entanglement where you
+asked for duplication. Fan-out, free in every classical design, is simply not
+available.
+
+## Adders, two ways
+
+The classic depth-versus-size trade lives in addition. A **full adder** takes
+$a$, $b$ and a carry-in and produces
+
+$$
+s = a \oplus b \oplus c_{\text{in}},
+\qquad
+c_{\text{out}} = (a \land b) \lor \big(c_{\text{in}} \land (a \oplus b)\big).
+$$
+
+With 2-input gates that is two XORs, two ANDs and one OR: 5 gates. The path from
+$c_{\text{in}}$ to $c_{\text{out}}$ passes an AND and then an OR, so 2 gate
+delays.
+
+A **ripple-carry adder** chains $n$ of these. Size is $5n$ gates and the carry
+must propagate through every stage, giving depth about $2n$. For $n = 4$ that is
+20 gates and carry depth 8; for $n = 64$ it is 320 gates and carry depth 128.
+Cheap in hardware, and linear in time.
+
+A **carry-lookahead adder** computes the carries in parallel instead. Each
+position generates a carry when $g_i = a_i \land b_i$ and propagates one when
+$p_i = a_i \oplus b_i$, and the carry into position $i$ is a prefix computation
+over those pairs. Prefix sums over an associative operator can be done in
+$\Theta(\log n)$ depth using $\Theta(n \log n)$ cells. For $n = 64$ that is
+6 prefix levels instead of a 128-deep carry chain, bought with several times as
+many gates.
+
+| adder | size | depth |
+| --- | --- | --- |
+| ripple-carry, $n$ bits | $\Theta(n)$ | $\Theta(n)$ |
+| carry-lookahead, $n$ bits | $\Theta(n \log n)$ | $\Theta(\log n)$ |
+
+<Callout tone="note" title="The same trade appears in T2">
+Quantum arithmetic faces exactly this choice, with an extra constraint: the
+lookahead version needs ancilla qubits to hold the intermediate prefixes, so
+buying depth costs width as well as size. Resource estimates for Shor's
+algorithm are dominated by which adder you pick.
+</Callout>
+
+## Reading the numbers off a circuit
+
+The lesson figures on this platform report qubits, depth and gate count in the
+footer of every panel. Depth there is computed the standard way: a gate goes in
+the earliest layer after every gate it depends on, so gates on disjoint qubits
+share a layer. The two-qubit-gate count is reported separately because on real
+hardware a two-qubit gate is roughly an order of magnitude noisier and slower
+than a one-qubit gate, so it is the number that actually predicts fidelity.
+
+<Simulate
+  show="probabilities"
+  caption="Three independent single-qubit gates. Size is 3 but depth is 1, because none of them shares a qubit with another."
+  ir={{
+    version: 1,
+    name: "width-three-depth-one",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "x1", gate: "x", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] }
+    ]
+  }}
+/>
+
+Three gates, three qubits, depth 1. Chain the same three gates onto one qubit
+and the depth becomes 3 while the width drops to 1. Nothing about the gate list
+tells you which you have; only the dependency structure does.
+
+<Check question="A circuit computes the parity of 16 bits using 2-input XOR gates. What are its minimum size and minimum depth, and what is its width if it is built as a balanced tree?">
+Parity of $n$ bits needs $n - 1$ two-input XORs, so 15 gates, and no fewer:
+each gate reduces the count of live values by one, from 16 to 1.
+
+Minimum depth is $\lceil \log_2 16 \rceil = 4$, achieved by the balanced tree.
+The chain would also use 15 gates but have depth 15.
+
+Width at the widest point is 16, the inputs themselves. The tree halves the live
+count each level: 16, then 8, 4, 2, 1.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), for the
+  circuit-complexity framing of size, depth and the classical baseline against
+  which quantum circuits are compared.
+- [Preskill, Ph219](http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html),
+  chapter 6, where circuit depth and width become the resource accounting for
+  quantum algorithms and fault tolerance.

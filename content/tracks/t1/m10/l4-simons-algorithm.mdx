@@ -1,0 +1,215 @@
+---
+id: t1.m10.l4
+title: "Simon's Algorithm"
+type: concept
+track: t1
+module: t1.m10
+level: L1
+minutes: 15
+objectives:
+  - State the Simon promise and show that each run samples a y with y dot s equal to zero
+  - Explain why O(n) runs plus Gaussian elimination recover s with high probability
+  - Compare the exponential classical lower bound with the polynomial quantum cost
+prerequisites:
+  - t1.m10.l3
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: Watrous, Quantum Computation lecture notes
+    url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+tags: [algorithms, simon]
+---
+
+Deutsch-Jozsa gave an exponential separation that a randomised classical
+algorithm destroys in twenty queries. Bernstein-Vazirani gave a linear separation
+that survives randomisation. Simon's problem gives both at once: an exponential
+separation that no randomised classical algorithm can close. It is the first
+algorithm in this track that a complexity theorist takes seriously, and it is the
+direct ancestor of Shor.
+
+## The promise
+
+A function $f: \{0,1\}^n \to \{0,1\}^m$ is promised to be two-to-one with a
+hidden period: there is a non-zero $s \in \{0,1\}^n$ such that
+
+$$
+f(x) = f(y) \iff y = x \text{ or } y = x \oplus s .
+$$
+
+Find $s$. The inputs fall into $2^{n-1}$ pairs, each pair differing by $s$, and
+each pair sharing one output value. Nothing else about $f$ is known or assumed.
+
+<Margin label="Reading the promise">
+Setting $y = x \oplus s$ shows $f(x) = f(x \oplus s)$ for every $x$, so $s$ is a
+period under XOR. The "only if" half is what makes $f$ exactly two-to-one rather
+than merely periodic, and it is what makes the algorithm work.
+</Margin>
+
+## Each run samples a constraint
+
+The circuit is the familiar sandwich with one change: the output register is $m$
+qubits wide and is not put into $\ket{-}$, because we want $f$'s value written
+into it rather than kicked back as a phase.
+
+Hadamard the $n$ input qubits, apply $U_f\ket{x}\ket{0} = \ket{x}\ket{f(x)}$
+once, Hadamard the input qubits again, measure the input register.
+
+**After the oracle.** The state is
+$\frac{1}{\sqrt{2^n}} \sum_x \ket{x}\ket{f(x)}$. Group the $2^n$ terms into the
+$2^{n-1}$ pairs that share an output:
+
+$$
+\frac{1}{\sqrt{2^n}} \sum_{\text{pairs}} \big(\ket{x} + \ket{x \oplus s}\big) \ket{f(x)} .
+$$
+
+**After the second Hadamard layer.** Apply
+$H^{\otimes n}\ket{x} = \frac{1}{\sqrt{2^n}}\sum_z (-1)^{x\cdot z}\ket{z}$ to each
+pair:
+
+$$
+\ket{x} + \ket{x \oplus s} \;\longrightarrow\;
+\frac{1}{\sqrt{2^n}} \sum_z (-1)^{x \cdot z}\Big(1 + (-1)^{s \cdot z}\Big) \ket{z}.
+$$
+
+The bracket is the whole algorithm. It equals $2$ when $s \cdot z = 0$ and $0$
+when $s \cdot z = 1$. Every $z$ that fails the constraint is cancelled, exactly
+and completely, by the two members of every pair interfering destructively.
+
+So a measurement returns a uniformly random $z$ from the set
+$\{z : s \cdot z = 0 \bmod 2\}$, which is a subspace of dimension $n-1$
+containing $2^{n-1}$ strings. One run, one linear constraint on $s$.
+
+## Two runs you can watch
+
+Start with $n = 2$ and $s = 11$. Take $f(x_0 x_1) = x_0 \oplus x_1$, a single
+output bit: $f(00) = f(11) = 0$ and $f(01) = f(10) = 1$, so the pairs differ by
+$11$ as promised. The oracle is one CNOT from each input onto the output qubit.
+
+<Circuit
+  caption="Simon with n = 2 and hidden s = 11. Qubits 0 and 1 are the input, qubit 2 the output. Measured inputs are 00 or 11, each with probability 0.5."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "simon-n2",
+    qubits: 3,
+    clbits: 2,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "o0", gate: "x", targets: [2], controls: [0] },
+      { id: "o1", gate: "x", targets: [2], controls: [1] },
+      { id: "g0", gate: "h", targets: [0] },
+      { id: "g1", gate: "h", targets: [1] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] }
+    ]
+  }}
+/>
+
+Four surviving strings, each with amplitude $\pm 0.5$ and probability $0.25$. Read
+only the first two labels, which are the measured input register: $\ket{000}$ and
+$\ket{001}$ both give $z = 00$, and $\ket{110}$ and $\ket{111}$ both give
+$z = 11$. So $z \in \{00, 11\}$, each with total probability $0.5$, and both
+satisfy $s \cdot z = 0$ for $s = 11$. The strings $01$ and $10$, which would
+violate the constraint, never appear.
+
+Now $n = 3$ with $s = 110$. Take $f(x) = (x_0 \oplus x_1,\; x_2)$, which is
+unchanged when you flip both $x_0$ and $x_1$. Three input qubits, two output
+qubits.
+
+<Circuit
+  caption="Simon with n = 3 and hidden s = 110. The measured input register is one of 000, 001, 110, 111, each with probability 0.25."
+  show={['probabilities']}
+  ir={{
+    version: 1,
+    name: "simon-n3",
+    qubits: 5,
+    clbits: 3,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "o0", gate: "x", targets: [3], controls: [0] },
+      { id: "o1", gate: "x", targets: [3], controls: [1] },
+      { id: "o2", gate: "x", targets: [4], controls: [2] },
+      { id: "g0", gate: "h", targets: [0] },
+      { id: "g1", gate: "h", targets: [1] },
+      { id: "g2", gate: "h", targets: [2] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] },
+      { id: "m2", gate: "measure", targets: [2], cbits: [2] }
+    ]
+  }}
+/>
+
+Sixteen surviving strings at $0.0625$ each. Their first three labels take only
+four values, $000$, $001$, $110$ and $111$, each with total probability $0.25$.
+Check each against $s = 110$: the inner products are $0$, $0$, $1 + 1 = 0$ and
+$1 + 1 + 0 = 0$ modulo 2. Four of the eight possible readings are consistent with
+the constraint and the other four have been cancelled to nothing.
+
+## From constraints to $s$
+
+Each run gives one vector $z$ with $z \cdot s = 0$. Collect several and solve the
+homogeneous linear system over $\mathrm{GF}(2)$ by Gaussian elimination. Once the
+collected vectors span the full $(n-1)$-dimensional constraint space, the solution
+space is exactly $\{0, s\}$, and discarding the trivial solution leaves $s$.
+
+How many runs? The vectors are uniform over an $(n-1)$-dimensional space, so
+this is the classic question of how many random vectors span. With $k = n-1$ and
+$m$ samples the probability of spanning is
+$\prod_{j=0}^{k-1}\left(1 - 2^{\,j-m}\right)$:
+
+| runs, $n = 50$ | probability of spanning |
+| --- | --- |
+| $49$ | $0.288788$ |
+| $52$ | $0.880116$ |
+| $59$ | $0.999024$ |
+| $69$ | $0.999999$ |
+
+The bare minimum of $n-1$ runs works about 29% of the time, and every extra run
+roughly halves the remaining failure probability. Ten extra runs put you past one
+failure in a million, for any $n$. So $O(n)$ queries and $O(n^3)$ classical work
+for the elimination, and the algorithm is polynomial end to end.
+
+<Callout tone="gotcha" title="The zero vector is a legal sample">
+$z = 0\cdots0$ satisfies $s \cdot z = 0$ and is returned with probability
+$2^{-(n-1)}$ like any other member of the subspace. It carries no information and
+contributes nothing to the rank. Count useful samples by rank, not by runs.
+</Callout>
+
+## The classical side
+
+Classically you are searching for a collision. Query $f$ on distinct inputs until
+two of them return the same value; then those two inputs differ by $s$ and you are
+done. By the birthday bound, $2^{n/2}$ or so queries are needed before a collision
+becomes likely among $2^{n-1}$ possible outputs, and that intuition is provable:
+any randomised classical algorithm that finds $s$ with bounded error needs
+$\Omega(2^{n/2})$ queries.
+
+Put the two sides together for $n = 50$: about 60 quantum queries against roughly
+$2^{25}$, some 33 million, classical ones. That is the first exponential
+separation in this curriculum that randomisation does not erase, and the reason it
+matters historically is structural rather than practical. Simon's problem is
+period finding over $\{0,1\}^n$ under XOR. Replace that group with $\Z_N$ under
+addition, replace the Hadamard transform with the quantum Fourier transform over
+$\Z_N$, and the same algorithm becomes order finding, which is Shor's algorithm.
+
+<Check question="You run Simon four times on $n = 4$ and collect $z = 0000$, $1100$, $1100$ and $0011$. Can you determine $s$?">
+Not yet. The distinct non-zero vectors you hold are $1100$ and $0011$, so you have
+rank 2 out of the 3 constraints needed for $n = 4$. The solution space of
+$\{z \cdot s = 0\}$ for those two constraints has dimension $4 - 2 = 2$, so four
+candidates for $s$ remain: $0000$, $1100$, $0011$ and $1111$, of which three are
+non-zero and all are consistent. The repeated $1100$ and the zero vector added no
+rank at all, which is exactly the effect the table above accounts for. Run the
+circuit again until the rank reaches 3.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), whose
+  treatment runs XOR patterns straight into Simon and then into the Fourier
+  transform, which is the ordering this track follows.
+- [Watrous, Quantum Computation lecture notes](https://cs.uwaterloo.ca/~watrous/QC-notes/),
+  for the derivation of the constraint sampling and for the linear-algebra
+  post-processing stated as a rank condition.

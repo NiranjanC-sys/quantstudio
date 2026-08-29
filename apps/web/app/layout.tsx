@@ -9,7 +9,7 @@ const mono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['400', '500'], variabl
 export const metadata: Metadata = {
   title: { default: 'RedQuant', template: '%s · RedQuant' },
   description:
-    'Learn quantum computing by building it. A 306 lesson curriculum, a circuit builder that simulates as you type, autograded labs and weekly rated contests.',
+    'Learn quantum computing by building it. A 331 lesson curriculum, a circuit builder that simulates as you type, autograded labs and weekly rated contests.',
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'),
 };
 

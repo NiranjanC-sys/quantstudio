@@ -114,7 +114,9 @@ export function loggerOptions(level: string, isProduction: boolean) {
           userId: request.auth?.userId,
         };
       },
-      res(reply: FastifyReply) {
+      // Pino's reply serialiser is handed a narrowed view of the reply, so the
+      // parameter is typed structurally rather than as a full FastifyReply.
+      res(reply: { statusCode: number }) {
         return { statusCode: reply.statusCode };
       },
     },

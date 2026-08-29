@@ -1,0 +1,213 @@
+---
+id: t0.m5.l3
+title: "Qubit Ordering: Little-Endian vs Big-Endian"
+type: concept
+track: t0
+module: t0.m5
+level: L0
+minutes: 14
+objectives:
+  - State the RedQuant convention that qubit 0 is the most significant bit
+  - Convert an amplitude vector between the Cirq and Qiskit orderings
+  - Predict which basis state index a given bitstring names under each convention
+prerequisites: [t0.m5.l2]
+sources:
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+  - label: Cirq experiments and ReCirq (Google Quantum AI)
+    url: https://quantumai.google/cirq/experiments
+  - label: qBraid documentation
+    url: https://docs.qbraid.com/
+tags: [tensor, ordering]
+---
+
+You write a circuit that flips qubit 0 of three, run it in one SDK, and read the
+outcome `100`. You run the same circuit in another SDK and read `001`. Neither
+is wrong and nothing is broken. The two libraries disagree about which end of a
+bitstring qubit 0 lives at, and since the amplitude vector is indexed by that
+bitstring, they disagree about which slot of the vector holds which amplitude.
+This is the single most common source of silently wrong results in quantum
+software, so it gets a lesson.
+
+## The RedQuant convention
+
+Qubit 0 is the **most significant bit**. For $n$ qubits, the basis state with
+assignment $(q_0, q_1, \dots, q_{n-1})$ sits at index
+
+$$
+\operatorname{idx} = \sum_{q=0}^{n-1} q_q \, 2^{\,n-1-q},
+$$
+
+and conversely the value of qubit $q$ in basis index $i$ is
+
+$$
+q_q = \left\lfloor i / 2^{\,n-1-q} \right\rfloor \bmod 2 .
+$$
+
+Equivalently, the state vector is built as the Kronecker product in qubit order,
+
+$$
+\ket{\psi} = \ket{q_0} \otimes \ket{q_1} \otimes \cdots \otimes \ket{q_{n-1}},
+$$
+
+which is the direct consequence of the index formula in T0.M5.L1: the left
+factor moves slowest. A printed label like $\ket{011}$ therefore reads left to
+right as qubit 0, qubit 1, qubit 2. This is the convention of Nielsen and
+Chuang, of Cirq, and of every lecture course in the benchmark.
+
+<Margin label="Why we chose it">
+Big-endian is what the textbooks and the lectures use, so a learner reading a
+paper alongside a lesson never has to translate. The cost is that one popular
+SDK disagrees, and we pay that cost once, at the boundary, in a code generator
+rather than in a learner's head.
+</Margin>
+
+## The other convention
+
+Qiskit puts qubit 0 at the **least significant bit**:
+
+$$
+\operatorname{idx}_{\text{Qiskit}} = \sum_{q=0}^{n-1} q_q\, 2^{\,q},
+\qquad
+\ket{\psi} = \ket{q_{n-1}} \otimes \cdots \otimes \ket{q_1} \otimes \ket{q_0} .
+$$
+
+Its printed labels are also reversed relative to ours: the leftmost character is
+the highest-numbered qubit. So a single physical assignment gets two different
+strings and two different indices.
+
+Take three qubits with $q_0 = 1$ and $q_1 = q_2 = 0$.
+
+| | our label | our index | Qiskit label | Qiskit index |
+| --- | --- | --- | --- | --- |
+| $q_0 = 1$ only | $100$ | 4 | $001$ | 1 |
+| $q_2 = 1$ only | $001$ | 1 | $100$ | 4 |
+| $q_1 = 1$ only | $010$ | 2 | $010$ | 2 |
+
+Here is the first row on the actual simulator: an $X$ on qubit 0 of a
+three-qubit register.
+
+<Simulate
+  show="amplitudes"
+  caption="X applied to qubit 0 of three. Under our convention that is basis index 4, printed 100. Qiskit would print the same physical state as 001."
+  ir={{
+    version: 1,
+    name: "flip-qubit-zero",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "x0", gate: "x", targets: [0] }
+    ]
+  }}
+/>
+
+And the third row, an $X$ on qubit 2, lands on index 1:
+
+<Simulate
+  show="amplitudes"
+  caption="X applied to qubit 2 of three, giving basis index 1, printed 001. Qiskit prints this same state as 100."
+  ir={{
+    version: 1,
+    name: "flip-qubit-two",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "x2", gate: "x", targets: [2] }
+    ]
+  }}
+/>
+
+## Converting an amplitude vector
+
+Since the two conventions read the same bitstring in opposite directions, the
+amplitude at our index $i$ belongs at Qiskit index $\operatorname{rev}(i)$,
+where $\operatorname{rev}$ reverses the $n$-bit binary representation. The
+conversion is therefore a permutation of the $2^n$ entries, and it is its own
+inverse.
+
+For $n = 2$ the map is $0 \mapsto 0$, $1 \mapsto 2$, $2 \mapsto 1$,
+$3 \mapsto 3$, whose permutation matrix is
+
+$$
+P = \begin{pmatrix}
+1&0&0&0\\ 0&0&1&0\\ 0&1&0&0\\ 0&0&0&1
+\end{pmatrix},
+$$
+
+which is exactly the SWAP gate. For two qubits, changing convention is swapping
+them. For $n = 3$ it is the swap of qubits 0 and 2, leaving qubit 1 alone, which
+is why the middle row of the table above is the same in both columns.
+
+<Callout tone="gotcha" title="Palindromes hide the bug">
+The Bell state has amplitudes only on $00$ and $11$, both palindromes, so it
+looks identical in both conventions. So does any uniform superposition. A test
+suite built only from those states will pass under either convention and tell
+you nothing, which is how endianness bugs survive to production. Test with an
+asymmetric state such as $\ket{001}$.
+</Callout>
+
+## Gate matrices change too
+
+A two-qubit gate matrix is written in some basis ordering, so it changes with
+the convention. CNOT with control on qubit 0 and target on qubit 1 is, in our
+ordering,
+
+$$
+\mathrm{CNOT}_{0 \to 1} = \begin{pmatrix}
+1&0&0&0\\ 0&1&0&0\\ 0&0&0&1\\ 0&0&1&0
+\end{pmatrix},
+$$
+
+which leaves the block where $q_0 = 0$ alone and flips $q_1$ in the block where
+$q_0 = 1$. The same physical gate written in Qiskit's ordering is
+
+$$
+\mathrm{CNOT}^{\text{Qiskit}}_{0 \to 1} = \begin{pmatrix}
+1&0&0&0\\ 0&0&0&1\\ 0&0&1&0\\ 0&1&0&0
+\end{pmatrix} = P \,\mathrm{CNOT}_{0\to 1}\, P .
+$$
+
+Conjugating by the reversal permutation is the general rule for moving any
+operator between conventions.
+
+## What the platform does at the boundary
+
+RedQuant stores one convention and converts only when it must talk to something
+else. The Qiskit code generator maps our qubit $q$ to Qiskit qubit $n-1-q$, so
+the printed statevector and the sampled counts come back matching ours bit for
+bit. The same mapping runs in reverse when OpenQASM is parsed. Nothing in the
+simulator, the lesson content or the grader ever sees the other ordering, which
+is the general design rule: pick one convention, convert at the edge, and never
+let two conventions coexist inside a program.
+
+<Callout tone="warning" title="Endianness is not only an SDK issue">
+Hardware couplers, calibration tables and job result payloads all carry qubit
+indices, and a provider may label them differently again. When you address a
+device through an abstraction layer such as qBraid, the qubit index in your
+circuit and the physical qubit on the chip are related by a mapping you should
+be able to print, not assume.
+</Callout>
+
+<Check question="A four-qubit circuit produces the single basis state where qubits 1 and 3 are set. What is our label and index, and Qiskit's label and index?">
+The assignment is $(q_0, q_1, q_2, q_3) = (0,1,0,1)$.
+
+Ours: read the tuple left to right, so the label is $0101$ and the index is
+$0 \cdot 8 + 1 \cdot 4 + 0 \cdot 2 + 1 \cdot 1 = 5$.
+
+Qiskit: qubit $q$ carries weight $2^{q}$, so the index is
+$1 \cdot 2 + 1 \cdot 8 = 10$, and it prints the label with qubit 3 leftmost,
+which is $1010$.
+
+The two indices are $5$ and $10$, and $10$ is the 4-bit reversal of $5$, as the
+permutation rule requires.
+</Check>
+
+## Where this comes from
+
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses),
+  whose courses use the little-endian ordering that Qiskit implements.
+- [Cirq experiments, Google Quantum AI](https://quantumai.google/cirq/experiments),
+  which uses the big-endian ordering RedQuant adopts.
+- [qBraid documentation](https://docs.qbraid.com/), for the multi-backend
+  addressing model in which one circuit is dispatched to providers that do not
+  agree with each other on qubit labelling.

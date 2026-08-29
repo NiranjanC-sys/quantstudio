@@ -15,6 +15,13 @@
       "when": 1787974906956,
       "tag": "0001_partitions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788024451431,
+      "tag": "0002_instructor",
+      "breakpoints": true
     }
   ]
 }

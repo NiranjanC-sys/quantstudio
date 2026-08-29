@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { CATALOG_COUNTS } from '@redquant/content';
 
 test.describe('site', () => {
   test('the landing page runs the real engine in its hero', async ({ page }) => {
@@ -13,7 +14,11 @@ test.describe('site', () => {
   test('the curriculum page reports real authored progress', async ({ page }) => {
     await page.goto('/curriculum');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('curriculum');
-    await expect(page.locator('.rq-progress-line')).toContainText('of 306 lessons');
+    // Read the total from the catalogue rather than hardcoding it, so the
+    // assertion cannot drift out of step with the curriculum.
+    await expect(page.locator('.rq-progress-line')).toContainText(
+      `of ${CATALOG_COUNTS.lessons} lessons`,
+    );
     await expect(page.getByRole('heading', { name: 'Quantum Computing Core' })).toBeVisible();
   });
 

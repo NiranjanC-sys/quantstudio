@@ -45,24 +45,35 @@ export function packScore(points: number, penaltySeconds: number): number {
   return points * POINT_SHIFT - penaltySeconds;
 }
 
-export interface ContestWindow {
-  id: string;
+/**
+ * The clock fields alone. Several call sites hold a projection of the contest
+ * row that carries the schedule but not the scoring rules, so the predicates
+ * below ask for exactly what they read.
+ */
+export interface ContestClock {
   startsAt: Date;
   endsAt: Date;
   freezeMinutes: number;
+}
+
+export interface ContestWindow extends ContestClock {
+  id: string;
   penaltySecondsPerReject: number;
 }
 
 /** §6: the public board freezes `freezeMinutes` before the end (default 60). */
-export function freezeAt(contest: ContestWindow): Date {
+export function freezeAt(contest: ContestClock): Date {
   return new Date(contest.endsAt.getTime() - contest.freezeMinutes * 60_000);
 }
 
-export function isFrozen(contest: ContestWindow, now: Date = new Date()): boolean {
+export function isFrozen(contest: ContestClock, now: Date = new Date()): boolean {
   return now >= freezeAt(contest) && now < contest.endsAt;
 }
 
-export function isRunning(contest: ContestWindow, now: Date = new Date()): boolean {
+export function isRunning(
+  contest: Pick<ContestClock, 'startsAt' | 'endsAt'>,
+  now: Date = new Date(),
+): boolean {
   return now >= contest.startsAt && now < contest.endsAt;
 }
 
@@ -71,7 +82,10 @@ export function isRunning(contest: ContestWindow, now: Date = new Date()): boole
  * after the contest ends, and the post-contest replay (§9 SLOs) wants the solve
  * detail for a while afterwards, so the TTL runs to 30 days past the end.
  */
-export function keyTtlSeconds(contest: ContestWindow, now: Date = new Date()): number {
+export function keyTtlSeconds(
+  contest: Pick<ContestClock, 'endsAt'>,
+  now: Date = new Date(),
+): number {
   const until = contest.endsAt.getTime() + 30 * 24 * 3_600_000;
   return Math.max(3_600, Math.ceil((until - now.getTime()) / 1000));
 }
@@ -173,7 +187,7 @@ export interface BoardDelta {
  */
 export async function publishDelta(
   deps: ScoringDeps,
-  contest: ContestWindow,
+  contest: ContestClock & { id: string },
   delta: Omit<BoardDelta, 'kind' | 'at'>,
   now: Date = new Date(),
 ): Promise<boolean> {

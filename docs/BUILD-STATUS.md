@@ -8,7 +8,7 @@ verified. Updated as work lands.
 | Component | Evidence |
 |---|---|
 | Curriculum research, 20 sources | `docs/research/01-curriculum-benchmark.md` |
-| Syllabus: 8 tracks, 64 modules, 306 lessons | `docs/research/02-syllabus.md` |
+| Syllabus: 8 tracks, 74 modules, 331 lessons | `docs/research/02-syllabus.md` |
 | System design for 50k concurrent | `docs/architecture/system-design.md` |
 | Design system specification | `DESIGN.md` |
 | Product, content and team plan | `docs/PRODUCT-PLAN.md` |
@@ -22,7 +22,7 @@ verified. Updated as work lands.
 | `apps/quantum-kernel` | IR, gates, noise, codegen, transpiler, four backends | FastAPI app, grader, sandbox, visual payloads, test suite |
 | `apps/api` | Schema, auth, middleware, entitlements, queues, Redis | Most route handlers, migrations, seed, tests |
 | `packages/design` | 53 source files including primitives, charts, tokens | Never typechecked or tested against `DESIGN.md` |
-| `content/` | 17 lessons, 40 interview questions, 20 employer briefings | 289 lessons, 200 questions, 20 drill decks, 6 contests |
+| `content/` | 17 lessons, 40 interview questions, 20 employer briefings | 282 lessons, 170 questions, 20 drill decks, 6 contests |
 | `infra/` | 147 files: Docker, Kubernetes, k6, CI, runbooks | Nothing validated by running its validator |
 
 ## Known corrections made

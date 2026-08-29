@@ -1,0 +1,229 @@
+---
+id: t1.m10.l1
+title: "Deutsch's Algorithm"
+type: concept
+track: t1
+module: t1.m10
+level: L1
+minutes: 14
+objectives:
+  - Derive the output amplitudes of the Deutsch circuit for constant and balanced f
+  - Show that one query decides constant versus balanced where classically two are needed
+  - Identify where phase kickback enters the derivation
+prerequisites:
+  - t1.m9.l4
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+tags: [algorithms, deutsch]
+---
+
+Someone hands you a black box computing a function $f: \{0,1\} \to \{0,1\}$. You
+are not allowed to look inside. You want to know one bit about it: is $f$
+constant, meaning $f(0) = f(1)$, or balanced, meaning $f(0) \ne f(1)$?
+Classically you must evaluate $f$ twice. There is no argument to be had about
+that: after one evaluation you know one value and both answers remain possible.
+Quantumly, one query suffices, with certainty. This is the smallest problem where
+quantum and classical query complexity provably differ.
+
+## The oracle
+
+The box is reversible, because everything in a quantum circuit is. The standard
+form takes two qubits and writes the answer with an XOR:
+
+$$
+U_f \ket{x}\ket{y} = \ket{x}\ket{y \oplus f(x)}.
+$$
+
+Qubit 0 carries $x$, qubit 1 is the answer register. This is unitary for any $f$,
+because applying it twice gives back the input.
+
+There are four possible functions and four corresponding circuits:
+
+| $f$ | type | $U_f$ as gates |
+| --- | --- | --- |
+| $f(x) = 0$ | constant | nothing |
+| $f(x) = 1$ | constant | $X$ on qubit 1 |
+| $f(x) = x$ | balanced | CNOT from qubit 0 to qubit 1 |
+| $f(x) = 1 - x$ | balanced | CNOT, then $X$ on qubit 1 |
+
+<Margin label="What one query means">
+The cost model counts applications of $U_f$, not gates. The Hadamards are free in
+this accounting because they do not depend on $f$. Query complexity is the right
+model here precisely because the classical lower bound of 2 is provable in it.
+</Margin>
+
+## The circuit
+
+Prepare qubit 1 in $\ket{-}$ by applying $X$ then $H$. Prepare qubit 0 in
+$\ket{+}$ with $H$. Apply $U_f$ once. Apply $H$ to qubit 0. Measure qubit 0.
+
+The whole derivation is phase kickback followed by the rotate-compute-rotate
+pattern, so both steps should already be familiar.
+
+**Step 1, kickback.** With the answer register in $\ket{-}$,
+
+$$
+U_f \ket{x}\ket{-} = (-1)^{f(x)} \ket{x}\ket{-},
+$$
+
+because $U_f$ applies $X^{f(x)}$ to qubit 1 and $X\ket{-} = -\ket{-}$. The answer
+register comes out untouched and the answer has become a sign on $\ket{x}$.
+
+**Step 2, apply it to the superposition.** Qubit 0 is in $\ket{+}$, so
+
+$$
+U_f \frac{\ket{0} + \ket{1}}{\sqrt2}\ket{-}
+= \frac{(-1)^{f(0)}\ket{0} + (-1)^{f(1)}\ket{1}}{\sqrt2}\ket{-}.
+$$
+
+**Step 3, factor out the global sign.** Pull $(-1)^{f(0)}$ to the front:
+
+$$
+(-1)^{f(0)} \frac{\ket{0} + (-1)^{f(0) \oplus f(1)}\ket{1}}{\sqrt2}\ket{-}.
+$$
+
+The prefactor is a global phase and unobservable. What remains inside is
+$\ket{+}$ when $f(0) \oplus f(1) = 0$ and $\ket{-}$ when it is 1. The single bit
+you wanted, $f(0) \oplus f(1)$, is now the *only* thing distinguishing the state
+of qubit 0.
+
+**Step 4, rotate back.** $H\ket{+} = \ket{0}$ and $H\ket{-} = \ket{1}$, so
+measuring qubit 0 returns $f(0) \oplus f(1)$ with certainty. Outcome 0 means
+constant, outcome 1 means balanced.
+
+## All four cases, run
+
+The constant oracle $f(x) = 0$ is the empty circuit:
+
+<Circuit
+  caption="Deutsch with the constant oracle f(x) = 0. Both surviving strings start with 0, so qubit 0 measures 0 with certainty."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "deutsch-constant-zero",
+    qubits: 2,
+    clbits: 1,
+    ops: [
+      { id: "a", gate: "x", targets: [1] },
+      { id: "b", gate: "h", targets: [0] },
+      { id: "c", gate: "h", targets: [1] },
+      { id: "d", gate: "h", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+The other constant oracle, $f(x) = 1$, is an $X$ on the answer register. It
+negates both amplitudes, which is exactly the global phase from step 3:
+
+<Circuit
+  caption="Deutsch with f(x) = 1. The amplitudes are the negatives of the previous figure, and the probabilities are identical."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "deutsch-constant-one",
+    qubits: 2,
+    clbits: 1,
+    ops: [
+      { id: "a", gate: "x", targets: [1] },
+      { id: "b", gate: "h", targets: [0] },
+      { id: "c", gate: "h", targets: [1] },
+      { id: "o", gate: "x", targets: [1] },
+      { id: "d", gate: "h", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+Now the balanced oracle $f(x) = x$, a single CNOT:
+
+<Circuit
+  caption="Deutsch with the balanced oracle f(x) = x. Both surviving strings start with 1, so qubit 0 measures 1 with certainty."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "deutsch-balanced-identity",
+    qubits: 2,
+    clbits: 1,
+    ops: [
+      { id: "a", gate: "x", targets: [1] },
+      { id: "b", gate: "h", targets: [0] },
+      { id: "c", gate: "h", targets: [1] },
+      { id: "o", gate: "x", targets: [1], controls: [0] },
+      { id: "d", gate: "h", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+And $f(x) = 1 - x$, which is the CNOT followed by an $X$:
+
+<Circuit
+  caption="Deutsch with f(x) = 1 - x. Again both surviving strings start with 1."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "deutsch-balanced-negation",
+    qubits: 2,
+    clbits: 1,
+    ops: [
+      { id: "a", gate: "x", targets: [1] },
+      { id: "b", gate: "h", targets: [0] },
+      { id: "c", gate: "h", targets: [1] },
+      { id: "o1", gate: "x", targets: [1], controls: [0] },
+      { id: "o2", gate: "x", targets: [1] },
+      { id: "d", gate: "h", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+Four circuits, four exact answers, one query each. In every case the two
+surviving basis states have amplitudes $\pm 0.7071$ and probability $0.5$, and
+they differ only in the answer register, which is still in $\ket{-}$ exactly as
+the kickback identity promised.
+
+<Callout tone="note" title="You learn one bit and not the other">
+Deutsch's algorithm returns $f(0) \oplus f(1)$. It does not return $f(0)$, and it
+cannot: the state before the final Hadamard is the same for $f(x) = 0$ and
+$f(x) = 1$ up to a global phase. One query buys one bit, just not the bit a
+classical query buys.
+</Callout>
+
+## Why the classical bound is exactly 2
+
+An adversary argument settles it. Suppose a deterministic classical algorithm
+queries $f(0)$ first and gets $0$. Both $f(x) = 0$ and $f(x) = x$ are consistent
+with that answer, one constant and one balanced, so the algorithm cannot yet
+decide. The same holds for any first query and any answer. Therefore two queries
+are necessary, and two are obviously sufficient.
+
+So the separation is $1$ against $2$: a factor of two, on a problem of size one.
+Nobody would build a computer for it. What makes it worth a lesson is that
+everything larger is this construction repeated. Deutsch-Jozsa is the same circuit
+on $n$ query qubits and turns the factor of two into $2^{n-1} + 1$ against 1.
+Bernstein-Vazirani reads a whole string instead of a single parity bit. Simon
+replaces the parity with a hidden shift and gets an exponential separation that
+survives randomisation.
+
+<Check question="You are told the oracle is one of $f(x) = 0$ or $f(x) = 1$, and you must decide which. Does the Deutsch circuit help?">
+No. Both are constant, so $f(0) \oplus f(1) = 0$ in both cases and the circuit
+returns 0 either way. Distinguishing those two requires learning an actual value
+rather than a parity, and the fastest way is to run $U_f$ on $\ket{0}\ket{0}$ and
+measure the answer register, which returns $f(0)$ directly in one query. The
+lesson is that the Deutsch circuit is not a better oracle reader in general; it is
+a device for extracting exactly one specific parity, and the algorithm is only a
+win when that parity is the thing you wanted.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), which
+  presents Deutsch as the first instance of rotate-compute-rotate rather than as
+  a standalone trick, and which is the source of the adversary argument above.
+- [Microsoft Quantum Katas](https://github.com/microsoft/QuantumKatas), whose
+  oracle katas enumerate exactly these four functions as the base cases before
+  moving to $n$ qubits.

@@ -1,0 +1,670 @@
+# Benchmark pattern 7: statevector storage, memory layout and simulator
+# engineering. All memory figures, node counts and tableau sizes below were
+# computed, not estimated.
+
+questions:
+  - id: iq-061
+    title: Size the memory for an n-qubit statevector
+    kind: coding
+    prompt: |
+      How much memory does a dense statevector simulator need for n qubits?
+      Give me the formula, the numbers at n = 30, 34 and 40, and tell me what
+      changes if you drop to single precision. Then tell me the largest n a
+      single 128 GiB machine can hold.
+    difficulty: easy
+    pattern: Statevector storage and simulation
+    topics: [simulation, memory, precision, resource-estimation]
+    companies: [IBM, Google Quantum AI, AWS Braket, Microsoft Azure Quantum]
+    modelAnswer: |
+      A statevector is 2^n complex amplitudes. In complex128 each amplitude is
+      two float64 values, so 16 bytes, and the total is 16 * 2^n bytes. In
+      complex64 it is 8 bytes and the total halves.
+
+          n = 20  ->  1,048,576 amplitudes           16 MiB
+          n = 26  ->  67,108,864                      1 GiB
+          n = 30  ->  1,073,741,824                  16 GiB
+          n = 32  ->  4,294,967,296                  64 GiB
+          n = 33  ->  8,589,934,592                 128 GiB
+          n = 34  ->  17,179,869,184                256 GiB
+          n = 40  ->  1,099,511,627,776              16 TiB
+          n = 50  ->  1,125,899,906,842,624          16 PiB
+
+      A 128 GiB machine holds n = 33 in complex128 exactly, with zero room for
+      anything else, so in practice n = 32 is the honest limit. In complex64 it
+      is n = 34 at 128 GiB.
+
+      Three engineering points that separate a real answer.
+
+      First, the working set is often twice the statevector. A gate application
+      written out of place needs a second buffer. Every serious simulator
+      applies gates in place, which is why the kernels are written as strided
+      butterfly updates rather than as matrix multiplications.
+
+      Second, precision matters more than it looks. complex64 halves memory and
+      roughly doubles throughput because of cache and bandwidth, and for
+      circuits of moderate depth the accumulated rounding error stays well
+      below the shot noise you would see on hardware anyway. The place it breaks
+      is deep circuits where amplitudes become small and cancellation dominates,
+      and any calculation where you need to certify a small amplitude rather
+      than sample from it.
+
+      Third, memory is the binding constraint, not time. Each single-qubit gate
+      touches every amplitude once, so a gate is O(2^n) work, and the ratio of
+      work to memory traffic is terrible. Statevector simulation is bandwidth
+      bound almost everywhere, which is why GPU simulators win by so much and
+      why the practical ceiling per node tracks memory bandwidth, not FLOPS.
+
+      The one-line answer to keep in your head: every qubit doubles memory, so
+      the frontier moves by one qubit per doubling of the machine.
+    followUps:
+      - At what depth would you worry about complex64 accumulating visible error?
+      - Why is the simulation bandwidth bound rather than compute bound?
+      - How would you decide between a statevector and a density matrix simulator?
+    commonMistakes:
+      - Quoting 8 bytes per amplitude by forgetting that a complex number is two floats.
+      - Ignoring the second buffer, which halves the largest n you can actually run if the kernels are out of place.
+      - Treating simulation cost as a time problem. Memory runs out long before time does.
+    references:
+      - label: Qiskit Aer documentation
+        url: https://qiskit.github.io/qiskit-aer/
+      - label: qsim high performance simulator
+        url: https://quantumai.google/qsim
+
+  - id: iq-062
+    title: Index a statevector correctly under the qubit-0-most-significant rule
+    kind: coding
+    prompt: |
+      Given a statevector of n qubits stored as a flat array, write the code
+      that extracts the bit of qubit q from amplitude index i, and the code
+      that applies a single-qubit gate to qubit q in place. Use the convention
+      that qubit 0 is the most significant bit, and say exactly what changes if
+      you used the other convention.
+    difficulty: easy
+    pattern: Statevector storage and simulation
+    topics: [indexing, bit-order, gate-application, simulation]
+    companies: [IBM, Google Quantum AI, AWS Braket, Classiq]
+    modelAnswer: |
+      With qubit 0 as the most significant bit of an n-qubit index, qubit q sits
+      at bit position n-1-q:
+
+      ```python
+      def bit_of(i: int, q: int, n: int) -> int:
+          return (i >> (n - 1 - q)) & 1
+      ```
+
+      So for n = 3, index 1 is |001>, meaning qubit 2 is set, and index 4 is
+      |100>, meaning qubit 0 is set. Under Qiskit's convention the same index 1
+      means qubit 0 is set, and that single difference is responsible for most
+      cross-framework bugs.
+
+      Applying a single-qubit gate in place is a strided butterfly. Let
+      stride = 1 << (n - 1 - q). Every amplitude pair (i, i + stride) where bit
+      n-1-q of i is zero gets the two by two gate applied:
+
+      ```python
+      def apply_1q(state, gate, q, n):
+          stride = 1 << (n - 1 - q)
+          for base in range(0, 1 << n, stride << 1):
+              for off in range(stride):
+                  i = base + off
+                  a, b = state[i], state[i + stride]
+                  state[i]          = gate[0][0] * a + gate[0][1] * b
+                  state[i + stride] = gate[1][0] * a + gate[1][1] * b
+      ```
+
+      Two things follow from the memory layout and they drive real performance.
+      Qubit n-1, the least significant, has stride 1, so its pairs are adjacent
+      in memory and the update is perfectly cache friendly. Qubit 0, the most
+      significant, has stride 2^(n-1), so its pairs are half the array apart and
+      every update touches two distant cache lines. The same gate on different
+      qubits can differ by an order of magnitude in wall clock time. Simulators
+      exploit this by reordering qubits so that the hot qubits in a circuit sit
+      at low strides, and by fusing several gates on high-stride qubits into a
+      single pass.
+
+      If you switch to qubit 0 least significant, the stride becomes 1 << q and
+      the whole locality picture reverses: qubit 0 becomes the fast one. Nothing
+      about the physics changes, only which qubit is expensive. What does change
+      is every hard-coded basis state label in your tests, which is why the
+      convention has to be fixed once, written down, and asserted on an
+      asymmetric state such as |100> rather than on a symmetric one such as
+      |000> or a GHZ state.
+    followUps:
+      - Extend the kernel to a two-qubit gate and describe the four-way butterfly.
+      - How would you reorder qubits to improve locality for a given circuit?
+      - Write the single assertion that catches a convention mismatch immediately.
+    commonMistakes:
+      - Using 1 << q as the stride under the qubit-0-most-significant convention, which silently applies gates to the mirrored qubit.
+      - Testing only on symmetric states such as GHZ, which are invariant under bit reversal and hide the bug entirely.
+      - Allocating a second array for the output, which doubles memory for no benefit since the butterfly is safe in place.
+    references:
+      - label: Cirq documentation
+        url: https://quantumai.google/cirq
+      - label: Qiskit Aer repository
+        url: https://github.com/Qiskit/qiskit-aer
+
+  - id: iq-063
+    title: Distribute a 34-qubit statevector across nodes
+    kind: coding
+    prompt: |
+      You need to simulate 34 qubits and each node has 16 GiB usable. Lay out
+      the distribution: how many nodes, which qubits are local and which are
+      remote, and what communication each gate requires. Use qubit 0 as the
+      most significant bit.
+    difficulty: medium
+    pattern: Statevector storage and simulation
+    topics: [distributed-simulation, mpi, data-layout, communication]
+    companies: [IBM, Google Quantum AI, AWS Braket, Multiverse Computing]
+    modelAnswer: |
+      A 34-qubit complex128 statevector is 16 * 2^34 bytes = 256 GiB. At 16 GiB
+      per node that is 16 nodes, and each node holds 2^30 = 1,073,741,824
+      amplitudes, exactly 16 GiB.
+
+      Split the index: the top 4 bits select the node, the bottom 30 bits select
+      the offset within the node. Under the qubit-0-most-significant convention,
+      index bit n-1-q belongs to qubit q, so the top 4 index bits are qubits 0,
+      1, 2 and 3. Those are the remote qubits. Qubits 4 through 33 are local.
+
+      Gate cost follows directly:
+
+      * A gate on a local qubit, that is q >= 4, is entirely node local. Every
+        amplitude pair (i, i + stride) with stride below 2^30 lies within one
+        node's slice. No communication at all.
+      * A gate on a remote qubit, that is q in {0, 1, 2, 3}, pairs each node
+        with exactly one partner node whose rank differs in bit 3-q. Each node
+        sends its whole 16 GiB slice to its partner, applies the two by two
+        update, and keeps its half. That is 16 GiB of traffic per node per gate.
+      * A two-qubit gate with both qubits remote pairs each node with three
+        partners in a four-node group.
+
+      The design consequence: put the qubits that receive the most gates in the
+      local range. Since circuits usually touch all qubits roughly equally, the
+      practical technique is to change the layout mid-circuit. You pay one
+      all-to-all reshuffle, roughly one full statevector exchange, to swap a
+      remote qubit into the local range, and then all subsequent gates on it are
+      free. A good scheduler batches all remote-qubit gates, does one
+      reordering, and continues, so the number of expensive redistributions is
+      the number of layout changes rather than the number of remote gates.
+
+      Bandwidth is what decides feasibility. Sending 16 GiB per node over a
+      100 Gb/s link takes roughly 22 minutes of pure transfer time if done
+      naively per gate, which is why per-gate exchange is never the design. Over
+      a 200 GB/s interconnect the same exchange is under a second, and the
+      design becomes viable. Always ask for the interconnect number before
+      agreeing that a distributed simulation is a good idea.
+
+      Above about 40 qubits none of this helps: 16 TiB of state is out of reach
+      for most clusters, and the honest answer becomes tensor network or
+      stabilizer methods rather than a bigger machine.
+    followUps:
+      - How would you schedule a circuit to minimise the number of layout changes?
+      - What changes if you use complex64 and cache-blocked kernels?
+      - At what qubit count would you abandon statevector simulation entirely?
+    commonMistakes:
+      - Assigning the low-order index bits to the node rank, which makes every gate remote instead of only four of them.
+      - Getting the qubit-to-bit mapping backwards, so the local and remote qubit sets are mirrored and the schedule optimises the wrong gates.
+      - Exchanging data per gate rather than batching gates between layout changes, which turns a feasible run into an impossible one.
+    references:
+      - label: qsim high performance simulator
+        url: https://quantumai.google/qsim
+      - label: Qiskit Aer documentation
+        url: https://qiskit.github.io/qiskit-aer/
+
+  - id: iq-064
+    title: Choose a simulation method for a given circuit
+    kind: coding
+    prompt: |
+      I give you four circuits: 40 qubits of Clifford gates, 30 qubits with a
+      one-dimensional chain of nearest-neighbour gates and low entanglement,
+      20 qubits with heavy noise where you need the density matrix, and 45
+      qubits of random two-qubit gates. Pick a simulation method for each and
+      justify the memory.
+    difficulty: medium
+    pattern: Statevector storage and simulation
+    topics: [simulation-methods, stabilizer, tensor-networks, density-matrix]
+    companies: [IBM, Google Quantum AI, Xanadu, AWS Braket]
+    modelAnswer: |
+      Clifford, 40 qubits. Stabilizer simulation by the Gottesman-Knill
+      theorem. The state is stored as a tableau of 2n by 2n+1 bits, which for
+      n = 40 is 80 by 81 bits, about 6,480 bits or under a kilobyte. Gate
+      application is O(n) row operations and measurement is O(n^2). This scales
+      to thousands of qubits: at n = 10,000 the tableau is 47.7 MiB. The
+      constraint is that the gate set is exactly Clifford, and adding even a
+      handful of T gates costs a factor exponential in the T count.
+
+      30 qubits, one-dimensional, low entanglement. Matrix product state. The
+      memory is n * 2 * chi^2 complex numbers for bond dimension chi. At n = 30
+      and chi = 64 that is 245,760 complex numbers, 3.75 MiB; at chi = 256 it is
+      60 MiB. Compare against 16 GiB for a dense statevector at the same qubit
+      count. The catch is that chi must grow with entanglement, and exact
+      representation of an arbitrary 30-qubit state needs chi = 2^15 = 32,768,
+      at which point MPS is far worse than dense. So the method is a bet on the
+      circuit staying weakly entangled, and you must monitor the truncation
+      error rather than assume it.
+
+      20 qubits with noise, density matrix needed. A density matrix is
+      2^n by 2^n, so 4^n complex numbers: 16 * 4^20 bytes = 16 TiB. That is out
+      of reach. The correct answer is not "use a bigger machine", it is to use
+      Monte Carlo trajectories: sample quantum jumps over pure statevectors of
+      16 MiB each and average over trajectories. You trade a factor 2^n in
+      memory for a statistical error that falls as 1/sqrt(trajectories). For
+      most observables a few thousand trajectories is far cheaper than the exact
+      density matrix.
+
+      45 qubits of random two-qubit gates. Nothing works well, and saying so is
+      the right answer. Dense needs 512 TiB. Random circuits saturate
+      entanglement, so MPS bond dimension explodes. Stabilizer does not apply.
+      The remaining option is tensor network contraction with slicing, which
+      trades exponential memory for exponential time and is exactly the
+      technique used to contest random circuit sampling claims. Budget in
+      node-hours, not gigabytes, and expect to compute a few amplitudes or a
+      sampled subset rather than the full state.
+
+      The general rule: pick the representation that matches the structure the
+      circuit actually has. Dense statevector is the method of last resort that
+      works for everything and scales worst.
+    followUps:
+      - How would you monitor MPS truncation error and decide when to abandon the method?
+      - What does adding k T gates cost a stabilizer simulator?
+      - When is a trajectory simulation worse than a density matrix?
+    commonMistakes:
+      - Quoting density matrix memory as 2 * 2^n rather than 4^n, understating it by a factor of 2^n.
+      - Recommending MPS without a bond dimension budget or a truncation error monitor, which turns an exact method into an uncontrolled approximation.
+      - Assuming a bigger machine solves the 45-qubit case. It is 512 TiB, and the answer is a different algorithm.
+    references:
+      - label: Aaronson and Gottesman, Improved Simulation of Stabilizer Circuits
+        url: https://arxiv.org/abs/quant-ph/0406196
+      - label: Stim stabilizer circuit simulator
+        url: https://github.com/quantumlib/Stim
+
+  - id: iq-065
+    title: Serialise a statevector for storage and reload
+    kind: coding
+    prompt: |
+      Design the on-disk format for storing simulator statevectors so that
+      results are reproducible and comparable across frameworks. Say what
+      metadata is mandatory, and what you do about global phase.
+    difficulty: medium
+    pattern: Statevector storage and simulation
+    topics: [serialisation, reproducibility, global-phase, data-format]
+    companies: [IBM, AWS Braket, Classiq, Microsoft Azure Quantum]
+    modelAnswer: |
+      Amplitudes alone are not a statevector. The mandatory metadata is:
+
+      * Qubit count n, and the bit ordering convention, spelled out as a string
+        such as "qubit0=msb", not implied. This is the field that prevents the
+        most common class of silent corruption.
+      * Dtype and endianness of the amplitude array, for example complex128
+        little-endian.
+      * The qubit labels in index order, so that a circuit using named qubits
+        can be reassociated with array positions.
+      * A hash of the circuit that produced it, plus the simulator name and
+        version, so a mismatch can be attributed.
+      * Normalisation, stored explicitly rather than assumed, so that a
+          truncated or partially collapsed state is not silently renormalised on
+          load.
+
+      Global phase is the interesting design decision. Two statevectors that
+      differ by an overall factor of modulus 1 are physically identical, so a
+      naive byte comparison of two correct results will fail. Two workable
+      choices:
+
+      1. Canonicalise on write. Rotate the vector so that the first amplitude
+         with modulus above a stated threshold is real and positive, and record
+         the threshold in the metadata. Comparison then becomes a plain
+         elementwise check. This is clean but destroys the phase, which matters
+         if the state is a subsystem that will later be recombined with another.
+      2. Store as produced and compare up to phase. The comparison computes
+         the inner product, divides by its modulus, and checks
+         |a - phase * b| < tol elementwise. This preserves everything and pushes
+         the complexity into the comparator.
+
+      For a platform that stores results and compares against references, option
+      2 is correct and option 1 is a convenience. Store both a canonical form
+      and a flag saying whether canonicalisation was applied.
+
+      Two practical notes. Storage is the same 16 * 2^n bytes as memory, so
+      n = 30 is a 16 GiB file and n = 34 is 256 GiB; chunked formats with
+      compression are worth it because most interesting states are sparse in
+      some basis. And a tolerance must be part of the file, not the reader:
+      a state produced in complex64 cannot be compared at 1e-12, and recording
+      the precision at write time is what lets the reader pick the right
+      tolerance automatically.
+    followUps:
+      - What tolerance would you record for a complex64 result at n = 30?
+      - How would you store a density matrix or an MPS in the same scheme?
+      - What would you do about states produced with a stochastic simulator where exact reproduction is impossible?
+    commonMistakes:
+      - Storing amplitudes without recording the bit ordering, which makes the file uninterpretable across frameworks.
+      - Comparing statevectors elementwise without accounting for global phase, producing false failures on correct results.
+      - Hard coding a tolerance in the comparison code rather than deriving it from the recorded precision.
+    references:
+      - label: OpenQASM specification
+        url: https://openqasm.com/
+      - label: AWS Braket developer guide
+        url: https://docs.aws.amazon.com/braket/
+
+  - id: iq-066
+    title: Exploit sparsity in a statevector simulator
+    kind: coding
+    prompt: |
+      Many circuits produce states with far fewer non-zero amplitudes than
+      2^n. Design a sparse statevector representation, say when it wins and
+      when it loses, and give the crossover.
+    difficulty: medium
+    pattern: Statevector storage and simulation
+    topics: [sparse-simulation, data-structures, performance, crossover]
+    companies: [IBM, Classiq, Microsoft Azure Quantum, AWS Braket]
+    modelAnswer: |
+      Represent the state as a hash map from basis index to amplitude, keeping
+      only entries above a threshold. Gate application iterates the live entries
+      rather than the full array, so cost is O(k) per single-qubit gate for k
+      non-zeros rather than O(2^n).
+
+      When it wins. Circuits built from X, CNOT, Toffoli and other permutation
+      gates keep the state a single basis state: k = 1 regardless of n, so
+      reversible classical arithmetic simulates at essentially no cost. Circuits
+      with a limited number of Hadamards keep k bounded by 2^h where h is the
+      number of Hadamards on distinct branches, which is why oracle circuits
+      with a small superposition and large arithmetic registers are cheap. State
+      preparation of sparse targets and many QEC syndrome circuits sit here too.
+
+      When it loses. As soon as k approaches 2^n the hash map is strictly worse
+      than a dense array: it stores a key alongside each amplitude, so 24 bytes
+      per entry rather than 16, and every access is a hash lookup rather than a
+      strided read that the prefetcher can predict. The crossover in memory
+      terms is at k = 2^n * 16/24, about 67 percent occupancy, but the practical
+      crossover is much earlier, around 1 to 10 percent occupancy, because
+      random access defeats the cache while the dense butterfly is a perfect
+      streaming pattern.
+
+      The design that survives contact with reality is adaptive: start sparse,
+      count non-zeros after every layer, and switch to dense once occupancy
+      crosses a threshold like 5 percent. The switch is one pass and it is never
+      worth switching back, since entanglement rarely decreases.
+
+      Two traps. First, the threshold for dropping small amplitudes is a
+      truncation and it must be tracked: report the total dropped probability
+      mass so a user can tell whether the result is exact or approximate.
+      Dropping amplitudes silently turns an exact simulator into an
+      uncontrolled approximation. Second, a single Hadamard layer on n qubits
+      takes k from 1 to 2^n in one step, so occupancy is not a smooth function
+      of depth and any heuristic that samples it infrequently will be caught
+      out. Check after every layer that touches more than a few qubits.
+    followUps:
+      - How would you pick and report the truncation threshold?
+      - Which circuit families would you route to the sparse engine automatically?
+      - What data structure would you use instead of a hash map for better locality?
+    commonMistakes:
+      - Assuming sparse is always at least as good as dense. Per-entry overhead and random access make it worse well before the array is full.
+      - Truncating small amplitudes without reporting the dropped probability mass, so an approximate result is presented as exact.
+      - Checking occupancy only at circuit boundaries, missing that one Hadamard layer can saturate the state instantly.
+    references:
+      - label: Qiskit Aer documentation
+        url: https://qiskit.github.io/qiskit-aer/
+      - label: Classiq documentation
+        url: https://docs.classiq.io/
+
+  - id: iq-067
+    title: Compute expectation values without materialising the full state
+    kind: coding
+    prompt: |
+      You need <psi|P|psi> for a Pauli string P and a circuit that produces
+      psi. What are your options, and which do you pick at n = 20, n = 34 and
+      n = 60? Include the shot-based option and cost it.
+    difficulty: hard
+    pattern: Statevector storage and simulation
+    topics: [expectation-values, pauli-strings, sampling, simulation]
+    companies: [IBM, Google Quantum AI, Xanadu, Q-CTRL]
+    modelAnswer: |
+      Four options, with different scaling.
+
+      1. Full statevector, then apply P and take the inner product. P is a
+         tensor product of Paulis, so applying it is n single-qubit passes at
+         O(2^n) each, or better, a single pass computing the sign and index
+         permutation directly. Cost is O(n * 2^n) time and 16 * 2^n bytes.
+         Exact.
+      2. Rotate to the measurement basis and evaluate the diagonal expectation.
+         Conjugate the circuit by H for X terms and by S then H for Y terms,
+         then <P> is sum over i of (-1)^(parity of i on the support of P) times
+         |amplitude_i|^2. One pass, no second buffer. Same memory as option 1,
+         about half the time.
+      3. Sampling. Measure in the rotated basis and average the parity. The
+         variance of a single shot is 1 - <P>^2, at most 1, so the standard
+         error is 1/sqrt(S) for S shots. To reach a standard error of 0.001 you
+         need one million shots per Pauli term. That number is the one to have
+         at hand, because it is what makes VQE on large Hamiltonians expensive:
+         a molecular Hamiltonian with 10^4 terms at 0.001 accuracy each is
+         10^10 shots before any grouping.
+      4. Tensor network contraction of the expectation value directly. The
+         quantity <psi|P|psi> is a closed tensor network with no open indices,
+         so it can sometimes be contracted far more cheaply than psi can be
+         built. This is the only option that survives at large n for structured
+         circuits.
+
+      Choices. At n = 20 the statevector is 16 MiB, so option 2, exact and
+      instant. At n = 34 the statevector is 256 GiB and needs 16 nodes; if you
+      already have the distributed state, option 2 still works with a local pass
+      plus one reduction, so use it, but if you only need a handful of
+      expectation values it is cheaper to avoid building the state at all and
+      use option 4. At n = 60 there is no statevector; option 4 or nothing, and
+      whether it works depends entirely on the circuit's treewidth, not on n.
+
+      The point to make explicitly: on a simulator, sampling is almost always
+      the wrong choice. It exists on hardware because you have no alternative,
+      not because it is efficient. Using shot-based estimation on a simulator
+      adds statistical error to a calculation that could have been exact.
+    followUps:
+      - How does Pauli grouping into commuting families change the shot count?
+      - What determines whether option 4 is tractable for a given circuit?
+      - How would you compute the variance of the estimator in option 2?
+    commonMistakes:
+      - Using shot-based estimation on a simulator, which adds avoidable statistical error to an exactly computable quantity.
+      - Forgetting that the shot count scales as the inverse square of the target accuracy, so ten times more precision costs a hundred times more shots.
+      - Assuming tensor network contraction of an expectation value costs the same as building the state. It is a different network and often far cheaper.
+    references:
+      - label: IBM Quantum primitives guide
+        url: https://docs.quantum.ibm.com/guides/primitives
+      - label: Gokhale et al, Minimizing State Preparations in Variational Quantum Eigensolver by Partitioning into Commuting Families
+        url: https://arxiv.org/abs/1907.13623
+
+  - id: iq-068
+    title: Reconcile two simulators that disagree
+    kind: coding
+    prompt: |
+      The same circuit gives different statevectors in two frameworks. The
+      probabilities match but the amplitudes do not. Walk me through the
+      diagnosis and tell me which differences are real bugs and which are not.
+    difficulty: hard
+    pattern: Statevector storage and simulation
+    topics: [debugging, global-phase, conventions, cross-framework]
+    companies: [IBM, Google Quantum AI, Classiq, AWS Braket]
+    modelAnswer: |
+      Probabilities matching while amplitudes differ narrows it immediately: the
+      moduli agree, so the difference is in phases, or in the ordering of
+      equal-modulus entries. Three candidates, two benign and one real.
+
+      Benign case 1, global phase. Compute the inner product
+      <b|a>, divide by its modulus, and multiply b by that phase. If the vectors
+      then agree elementwise, they were the same state. This happens constantly
+      because frameworks differ on whether Rz is diag(exp(-i t/2), exp(i t/2))
+      or diag(1, exp(i t)), the second being the phase gate P. Those two differ
+      by a global phase of exp(-i t/2) on the state, but they differ by a
+      relative phase when controlled, so the distinction is real for CRz versus
+      CP and unreal for the bare gates.
+
+      Benign case 2, bit ordering. If the amplitude at index 1 in one framework
+      equals the amplitude at index 4 in the other for n = 3, that is bit
+      reversal, not a bug in either. The test is to permute indices by reversing
+      the bit string and re-compare. Note that this never shows up in the
+      probability distribution of a symmetric state such as GHZ, which is why
+      the mismatch was noticed only on the amplitudes.
+
+      Real bug case, relative phases. If after fixing global phase and bit
+      ordering the vectors still differ, the phases are relative and one of the
+      circuits is wrong. The usual culprits are a controlled rotation
+      implemented as controlled-P where controlled-Rz was intended, a
+      transpiler that dropped a global phase on a subcircuit that was
+      subsequently controlled, or an S versus S-dagger sign.
+
+      The diagnostic order that resolves this fastest:
+
+      1. Compare probability vectors. If they differ, stop; it is not a phase
+         problem.
+      2. Compare after bit reversal. Cheap and rules out the convention.
+      3. Compare up to global phase using the inner product.
+      4. If it still fails, bisect the circuit: run both frameworks on prefixes
+         of the circuit and find the first gate where the states diverge up to
+         global phase. That gate is the disagreement.
+
+      Step 4 is the one people skip, and it turns an argument about conventions
+      into a one-line answer. Note also to run the comparison on an asymmetric
+      input state, not |0...0>, because many gates act trivially on the all-zero
+      state and hide the difference.
+    followUps:
+      - Give the exact relationship between Rz and P and say when it matters.
+      - How would you automate the prefix bisection?
+      - Why does an asymmetric input state make the comparison more sensitive?
+    commonMistakes:
+      - Declaring a bug when the two states differ only by global phase, which is physically the same state.
+      - Comparing on |0...0> or on GHZ, both of which hide bit ordering differences.
+      - Assuming the framework with the more familiar output is correct, rather than bisecting to find the first divergent gate.
+    references:
+      - label: Cirq documentation
+        url: https://quantumai.google/cirq
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+
+  - id: iq-069
+    title: Store and compare states with a tolerance that means something
+    kind: coding
+    prompt: |
+      Your platform compares learner-submitted circuits against reference
+      statevectors. Pick the tolerance and the comparison metric, and defend
+      them. What goes wrong with a fixed 1e-9 on a 20-qubit state?
+    difficulty: hard
+    pattern: Statevector storage and simulation
+    topics: [numerical-tolerance, testing, floating-point, grading]
+    companies: [IBM, Classiq, Q-CTRL, Microsoft Azure Quantum]
+    modelAnswer: |
+      Two decisions: the metric, and how the tolerance scales.
+
+      The metric should be the maximum elementwise deviation after fixing global
+      phase, not the norm of the difference. A norm hides a single badly wrong
+      amplitude among 2^n small ones; an elementwise maximum does not. Concretely:
+      compute the inner product, extract its phase, rotate the candidate, and
+      take the maximum absolute difference. If the two states differ by a
+      relative phase on one basis state with amplitude 0.001, the elementwise
+      metric sees 0.002 and the two-norm sees 0.002 as well at n = 2 but is
+      diluted by nothing at all, so in fact both work for detection; the
+      elementwise version is preferred because the failure message can name the
+      offending index.
+
+      Tolerance must scale with dimension because floating point error
+      accumulates. Measured directly on random unitaries constructed by QR:
+
+          d = 2     ||U^dag U - I||_F = 3.34e-16
+          d = 16    2.12e-15
+          d = 256   1.73e-14
+          d = 1024  3.84e-14
+
+      The Frobenius error grows roughly as sqrt(d) while the per-entry error
+      stays near 1e-16. So a fixed 1e-9 is fine at 20 qubits for elementwise
+      comparison: the per-entry error is around 1e-16 and even with a thousand
+      gates of accumulation it stays far below 1e-9. What breaks a fixed 1e-9 is
+      not dimension, it is precision and depth. If the learner used complex64,
+      the per-entry error is around 1e-7 and every submission fails. If the
+      circuit is 10,000 gates deep, accumulated error can reach 1e-11 in
+      complex128 and 1e-3 in complex64.
+
+      So the rule: set the tolerance from the precision and the gate count, not
+      from the qubit count. A defensible default is
+      tol = max(1e-9, 10 * eps * gate_count) with eps the machine epsilon of the
+      declared precision, and declare the precision in the problem statement so
+      the learner cannot be penalised for a choice you did not specify.
+
+      One more thing worth saying: a tolerance can be too loose as well as too
+      tight. At 1e-3 a learner who implements Rz(theta) with theta wrong by 1e-4
+      passes, and I checked that case: the two unitaries differ in Frobenius
+      norm by 7.07e-05 and have process fidelity 0.9999999975 while both being
+      exactly unitary. A unitarity check will never catch it and a loose
+      tolerance will not either. Grade angles with a tolerance tighter than the
+      smallest error you care about, and state that number in the problem.
+    followUps:
+      - How would you set the tolerance for a problem where the learner chooses the precision?
+      - What comparison would you use for a mixed state rather than a pure one?
+      - Design the failure message so a learner can diagnose their own bug from it.
+    commonMistakes:
+      - Setting the tolerance from the qubit count. Precision and gate count drive the accumulated error, dimension barely does.
+      - Using a norm-based comparison whose failure message cannot name which amplitude is wrong.
+      - Choosing a loose tolerance to avoid flaky grading, which lets genuinely wrong rotation angles pass.
+    references:
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+      - label: Qiskit Aer documentation
+        url: https://qiskit.github.io/qiskit-aer/
+
+  - id: iq-070
+    title: Decide what to persist from a simulation run
+    kind: coding
+    prompt: |
+      A research team runs thousands of simulation jobs a day and wants results
+      reproducible a year later without storing petabytes. Design what gets
+      persisted and what gets recomputed, and justify the split.
+    difficulty: hard
+    pattern: Statevector storage and simulation
+    topics: [reproducibility, storage-policy, provenance, simulation]
+    companies: [IBM, AWS Braket, Multiverse Computing, Microsoft Azure Quantum]
+    modelAnswer: |
+      Persist the inputs and the derived scalars. Recompute the state.
+
+      The arithmetic makes the decision for you. A 30-qubit statevector is
+      16 GiB; a thousand jobs a day is 16 TiB a day and about 5.8 PiB a year.
+      The circuit that produced it is a few kilobytes. Storing states is four to
+      six orders of magnitude more expensive than storing the recipe, and
+      recomputation on a simulator is deterministic given the same inputs and
+      precision. So the default is: never persist a full state.
+
+      What must be persisted, because it cannot be recovered:
+
+      * The circuit, in a canonical serialised form with a content hash.
+      * The full parameter vector for parameterised circuits, at full precision.
+        Rounding these is the single most common cause of irreproducibility.
+      * Every random seed: shot sampling, noise trajectories, classical
+        optimiser initialisation, and any stochastic transpiler pass.
+      * The simulator name, version, precision and backend method, plus the
+        library versions of anything that affects numerics.
+      * The derived scalars that the science actually used: expectation values,
+        energies, gradients, fidelities, with their error estimates.
+      * Enough of the environment to rebuild it, meaning a lockfile, not a
+        requirements list.
+
+      What can be recomputed and therefore should not be stored: statevectors,
+      density matrices, full probability distributions over 2^n outcomes, and
+      intermediate optimiser states beyond the parameter trajectory.
+
+      Two exceptions worth carving out. First, if a state took a week of cluster
+      time to produce, the recomputation cost exceeds the storage cost and you
+      should store it; the rule is to compare recompute cost against storage
+      cost per artefact, not to apply a blanket policy. Second, anything that
+      involved a real device is not reproducible at all, because the device
+      state has moved on, so raw hardware counts must be persisted verbatim
+      along with the calibration snapshot at the time of the run.
+
+      The failure mode to design against is not disk space, it is a result
+      nobody can regenerate because the seed was not recorded. Make seeds
+      mandatory and non-defaultable in the job submission API, so a job without
+      a seed cannot be submitted rather than silently getting a random one.
+    followUps:
+      - How would you handle a circuit whose transpilation is stochastic?
+      - What is your policy for results produced on hardware rather than simulators?
+      - How would you detect that a stored result can no longer be reproduced?
+    commonMistakes:
+      - Persisting statevectors by default, which is four to six orders of magnitude more storage than the circuit that generates them.
+      - Recording parameters at reduced precision, which makes variational results irreproducible.
+      - Allowing seeds to default to random, which makes reproducibility depend on someone remembering to set them.
+    references:
+      - label: AWS Braket developer guide
+        url: https://docs.aws.amazon.com/braket/
+      - label: qBraid documentation
+        url: https://docs.qbraid.com/

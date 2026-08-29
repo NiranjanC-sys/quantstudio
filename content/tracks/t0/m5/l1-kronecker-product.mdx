@@ -122,8 +122,11 @@ $$
 = \big[(AC)\otimes(BD)\big]_{(i,k),(j,\ell)} . \;\blacksquare
 $$
 
-Numerically, $(X \otimes I)(H \otimes H) = (XH)\otimes H$, and the two $4 \times
-4$ matrices agree entry for entry.
+Numerically the two $4 \times 4$ matrices below agree entry for entry:
+
+$$
+(X \otimes I)(H \otimes H) = (XH)\otimes H .
+$$
 
 The identity is what makes single-qubit gates cheap. A gate on qubit 0 of an
 $n$-qubit register is $U \otimes I \otimes \cdots \otimes I$, and composing two
@@ -132,10 +135,17 @@ $(U \otimes I)(V \otimes I) = UV \otimes I$. Only gates touching two different
 qubits, like a CNOT, break the factorisation and create entanglement.
 
 <Callout tone="note" title="Other identities worth carrying">
-$(A\otimes B)\dg = A\dg \otimes B\dg$, so a tensor product of unitaries is
-unitary. $\operatorname{tr}(A \otimes B) = \operatorname{tr}(A)
-\operatorname{tr}(B)$. And $(A \otimes B)(u \otimes v) = Au \otimes Bv$, which
-is the mixed-product identity with vectors in the second slot.
+A tensor product of unitaries is unitary, because the dagger distributes:
+
+$$
+(A\otimes B)\dg = A\dg \otimes B\dg,
+\qquad
+\tr(A \otimes B) = \tr(A)\,\tr(B),
+\qquad
+(A \otimes B)(u \otimes v) = Au \otimes Bv .
+$$
+
+The last of these is the mixed-product identity with vectors in the second slot.
 </Callout>
 
 ## A tensor product you can run

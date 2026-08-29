@@ -341,7 +341,6 @@ export interface CompleteLessonResult {
  */
 export async function completeLesson(
   db: DatabaseHandles,
-  redis: Redis,
   graph: LessonGraph,
   input: CompleteLessonInput,
 ): Promise<CompleteLessonResult> {

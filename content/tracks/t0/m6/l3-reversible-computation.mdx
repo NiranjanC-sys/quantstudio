@@ -1,0 +1,200 @@
+---
+id: t0.m6.l3
+title: "Reversible Computation, Toffoli, Uncomputation, Landauer"
+type: concept
+track: t0
+module: t0.m6
+level: L0
+minutes: 15
+objectives:
+  - Show that the Toffoli gate is universal for reversible Boolean computation
+  - Apply the compute-copy-uncompute pattern to clear an ancilla register
+  - Relate the erasure of one bit to the Landauer energy cost at room temperature
+prerequisites: [t0.m6.l2]
+sources:
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: Preskill, Ph219/CS219 Quantum Computation lecture notes (Caltech)
+    url: http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html
+tags: [classical, reversible]
+---
+
+An AND gate has two inputs and one output, so it forgets a bit. A unitary
+matrix is invertible, so it cannot forget anything. That mismatch is not a
+technicality to route around; it is a physical constraint with a temperature and
+an energy attached, and the workaround it forces, uncomputation, is a technique
+you will use in every oracle you ever build.
+
+## Reversible means permutation
+
+A Boolean function is **reversible** when it is a bijection on bitstrings. As a
+matrix acting on the vector of basis states it is then a permutation matrix,
+which T0.M1.L3 identified as exactly the stochastic matrices with stochastic
+inverses. NOT is reversible; AND is not, since three inputs of the four map to
+output 0.
+
+The standard repair keeps enough of the input to invert the map. The
+**controlled-NOT** does this for XOR:
+
+$$
+\mathrm{CNOT}: (a,b) \longmapsto (a,\; a \oplus b),
+$$
+
+which is a bijection because applying it twice returns $(a,b)$. The
+**Toffoli** gate, or CCNOT, does it for AND:
+
+$$
+\mathrm{CCNOT}: (a,b,c) \longmapsto (a,\; b,\; c \oplus ab).
+$$
+
+Also self-inverse, for the same reason: $ab$ is unchanged by the gate, so
+XORing it in twice cancels.
+
+<Margin label="Self-inverse is not automatic">
+$\mathrm{CNOT}$ and $\mathrm{CCNOT}$ happen to be their own inverses because
+they XOR a function of the untouched wires into the target. A general reversible
+circuit is inverted by reversing the gate order and inverting each gate, which
+for unitaries is the dagger rule of T0.M4.L1.
+</Margin>
+
+## Toffoli is universal for reversible computation
+
+Two specialisations do all the work.
+
+**NAND.** Set the target to $c = 1$. The output is $1 \oplus ab$, which is
+$\lnot(ab)$, the NAND of the two inputs. Since NAND is universal for Boolean
+functions (T0.M6.L1), every function is now reachable.
+
+**Fan-out.** Set $b = 1$ and $c = 0$. The output is
+$(a, 1, 0 \oplus a\cdot 1) = (a, 1, a)$, so the value of $a$ appears on a second
+wire. Reversible circuits need this as a separate primitive, because splitting a
+wire is not a gate.
+
+With NAND and fan-out available, any Boolean circuit can be simulated gate by
+gate, each gate consuming a fresh ancilla initialised to a known value. So
+Toffoli plus ancillas is universal for classical computation, and Toffoli is a
+unitary, so classical computation is a special case of quantum computation
+rather than a rival to it.
+
+## The garbage problem
+
+Simulating an $s$-gate circuit this way leaves $s$ ancillas holding
+intermediate results. Those are not free. In a quantum setting they are
+catastrophic: an ancilla that still records which branch of a superposition you
+took is entangled with the computation, and entanglement with a register you do
+not measure destroys the interference the algorithm depends on.
+
+The fix is **compute-copy-uncompute**, due to Bennett:
+
+1. Compute $f(x)$ into an ancilla register using the reversible circuit $U_f$.
+2. Copy the answer to a clean output register with CNOTs.
+3. Apply $U_f\dg$, running the whole computation backwards, which restores every
+   ancilla to its initial state.
+
+The cost is a factor of two in gates and nothing in width. The payoff is that
+the ancillas come back clean, so they carry no record of $x$ and stay
+unentangled.
+
+Here it is on two qubits of input in superposition, with qubit 2 as the ancilla
+and qubit 3 as the output, computing the AND.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="Compute-copy-uncompute. Qubits 0 and 1 hold all four inputs at once, qubit 2 is the ancilla, qubit 3 receives a AND b. The ancilla ends at 0 in every branch."
+  ir={{
+    version: 1,
+    name: "uncompute",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "compute", gate: "ccx", targets: [0, 1, 2] },
+      { id: "copy", gate: "x", targets: [3], controls: [2] },
+      { id: "uncompute", gate: "ccx", targets: [0, 1, 2] }
+    ]
+  }}
+/>
+
+Four branches of amplitude $0.5$: $\ket{0000}$, $\ket{0100}$, $\ket{1000}$ and
+$\ket{1101}$. Reading each as $(a, b, \text{ancilla}, \text{out})$, the ancilla
+is 0 in all four and the output equals $a \land b$ in all four. Now delete the
+final Toffoli.
+
+<Simulate
+  show="amplitudes"
+  caption="The same circuit without the uncompute step. The last branch is |1111>: the ancilla still holds a AND b."
+  ir={{
+    version: 1,
+    name: "dirty-ancilla",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "compute", gate: "ccx", targets: [0, 1, 2] },
+      { id: "copy", gate: "x", targets: [3], controls: [2] }
+    ]
+  }}
+/>
+
+The fourth branch is now $\ket{1111}$ instead of $\ket{1101}$. The ancilla is
+dirty, and reusing it in a later subroutine would corrupt that subroutine.
+
+## Landauer's bound
+
+Why must this be so careful? Because erasing a bit has a thermodynamic price.
+Landauer's principle says that discarding one bit of information into an
+environment at temperature $T$ dissipates at least
+
+$$
+E = k_B T \ln 2
+$$
+
+joules, where $k_B = 1.380649 \times 10^{-23}$ J/K. At $T = 300$ K,
+
+$$
+E = 1.380649 \times 10^{-23} \times 300 \times 0.693147
+  = 2.870979 \times 10^{-21}\ \text{J}.
+$$
+
+Tiny per bit. At $10^{9}$ bit erasures per second it is
+$2.87 \times 10^{-12}$ W, still far below what real chips waste on other
+mechanisms, so Landauer is not yet the binding constraint on classical hardware.
+It is a statement of principle: reversible computation has no lower bound of
+this kind, because it never erases. Bennett's uncomputation is what makes that
+principle constructive.
+
+<Callout tone="gotcha" title="Uncomputing is not undoing the whole algorithm">
+Step 2 sits between the compute and the uncompute for a reason. The copy is what
+survives $U_f\dg$, because CNOTing into a fresh register commutes with nothing
+in $U_f$ that touches the ancillas. Omit the copy and the uncompute really does
+undo everything, leaving you with the input you started from.
+</Callout>
+
+<Check question="Build a reversible OR gate from Toffoli and NOT gates, writing the answer into a clean target.">
+Use De Morgan: $a \lor b = \lnot(\lnot a \land \lnot b)$. So negate both inputs,
+apply a Toffoli into the clean target, then negate the target, then restore the
+inputs.
+
+Gate list: $X$ on $a$, $X$ on $b$, $\mathrm{CCNOT}(a,b \to t)$, $X$ on $t$,
+$X$ on $a$, $X$ on $b$. Six gates, and it leaves $a$ and $b$ exactly as they
+were, with $t$ holding $a \lor b$ when $t$ started at 0.
+
+Check the case $a = b = 0$: negating gives $1, 1$, the Toffoli fires and sets
+$t = 1$, the final $X$ makes $t = 0$, which is correct because
+$0 \lor 0 = 0$.
+</Check>
+
+## Where this comes from
+
+- [Microsoft Quantum Katas](https://github.com/microsoft/QuantumKatas), whose
+  reversible-computing kata builds exactly the Toffoli constructions and the
+  uncomputation pattern used here.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 3.2.5, for reversible universality and the garbage-clearing argument.
+- [Preskill, Ph219](http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html),
+  chapter 6, for Landauer's principle and its role in motivating reversible
+  computation.

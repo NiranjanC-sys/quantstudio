@@ -7,7 +7,7 @@
  * SAML, a raw-body parser for Stripe, an entitlement guard for the instructor
  * dashboard — without leaking them across the rest of the API.
  */
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import { adminRoutes } from './admin.js';
 import { authRoutes } from './auth.js';
 import { billingRoutes } from './billing.js';
@@ -22,7 +22,7 @@ import { tutorRoutes } from './tutor.js';
 
 export interface RouteMount {
   prefix: string;
-  plugin: Parameters<FastifyInstance['register']>[0];
+  plugin: FastifyPluginAsync;
 }
 
 export const ROUTE_MOUNTS: readonly RouteMount[] = [

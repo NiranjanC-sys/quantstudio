@@ -1,0 +1,231 @@
+---
+id: t1.m10.l2
+title: Deutsch-Jozsa
+type: concept
+track: t1
+module: t1.m10
+level: L1
+minutes: 14
+objectives:
+  - Generalise Deutsch to n bits and derive the all-zeros amplitude as an average of signs
+  - Show that the outcome is all zeros with certainty for constant f and never for balanced f
+  - Compare the exact quantum query count of 1 with the classical worst case of 2^{n-1}+1
+prerequisites:
+  - t1.m10.l1
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+tags: [algorithms, deutsch-jozsa]
+---
+
+Deutsch's algorithm beat the classical bound by a factor of two on a problem with
+two inputs. Widen the input to $n$ bits and keep the promise, and the factor of
+two becomes a factor of $2^{n-1}$. The circuit does not get cleverer. It gets
+wider, and the same cancellation that killed one wrong answer now kills
+$2^n - 1$ of them at once.
+
+## The promise
+
+$f: \{0,1\}^n \to \{0,1\}$ is promised to be either **constant**, taking the same
+value on all $2^n$ inputs, or **balanced**, taking the value 0 on exactly half
+the inputs and 1 on the other half. No other function is allowed. Decide which.
+
+The promise is doing real work, and it is worth saying why. Without it the problem
+is hopeless: a function that is 0 everywhere except on one input is neither
+constant nor balanced, and no number of queries short of $2^{n-1}+1$ distinguishes
+it from the constant function. The promise is what makes a one-query algorithm
+possible at all.
+
+<Margin label="Promise problems">
+A promise problem restricts the inputs an algorithm must handle. Behaviour on
+inputs violating the promise is unconstrained, so the algorithm is allowed to
+return nonsense on them. Almost every early quantum speedup is a promise problem,
+which is one honest reason they had few applications.
+</Margin>
+
+## The circuit and the amplitude
+
+Use $n$ query qubits, indices 0 to $n-1$, and one answer qubit at index $n$.
+Prepare the answer qubit in $\ket{-}$, Hadamard every query qubit, apply $U_f$
+once, Hadamard every query qubit again, measure the query register.
+
+Kickback turns the oracle into a sign, exactly as before:
+
+$$
+U_f \ket{x}\ket{-} = (-1)^{f(x)}\ket{x}\ket{-}.
+$$
+
+After the first Hadamard layer and the oracle, the query register holds
+
+$$
+\frac{1}{\sqrt{2^n}} \sum_{x \in \{0,1\}^n} (-1)^{f(x)} \ket{x}.
+$$
+
+The second Hadamard layer acts as
+$H^{\otimes n}\ket{x} = \frac{1}{\sqrt{2^n}}\sum_z (-1)^{x \cdot z}\ket{z}$, so the
+final amplitude of the outcome $z$ is
+
+$$
+A_z = \frac{1}{2^n} \sum_{x} (-1)^{f(x) + x \cdot z}.
+$$
+
+Set $z = 0 \cdots 0$, which kills the $x \cdot z$ term:
+
+$$
+A_{0\cdots0} = \frac{1}{2^n} \sum_{x} (-1)^{f(x)}.
+$$
+
+That is the average of $2^n$ numbers, each $+1$ or $-1$. Two cases and no others:
+
+- **$f$ constant.** Every term has the same sign, so $A_{0\cdots0} = \pm 1$ and
+  the probability of reading all zeros is $|{\pm}1|^2 = 1$.
+- **$f$ balanced.** Exactly $2^{n-1}$ terms are $+1$ and $2^{n-1}$ are $-1$, so
+  $A_{0\cdots0} = 0$ and the probability of reading all zeros is $0$.
+
+No approximation, no repetition, no error probability. Read the query register:
+all zeros means constant, anything else means balanced.
+
+## Running it on three query qubits
+
+The constant oracle $f(x) = 0$ first. Four qubits, three of them queries, and the
+answer register sits in $\ket{-}$ throughout.
+
+<Circuit
+  caption="Deutsch-Jozsa, n = 3, constant oracle. The query register reads 000 with probability 1."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "dj-constant",
+    qubits: 4,
+    clbits: 3,
+    ops: [
+      { id: "x", gate: "x", targets: [3] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "h3", gate: "h", targets: [3] },
+      { id: "g0", gate: "h", targets: [0] },
+      { id: "g1", gate: "h", targets: [1] },
+      { id: "g2", gate: "h", targets: [2] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] },
+      { id: "m2", gate: "measure", targets: [2], cbits: [2] }
+    ]
+  }}
+/>
+
+Two surviving strings, $\ket{0000}$ and $\ket{0001}$, at $0.5$ each. The first
+three labels are the measured query bits and they are $000$ in both, so the
+outcome is all zeros with probability 1.
+
+Now a balanced oracle. Take $f(x) = x_0 \oplus x_1 \oplus x_2$, implemented as one
+CNOT from each query qubit onto the answer qubit. It is balanced because flipping
+any single input bit flips the output.
+
+<Circuit
+  caption="Deutsch-Jozsa, n = 3, balanced oracle f = x0 xor x1 xor x2. The query register reads 111."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "dj-balanced-parity",
+    qubits: 4,
+    clbits: 3,
+    ops: [
+      { id: "x", gate: "x", targets: [3] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "h3", gate: "h", targets: [3] },
+      { id: "o0", gate: "x", targets: [3], controls: [0] },
+      { id: "o1", gate: "x", targets: [3], controls: [1] },
+      { id: "o2", gate: "x", targets: [3], controls: [2] },
+      { id: "g0", gate: "h", targets: [0] },
+      { id: "g1", gate: "h", targets: [1] },
+      { id: "g2", gate: "h", targets: [2] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] },
+      { id: "m2", gate: "measure", targets: [2], cbits: [2] }
+    ]
+  }}
+/>
+
+The surviving strings are $\ket{1110}$ and $\ket{1111}$, so the query register
+reads $111$. Not all zeros, therefore balanced, and the algorithm is done.
+
+A different balanced function, $f(x) = x_0$, which ignores two of its inputs:
+
+<Circuit
+  caption="Deutsch-Jozsa, n = 3, balanced oracle f = x0. The query register reads 100."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "dj-balanced-first-bit",
+    qubits: 4,
+    clbits: 3,
+    ops: [
+      { id: "x", gate: "x", targets: [3] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "h3", gate: "h", targets: [3] },
+      { id: "o0", gate: "x", targets: [3], controls: [0] },
+      { id: "g0", gate: "h", targets: [0] },
+      { id: "g1", gate: "h", targets: [1] },
+      { id: "g2", gate: "h", targets: [2] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] },
+      { id: "m2", gate: "measure", targets: [2], cbits: [2] }
+    ]
+  }}
+/>
+
+Query register $100$. Both balanced oracles gave a non-zero string, which is all
+the algorithm promises. The particular string it gives is extra information, and
+in the next lesson that extra information becomes the whole point.
+
+## The classical cost
+
+A deterministic classical algorithm must be certain. Query $2^{n-1}$ distinct
+inputs and suppose every answer is 0. The function could still be constant, or it
+could be balanced with all its 1s among the inputs you have not yet asked about.
+One more query settles it: if the $(2^{n-1}+1)$-th answer is also 0 the function
+cannot be balanced, and if it is 1 the function cannot be constant. So the exact
+worst-case classical query complexity is $2^{n-1}+1$.
+
+| $n$ | classical worst case | quantum |
+| --- | --- | --- |
+| $3$ | $5$ | $1$ |
+| $10$ | $513$ | $1$ |
+| $50$ | $562949953421313$ | $1$ |
+
+<Callout tone="warning" title="The separation is against deterministic algorithms">
+Allow a classical algorithm to be randomised and to fail with probability
+$\varepsilon$, and the problem collapses: query a handful of random inputs, and if
+they are not all equal, answer balanced. A balanced function survives $k$ random
+queries with all answers equal only with probability $2^{-(k-1)}$, so 21
+queries push the failure probability to $2^{-20}$, below one in a million, for any
+$n$.
+Deutsch-Jozsa is an exponential separation for *exact* computation only. Simon's
+algorithm, three lessons on, is the one that survives randomisation.
+</Callout>
+
+<Check question="You run the circuit and read the query register as $000$, but you were never told the promise holds. What can you conclude?">
+Only that $\sum_x (-1)^{f(x)} = \pm 2^n$, which for an arbitrary $f$ means every
+$f(x)$ is equal, so $f$ is constant after all. Reading all zeros is in fact
+conclusive even without the promise, because the amplitude reaches magnitude 1
+only when every sign agrees. The promise is needed for the *other* direction: a
+non-zero reading tells you $f$ is not constant, but without the promise it does
+not tell you $f$ is balanced, since a function that is 1 on a single input also
+produces a non-zero reading.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), for the
+  amplitude derivation in the form used here and for the insistence that the
+  separation is against deterministic algorithms only.
+- [Microsoft Quantum Katas](https://github.com/microsoft/QuantumKatas), whose
+  Deutsch-Jozsa kata builds exactly these oracles and grades the resulting
+  distribution.

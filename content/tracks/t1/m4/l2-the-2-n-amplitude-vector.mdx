@@ -1,0 +1,147 @@
+---
+id: t1.m4.l2
+title: The 2^n Amplitude Vector
+type: concept
+track: t1
+module: t1.m4
+level: L1
+minutes: 12
+objectives:
+  - Compute the memory needed to store an n-qubit statevector in double-precision complex numbers
+  - Locate the amplitude of a named bitstring inside a flat amplitude array
+  - Explain why 50 qubits is roughly the limit of exact classical statevector simulation
+prerequisites: [t1.m4.l1]
+sources:
+  - label: CS269Q Elements of Quantum Computer Programming (Stanford)
+    url: https://cs269q.stanford.edu/
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+tags: [multi-qubit, simulation]
+---
+
+Adding one qubit doubles the length of the state vector. That sentence is the
+entire reason quantum computing is interesting and the entire reason simulating
+it is hard, and it is worth converting into bytes before it becomes a slogan.
+
+## The array
+
+An $n$-qubit state is a list of $2^n$ complex amplitudes,
+
+$$
+\ket{\psi} = \sum_{i=0}^{2^n - 1} a_i \ket{i},
+\qquad \sum_i |a_i|^2 = 1 ,
+$$
+
+stored in practice as a flat array indexed by $i$. The index and the bitstring
+are the same object in two notations: $i$ written in binary with $n$ digits,
+most significant first, is the label of the basis state, and qubit $q$ holds bit
+`(i >> (n - 1 - q)) & 1`.
+
+To find the amplitude of a named bitstring, read it as a binary number.
+$\ket{101}$ on three qubits is index $4 + 0 + 1 = 5$. $\ket{0110}$ on four
+qubits is index $0 + 4 + 2 + 0 = 6$. Going the other way, index 6 on three
+qubits is $\ket{110}$, meaning $q_0 = 1$, $q_1 = 1$, $q_2 = 0$.
+
+<Margin label="Sanity check">
+For the uniform superposition over $n$ qubits every amplitude is $2^{-n/2}$ and
+every probability is $2^{-n}$. At $n = 3$ that is $0.353553$ and $0.125$. If a
+simulator prints anything else for $H^{\otimes n}$ applied to
+$\ket{0}^{\otimes n}$, the bug is yours or its, but it is a bug.
+</Margin>
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="A Hadamard on each of three qubits. Eight amplitudes, all equal to 0.353553, all probabilities 0.125."
+  ir={{
+    version: 1,
+    name: "uniform-three",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] }
+    ]
+  }}
+/>
+
+## The bytes
+
+A double-precision complex number is two 64-bit floats, so 16 bytes. An
+$n$-qubit statevector therefore occupies
+
+$$
+16 \times 2^n \text{ bytes} .
+$$
+
+| $n$ | amplitudes | memory |
+| --- | --- | --- |
+| $10$ | $1\,024$ | $16$ KiB |
+| $20$ | $1\,048\,576$ | $16$ MiB |
+| $30$ | $1.07 \times 10^{9}$ | $16$ GiB |
+| $40$ | $1.10 \times 10^{12}$ | $16$ TiB |
+| $50$ | $1.13 \times 10^{15}$ | $16$ PiB |
+
+Thirty qubits fits on a workstation. Forty needs a large supercomputer and was
+achieved. Fifty is $16$ pebibytes, which is $18\,014\,398\,509\,481\,984$ bytes,
+larger than the memory of any machine that exists, and 51 needs twice that.
+The wall is not gradual: each extra qubit doubles the requirement, so no
+plausible increase in funding buys more than a few more qubits.
+
+<Callout tone="note" title="The limit is memory, not arithmetic">
+Applying a one-qubit gate to an $n$-qubit statevector touches every amplitude
+once, so the time cost is $O(2^n)$ per gate, which is bad but survivable. The
+binding constraint is that the array has to exist at all. This is why the
+practical frontier of exact simulation sits near 40 to 50 qubits and has done
+for a decade, and why hardware crossing that line is the whole point of the
+utility-scale experiments in T6.
+</Callout>
+
+## What the exponential does and does not buy
+
+The state of $n$ qubits needs $2^n$ complex numbers to write down. It is
+tempting to conclude that $n$ qubits *store* $2^n$ numbers. They do not, for the
+reason T1.M1.L3 gave: the Born rule returns $n$ bits per run and destroys the
+state. Holevo's bound makes the accounting exact, and $n$ qubits carry at most
+$n$ classical bits of retrievable information.
+
+The exponential is real, but it lives in the *dynamics*, not the storage. A
+single two-qubit gate applied to an $n$-qubit register updates all $2^n$
+amplitudes coherently, and interference can arrange for the amplitudes of wrong
+answers to cancel before anything is read out. Every algorithm in T1.M10 and
+T2 is a scheme for arranging that cancellation. Without the cancellation, an
+exponentially large state is exponentially useless.
+
+## Structure beats the bound
+
+Not every state needs $2^n$ numbers. A product state
+$\ket{\psi_1} \otimes \cdots \otimes \ket{\psi_n}$ is specified by $2n$
+amplitudes, and its $2^n$-entry vector is reconstructible from them. Circuits
+that keep states close to product form, or close to a low-entanglement matrix
+product state, are simulable far beyond 50 qubits: tensor-network methods
+routinely handle hundreds of qubits when the entanglement is bounded, and
+stabiliser circuits made only of Clifford gates are simulable in polynomial time
+at any size by the Gottesman-Knill theorem of T1.M3.L2.
+
+So "50 qubits" is a statement about the worst case, and about the brute-force
+method. It is the right number for a circuit that genuinely fills the space, and
+the wrong number for any circuit with structure a simulator can exploit. T6
+returns to this when it asks what a claim of quantum advantage actually has to
+rule out.
+
+<Check question="A five-qubit statevector is stored as a flat array of 32 complex numbers. Which index holds the amplitude of $\ket{01101}$, and how much memory would the same circuit need at 45 qubits?">
+Read $01101$ as binary: $0 \times 16 + 1 \times 8 + 1 \times 4 + 0 \times 2 + 1 = 13$,
+so it is index 13, with $q_0 = 0$, $q_1 = 1$, $q_2 = 1$, $q_3 = 0$, $q_4 = 1$.
+At 45 qubits the array holds $2^{45}$ amplitudes at 16 bytes each, which is
+$2^{49}$ bytes, or $512$ TiB. That is a large national-laboratory machine, and
+two more qubits would need $2$ PiB.
+</Check>
+
+## Where this comes from
+
+- [CS269Q, Stanford](https://cs269q.stanford.edu/), whose opening lectures make
+  the memory arithmetic explicit before any algorithm appears, because the
+  simulator budget determines what a student can actually run.
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses),
+  Utility-scale quantum computing, for the current position of the exact
+  simulation frontier and for the tensor-network caveats above.

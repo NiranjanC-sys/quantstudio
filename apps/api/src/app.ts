@@ -11,7 +11,7 @@
  * address; auth must exist before read-your-own-writes, which keys off the
  * caller's identity.
  */
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { LogController, type FastifyInstance } from 'fastify';
 import type { Env } from './env.js';
 import { sendProblem, toApiError } from './errors.js';
 import { authPlugin } from './middleware/auth.js';
@@ -42,10 +42,14 @@ export async function buildApp(env: Env, options: BuildOptions = {}): Promise<Bu
     // IP would be the load balancer's and the per-IP limits in §9 would be
     // meaningless.
     trustProxy: true,
-    // Fastify's default 8 KiB header cap is below what a SAML RelayState plus a
-    // long cookie jar can reach.
-    maxParamLength: 512,
-    disableRequestLogging: env.NODE_ENV === 'production',
+    // A SAML RelayState or a base64url credential id is longer than Fastify's
+    // 100-character default for a single route parameter.
+    routerOptions: { maxParamLength: 512 },
+    // Per-request access logs are redundant once every request is a span and a
+    // metric (§11), and in production they are the bulk of the log bill.
+    logController: new LogController({
+      disableRequestLogging: env.NODE_ENV === 'production',
+    }),
     genReqId: () => crypto.randomUUID(),
   });
 

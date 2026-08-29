@@ -74,6 +74,30 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  content:
+    name: content (mdx and curriculum validation)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 22
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with:
+          node-version: 22
+
+      # Catches inline math wrapped across a line break, bare braces outside
+      # math, missing frontmatter, and em dashes. Each of these either fails
+      # the Next.js build or violates DESIGN.md, and all are cheap to find here
+      # rather than in a 14 second production build.
+      - name: Validate authored lessons
+        run: node scripts/validate-content.mjs content/tracks
+
   python:
     name: python (quantum-kernel / py ${{ matrix.python-version }})
     runs-on: ubuntu-24.04
@@ -275,7 +299,7 @@ jobs:
   ci-ok:
     name: CI OK
     if: always()
-    needs: [node, python, integration, contract-drift]
+    needs: [node, content, python, integration, contract-drift]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}

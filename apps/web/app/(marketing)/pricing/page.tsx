@@ -19,7 +19,7 @@ export default function PricingPage() {
         <section className="rq-section">
           <h1 className="rq-display rq-display-sm">Pricing.</h1>
           <p className="rq-section-sub">
-            The free tier is genuinely useful, because the curriculum is the funnel. Two tracks, 87
+            The free tier is genuinely useful, because the curriculum is the funnel. Two tracks, 92
             lessons, unlimited contests, and a browser simulator that never charges you.
           </p>
         </section>

@@ -1,0 +1,187 @@
+---
+id: t1.m3.l6
+title: Gate Identities and Simplification
+type: lab
+track: t1
+module: t1.m3
+level: L1
+minutes: 30
+objectives:
+  - Reduce a fixed eight-gate single-qubit sequence to an equivalent one-gate circuit
+  - Justify the reduction with the identities HZH = X, S squared = Z and T to the fourth = Z
+prerequisites: [t1.m3.l5]
+sources:
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+tags: [lab, gates, simplification]
+---
+
+Depth is the resource that noise eats. A circuit of eight single-qubit gates
+takes eight times as long to run as one gate, accumulates eight gate errors, and
+computes something a single gate could have computed. Recognising that is the
+first optimisation pass any compiler makes, and doing it by hand once is how you
+learn to trust the ones that do it automatically.
+
+## The toolbox
+
+Six identities cover almost every single-qubit simplification you will meet.
+
+| identity | why |
+| --- | --- |
+| $X^2 = Y^2 = Z^2 = H^2 = I$ | each is a half turn, or its own inverse |
+| $S^2 = Z$, $T^2 = S$, $T^4 = Z$ | the phase family adds angles |
+| $HZH = X$, $HXH = Z$, $HYH = -Y$ | $H$ swaps the $x$ and $z$ axes |
+| $ZX = iY$, $XY = iZ$, $YZ = iX$ | the Pauli cyclic rule |
+| $P(\lambda)P(\mu) = P(\lambda + \mu)$ | diagonal gates merge |
+| $R_a(\theta)R_a(\phi) = R_a(\theta + \phi)$ | same-axis rotations merge |
+
+Two rules of thumb make them usable. Adjacent diagonal gates always merge.
+Anything sandwiched between two Hadamards has its axis swapped, so a $z$ gate
+becomes an $x$ gate and vice versa.
+
+<Margin label="Reading order">
+A circuit drawn left to right as $g_1, g_2, \dots, g_n$ has matrix
+$g_n \cdots g_2 g_1$: the first gate applied is the rightmost factor. Every
+identity below is stated as a matrix product, so reverse the reading direction
+when you turn one into a circuit.
+</Margin>
+
+## The sequence to reduce
+
+Apply these eight gates in order to one qubit:
+
+$$
+H,\quad S,\quad S,\quad H,\quad T,\quad T,\quad T,\quad T .
+$$
+
+As a matrix that is $T^4 H S^2 H$. Work it inside out.
+
+**Step one.** $S^2 = Z$, since $S = P(\pi/2)$ and the phases add to $\pi$. The
+middle of the expression becomes $H Z H$.
+
+**Step two.** $H Z H = X$, the axis swap. The right-hand block is now $X$.
+
+**Step three.** $T^4 = P(\pi/4)^4 = P(\pi) = Z$. The whole product is $Z X$.
+
+**Step four.** $Z X = iY$ by the cyclic rule, or by multiplying directly:
+
+$$
+ZX = \begin{pmatrix} 1 & 0 \\ 0 & -1 \end{pmatrix}\begin{pmatrix} 0 & 1 \\ 1 & 0 \end{pmatrix}
+= \begin{pmatrix} 0 & 1 \\ -1 & 0 \end{pmatrix} = i Y .
+$$
+
+Eight gates collapse to one $Y$, up to the global phase $i$.
+
+<Circuit
+  caption="The eight-gate sequence. Depth 8, and every gate is a one-qubit gate."
+  show={['amplitudes', 'probabilities']}
+  ir={{
+    version: 1,
+    name: "eight-gate-sequence",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "g1", gate: "h", targets: [0] },
+      { id: "g2", gate: "s", targets: [0] },
+      { id: "g3", gate: "s", targets: [0] },
+      { id: "g4", gate: "h", targets: [0] },
+      { id: "g5", gate: "t", targets: [0] },
+      { id: "g6", gate: "t", targets: [0] },
+      { id: "g7", gate: "t", targets: [0] },
+      { id: "g8", gate: "t", targets: [0] }
+    ]
+  }}
+/>
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="A single Y gate. Same probabilities, and an amplitude differing by the global phase i."
+  ir={{
+    version: 1,
+    name: "single-y",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "y1", gate: "y", targets: [0] }
+    ]
+  }}
+/>
+
+The eight-gate circuit reports amplitude $-1$ on $\ket{1}$ and the single $Y$
+reports $+i$. The ratio is $i$, constant, so by the test of T1.M1.L7 these are
+the same state. Feed both $\ket{+}$ instead and the same thing happens: the
+sequence gives $(0.707107,\ -0.707107)$ and $Y$ gives
+$(-0.707107 i,\ 0.707107 i)$, again in the ratio $i$.
+
+## Your task
+
+Return a Cirq circuit containing at most one gate that equals the eight-gate
+sequence up to global phase.
+
+```python
+import cirq
+
+
+def simplified() -> cirq.Circuit:
+    q = cirq.LineQubit(0)
+    # The sequence to reduce, for reference:
+    #   cirq.Circuit([cirq.H(q), cirq.S(q), cirq.S(q), cirq.H(q),
+    #                 cirq.T(q), cirq.T(q), cirq.T(q), cirq.T(q)])
+    return cirq.Circuit()  # your code here
+```
+
+The graded tests check three things: that the unitary matches $Y$ to a tolerance
+of $10^{-12}$ up to global phase, that the circuit contains at most one gate and
+has depth at most 1, and that it maps $\ket{0}$ to $\ket{1}$ and $\ket{1}$ to
+$\ket{0}$ up to phase.
+
+<Callout tone="gotcha" title="Up to global phase is a real tolerance, not a get-out">
+The test compares $U$ and $V$ by checking that $V^{\dagger}U$ is a multiple of
+the identity, not that the entries agree. Returning $Y$ passes. Returning
+$-Y$, $iY$ or $R_y(\pi)$ also passes, since all four differ from one another
+only by a phase. Returning $X$ does not, however close it looks: $X$ and $Y$
+disagree on $\ket{+}$, which the hidden statevector tests exercise.
+</Callout>
+
+## Working method
+
+Three habits make hand simplification reliable.
+
+**Push diagonals together.** Any $Z$, $S$, $T$ or $P(\lambda)$ adjacent to
+another merges by adding phases. Do these first; they never fail and they
+shorten the expression.
+
+**Conjugate by Hadamards deliberately.** When you see $H \dots H$, rewrite the
+middle using $HZH = X$ and $HXH = Z$. This converts a diagonal block into a
+Pauli-$X$ block that can then merge with other $X$s.
+
+**Track the phase, then discard it at the very end.** Carrying $i$ and $-1$
+through the calculation costs nothing and catches sign errors. Discard the
+accumulated factor only once, after the last step, and only if the circuit is
+not going to be controlled.
+
+<Check question="Simplify the circuit $H$, $T$, $T$, $T$, $T$, $H$, $Z$ applied in that order.">
+The matrix is $Z H T^4 H$. Inside, $T^4 = Z$, so $H T^4 H = H Z H = X$, and the
+product is $Z X = iY$. The circuit is a single $Y$ up to global phase, the same
+answer as the eight-gate sequence by a different route. Seven gates become one.
+</Check>
+
+<Solution>
+Return `cirq.Circuit([cirq.Y(q)])`.
+
+The reduction in one line: $H S^2 H = H Z H = X$ and $T^4 = Z$, so the sequence
+is $ZX = iY$, which is $Y$ up to global phase. Any of `cirq.Y(q)`,
+`cirq.ry(np.pi)(q)` or `cirq.Y(q) ** 1.0` satisfies the unitary test; the gate
+count and depth limits rule out returning the original sequence unchanged.
+</Solution>
+
+## Where this comes from
+
+- [Microsoft Quantum Katas](https://github.com/microsoft/QuantumKatas), whose
+  gate-identity exercises are the source of the "reduce this fixed sequence"
+  format and of the up-to-global-phase grading criterion.
+- [PennyLane Codebook](https://pennylane.ai/codebook), for the circuit
+  identities module and the framing of simplification as the first compiler
+  pass rather than as a puzzle.

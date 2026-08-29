@@ -1,0 +1,192 @@
+---
+id: t0.m6.l4
+title: "P, BPP, NP, PSPACE"
+type: concept
+track: t0
+module: t0.m6
+level: L0
+minutes: 14
+objectives:
+  - Define P, BPP, NP and PSPACE in terms of the resources a verifier or machine may use
+  - Place the four classes in the containments known to hold unconditionally
+  - Explain why BPP is the honest classical baseline that BQP is compared against
+prerequisites: [t0.m6.l2]
+sources:
+  - label: O'Donnell, 15-859BB Quantum Computation (CMU)
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: Preskill, Ph219/CS219 Quantum Computation lecture notes (Caltech)
+    url: http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html
+tags: [complexity]
+---
+
+"Quantum computers are faster" is a claim about complexity classes, and it is
+routinely stated against the wrong baseline. The honest comparison is not
+against what a deterministic algorithm can do, because classical computers have
+had access to randomness for as long as they have existed. Getting the four
+classical classes straight is what lets you read a speedup claim and know what
+was actually claimed.
+
+## Four definitions
+
+Fix a decision problem: an infinite family of yes-or-no questions, one per input
+string $x$, with $n = |x|$.
+
+**P.** There is a deterministic algorithm that answers correctly on every input,
+running in time polynomial in $n$. This is the usual informal meaning of
+"efficiently solvable".
+
+**BPP.** Bounded-error probabilistic polynomial time. There is a randomised
+algorithm running in polynomial time that answers correctly with probability at
+least $2/3$ on every input. The constant $2/3$ is arbitrary, as the next section
+shows.
+
+**NP.** There is a polynomial-time deterministic *verifier* and, for every yes
+instance, a certificate of polynomial length that the verifier accepts. For a no
+instance, no certificate is accepted. NP is about checking, not finding.
+
+**PSPACE.** There is a deterministic algorithm using memory polynomial in $n$,
+with no limit on time.
+
+<Margin label="Deciding versus computing">
+All four classes are about decision problems, which makes them comparable. A
+search problem like factoring is turned into a decision problem in the usual
+way, for instance "does $N$ have a factor less than $k$", and a polynomial
+number of such questions recovers the factorisation by binary search.
+</Margin>
+
+## Why the constant in BPP does not matter
+
+An algorithm that is right with probability $2/3$ can be turned into one that is
+right with probability $1 - \varepsilon$ for any $\varepsilon$ you name, by
+running it many times and taking the majority answer. Each run is an independent
+biased coin, so the probability the majority is wrong is a binomial tail:
+
+| runs | probability the majority is wrong |
+| --- | --- |
+| 1 | $0.333333$ |
+| 3 | $0.259259$ |
+| 11 | $0.122085$ |
+| 101 | $0.000272$ |
+
+The three-run figure is worth doing by hand. The majority of 3 is wrong when 0
+or 1 runs are correct:
+
+$$
+\left(\tfrac13\right)^3 + 3\cdot\tfrac23\cdot\left(\tfrac13\right)^2
+= \tfrac{1}{27} + \tfrac{6}{27} = \tfrac{7}{27} = 0.259259 .
+$$
+
+The tail shrinks exponentially in the number of runs, by the Chernoff bound, so
+polynomially many repetitions drive the error below $2^{-n}$. That is why BPP
+with threshold $2/3$, $0.51$ or $1 - 2^{-n}$ are the same class.
+
+A single-shot machine with success probability exactly $2/3$ is easy to build.
+
+<Simulate
+  show="probabilities"
+  caption="A one-shot machine that is right two times in three. Outcome 0 is the correct answer; majority voting over repetitions is what makes this useful."
+  ir={{
+    version: 1,
+    name: "bpp-machine",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "r0", gate: "ry", targets: [0], params: [1.2309594173407747] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $0$ | $0.666667$ |
+| $1$ | $0.333333$ |
+
+</Simulate>
+
+The rotation angle is $2\arccos\sqrt{2/3} = 1.230959$, chosen so that
+$\cos^2(\theta/2) = 2/3$ exactly.
+
+## The containments that are actually proved
+
+$$
+\mathrm{P} \subseteq \mathrm{BPP} \subseteq \mathrm{PSPACE},
+\qquad
+\mathrm{P} \subseteq \mathrm{NP} \subseteq \mathrm{PSPACE} .
+$$
+
+Each is easy to see. A deterministic algorithm is a randomised one that ignores
+its coins, giving the first. A randomised polynomial-time algorithm can be
+simulated in polynomial space by trying every coin sequence one at a time and
+counting, reusing the same memory, giving the second. A verifier can be run on
+every candidate certificate the same way, giving the fourth.
+
+What is *not* known is any separation among them. Both of these are open:
+
+$$
+\mathrm{P} \stackrel{?}{=} \mathrm{NP},
+\qquad
+\mathrm{P} \stackrel{?}{=} \mathrm{PSPACE} .
+$$
+
+Most researchers expect that $\mathrm{P} = \mathrm{BPP}$, on the strength of
+derandomisation results
+that trade hardness assumptions for pseudorandom generators. BPP and NP are not
+known to be comparable in either direction.
+
+Only one separation in the neighbourhood is unconditional: the time hierarchy
+theorem gives $\mathrm{P} \subsetneq \mathrm{EXP}$, and since
+$\mathrm{PSPACE} \subseteq \mathrm{EXP}$, at least one of the containments in
+the chain from P to EXP is strict. Nobody knows which.
+
+## Where BQP sits
+
+BQP is the quantum analogue of BPP: polynomial-size quantum circuits, correct
+with probability at least $2/3$. The proved relations are
+
+$$
+\mathrm{P} \subseteq \mathrm{BPP} \subseteq \mathrm{BQP} \subseteq \mathrm{PSPACE}.
+$$
+
+The first quantum containment holds because a quantum circuit can simulate coin
+flips with Hadamards, as the figure above does. The last holds because the
+amplitude of any basis state is a sum over exponentially many paths, and that
+sum can be accumulated one path at a time in polynomial space.
+
+This is why BPP, not P, is the baseline. A quantum algorithm that beats the best
+known deterministic algorithm but ties the best known randomised one has
+demonstrated nothing about quantum advantage. It is also why no proof of
+quantum advantage exists: separating BQP from BPP would separate P from PSPACE,
+which is a famous open problem.
+
+<Callout tone="warning" title="Speedup claims to read carefully">
+Shor's algorithm is not proved to be faster than every classical factoring
+algorithm; it is faster than every *known* one, and factoring is not known to be
+outside BPP. Grover's algorithm gives a proved quadratic speedup, but only in
+the black-box query model, where the input is an oracle rather than a circuit.
+The catalogue in T2 labels every algorithm with which of these two kinds of
+claim it makes.
+</Callout>
+
+<Check question="A randomised algorithm answers correctly with probability $0.9$. How does the majority of 3 runs compare, and what is the general shape of the improvement?">
+The majority of 3 is wrong when 0 or 1 runs are correct:
+
+$$
+(0.1)^3 + 3(0.9)(0.1)^2 = 0.001 + 0.027 = 0.028 .
+$$
+
+So the error drops from $0.1$ to $0.028$, better than a factor of 3. In general
+the error after $k$ runs decays like $e^{-ck}$ for a constant $c$ depending on
+the gap between the success probability and $1/2$, which is the Chernoff bound.
+The closer the single-run probability is to $1/2$, the smaller $c$ is and the
+more repetitions you need.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), whose
+  TCS-first ordering introduces BPP as the classical baseline before defining
+  BQP at all.
+- [Preskill, Ph219](http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html),
+  chapter 6, for the complexity-class placement of BQP and the containment
+  arguments summarised here.

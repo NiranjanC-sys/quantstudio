@@ -1,0 +1,190 @@
+---
+id: t1.m3.l5
+title: Euler Decomposition
+type: concept
+track: t1
+module: t1.m3
+level: L1
+minutes: 14
+objectives:
+  - Decompose an arbitrary one-qubit unitary as e^{i alpha} Rz(beta) Ry(gamma) Rz(delta)
+  - Extract the four Euler parameters from a given 2x2 unitary
+  - Explain why three real parameters suffice once the global phase is discarded
+prerequisites: [t1.m3.l4]
+sources:
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+tags: [gates, euler]
+---
+
+A compiler is handed a $2 \times 2$ unitary and a device that offers rotations
+about $z$ for free and rotations about $y$ at a cost. How many of each does it
+need? The answer is three, always, and the constructive proof is the same
+decomposition that Euler wrote down for rigid-body orientations in 1775.
+
+## The theorem
+
+Every one-qubit unitary $U$ can be written
+
+$$
+U = e^{i\alpha}\, R_z(\beta)\, R_y(\gamma)\, R_z(\delta)
+$$
+
+with four real numbers $\alpha, \beta, \gamma, \delta$. As a circuit the gates
+run right to left: $R_z(\delta)$ first, then $R_y(\gamma)$, then $R_z(\beta)$,
+and the phase is not a gate at all.
+
+The parameter count explains why three angles is the right number and not two or
+four. A $2 \times 2$ unitary has 4 real degrees of freedom: 8 real entries minus
+the 4 real constraints in $U^{\dagger}U = I$. Discarding global phase removes
+one, leaving 3. Geometrically, the group of rotations of the Bloch sphere is
+three dimensional, and Euler angles are the standard coordinates on it.
+
+<Margin label="Other conventions">
+ZYZ is one choice. ZXZ and the ZSX form used by IBM hardware are equally valid,
+and the registry's $U(\theta,\varphi,\lambda)$ is ZYZ with the phase absorbed:
+$U(\theta,\varphi,\lambda) = e^{i(\varphi + \lambda)/2} R_z(\varphi) R_y(\theta) R_z(\lambda)$.
+Always check which convention a tool means before comparing angles.
+</Margin>
+
+## Why the product has this shape
+
+Multiply the three factors out once and the extraction recipe falls out. With
+$c = \cos(\gamma/2)$ and $s = \sin(\gamma/2)$,
+
+$$
+R_z(\beta) R_y(\gamma) R_z(\delta) =
+\begin{pmatrix}
+e^{-i(\beta + \delta)/2} c & -e^{-i(\beta - \delta)/2} s \\[4pt]
+e^{i(\beta - \delta)/2} s & e^{i(\beta + \delta)/2} c
+\end{pmatrix} .
+$$
+
+The $R_z$ factors are diagonal, so the left one scales rows and the right one
+scales columns; only $R_y$ moves amplitude between rows, and it does so with
+real entries. So the moduli of the four entries are decided by $\gamma$ alone,
+and the four phases are decided by $\beta$ and $\delta$ together with $\alpha$.
+
+## Extracting the angles
+
+Given $U$, the recipe is four steps. Normalise the determinant first, because
+that is what separates the global phase from the rest.
+
+**One.** Compute $\varphi = \arg \det U$ and set $\alpha = \varphi/2$. The
+matrix $U' = e^{-i\varphi/2} U$ then has $\det U' = 1$, so it lies in $SU(2)$
+and matches the product above exactly.
+
+**Two.** Read $\gamma$ off the moduli:
+
+$$
+\gamma = 2 \arctan\!\left( \frac{|U'_{10}|}{|U'_{00}|} \right) .
+$$
+
+**Three.** Read the phase sum and difference off the bottom row, where the
+entries are $e^{i(\beta+\delta)/2} c$ and $e^{i(\beta-\delta)/2} s$:
+
+$$
+\beta = \arg U'_{11} + \arg U'_{10},
+\qquad
+\delta = \arg U'_{11} - \arg U'_{10} .
+$$
+
+**Four.** If $s = 0$ the bottom-left entry has no phase to read, and $\beta$ and
+$\delta$ are only determined through their sum; take $\delta = 0$ and
+$\beta = 2\arg U'_{11}$.
+
+Run it on the Hadamard. $\det H = -1$, so $\varphi = \pi$ and
+$\alpha = \pi/2$, and $U' = -iH$ has entries
+
+$$
+U' = \begin{pmatrix} -0.707107 i & -0.707107 i \\ -0.707107 i & 0.707107 i \end{pmatrix} .
+$$
+
+Then $\gamma = 2\arctan(1) = \pi/2$, and with $\arg U'_{11} = \pi/2$ and
+$\arg U'_{10} = -\pi/2$,
+
+$$
+\beta = \frac{\pi}{2} - \frac{\pi}{2} = 0,
+\qquad
+\delta = \frac{\pi}{2} + \frac{\pi}{2} = \pi .
+$$
+
+So $H = e^{i\pi/2} R_z(0)\, R_y(\pi/2)\, R_z(\pi)$, which is two gates plus a
+phase, since $R_z(0) = I$.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="Rz(pi) then Ry(pi/2) on |0>. The amplitudes are -0.707107i each, which is H|0> times a global phase of minus i."
+  ir={{
+    version: 1,
+    name: "euler-hadamard",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "a", gate: "rz", targets: [0], params: [3.141592653589793] },
+      { id: "b", gate: "ry", targets: [0], params: [1.5707963267948966] }
+    ]
+  }}
+/>
+
+Compare with $H\ket{0} = (0.707107,\ 0.707107)$. The two amplitude columns
+differ by the factor $-i$, and the probability columns are identical, which is
+the global phase $e^{i\alpha}$ doing exactly what T1.M1.L7 said it would. A
+circuit cannot produce the factor and does not need to.
+
+<Callout tone="gotcha" title="The phase is not always ignorable">
+Dropping $e^{i\alpha}$ is safe for a gate applied to the whole register at the
+end of a circuit. It is not safe inside a controlled operation: a controlled
+version of $e^{i\alpha}U$ differs from a controlled $U$ by a phase gate on the
+control, which is measurable. T1.M4.L5 builds controlled gates and has to carry
+$\alpha$ explicitly for exactly this reason.
+</Callout>
+
+## Three worked results
+
+Running the recipe on the standard gates gives a table worth checking by hand
+once each. Angles are in radians.
+
+| $U$ | $\alpha$ | $\beta$ | $\gamma$ | $\delta$ |
+| --- | --- | --- | --- | --- |
+| $H$ | $\pi/2$ | $0$ | $\pi/2$ | $\pi$ |
+| $S$ | $\pi/4$ | $\pi/2$ | $0$ | $0$ |
+| $T$ | $\pi/8$ | $\pi/4$ | $0$ | $0$ |
+| $X$ | $\pi/2$ | $-\pi/2$ | $\pi$ | $\pi/2$ |
+| $Y$ | $\pi/2$ | $0$ | $\pi$ | $0$ |
+| $\sqrt{X}$ | $\pi/4$ | $-\pi/2$ | $\pi/2$ | $\pi/2$ |
+
+The diagonal gates all have $\gamma = 0$, which is the statement that they need
+no $R_y$ at all: they are already rotations about $z$. The $\sqrt{X}$ row is the
+one hardware compilers use constantly, since it turns an $x$ rotation into a
+free-free-cheap sandwich on devices where $R_z$ costs nothing.
+
+## Why this makes a device universal
+
+Euler decomposition is the reason a machine offering only $R_z$ and one fixed
+non-diagonal gate can run anything. IBM devices expose $R_z$, $\sqrt{X}$ and a
+two-qubit entangler; since
+$R_y(\gamma) = R_z(-\pi/2) R_x(\gamma) R_z(\pi/2)$ and $R_x$ is built from two
+$\sqrt{X}$ gates with an $R_z$ between them, every one-qubit unitary compiles to
+at most two $\sqrt{X}$ gates and three $R_z$ gates. Combined with the two-qubit
+gate of T1.M4, that is a universal set, and T1.M8.L5 completes the argument.
+
+<Check question="A gate has $\gamma = 0$ in its Euler decomposition. What can you say about it, and what does it do to the Bloch sphere?">
+$\gamma = 0$ makes $R_y(\gamma) = I$, so
+$U = e^{i\alpha} R_z(\beta) R_z(\delta) = e^{i\alpha} R_z(\beta + \delta)$. The
+gate is diagonal in the computational basis, it is a member of the phase family
+$P(\lambda)$ of T1.M3.L2 up to global phase, and on the Bloch sphere it is a
+rotation about the $z$ axis by $\beta + \delta$. Only the sum is determined,
+which is why the extraction recipe has to special-case it.
+</Check>
+
+## Where this comes from
+
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  theorem 4.1 and corollary 4.2, which state the ZYZ decomposition and then use
+  it immediately to build controlled gates, the same order followed here.
+- [PennyLane Codebook](https://pennylane.ai/codebook), whose compilation
+  exercises make the extraction a piece of code rather than a proof, which is
+  how it is met in practice.

@@ -29,7 +29,6 @@ import { requireRole } from '../middleware/auth.js';
 import {
   authed,
   csvRows,
-  page,
   paginationSchema,
   rateLimit,
   readBody,

@@ -165,8 +165,10 @@ const SPECS: RoadmapSpec[] = [
     selections: [
       { modules: allModulesOf('t0') },
       { modules: allModulesOf('t1') },
-      { modules: allModulesOf('t3') },
+      // T2.M1 to M5 precedes T3 because T3.M4 estimates the cost of Shor at
+      // scale, which is not a meaningful exercise before Shor is taught.
       { modules: modulesInRange('t2', 1, 5) },
+      { modules: allModulesOf('t3') },
       { modules: modulesInRange('t7', 2, 4) },
     ],
   },
@@ -181,8 +183,10 @@ const SPECS: RoadmapSpec[] = [
     selections: [
       { modules: modulesInRange('t0', 2, 5) },
       { modules: modulesInRange('t1', 1, 9) },
-      { modules: modulesInRange('t5', 9, 11) },
+      // T3.M6 to M8 precedes the QML modules: those lessons assert on
+      // measured distributions and shot budgets, which T3.M6 is what teaches.
       { modules: modulesInRange('t3', 6, 8) },
+      { modules: modulesInRange('t5', 9, 11) },
     ],
   },
   {

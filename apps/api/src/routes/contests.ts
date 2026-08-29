@@ -217,7 +217,7 @@ export const contestRoutes: FastifyPluginAsync = async (app) => {
           ...row,
           startsAt: row.startsAt.toISOString(),
           endsAt: row.endsAt.toISOString(),
-          freezeAt: freezeAt(row as ContestRow).toISOString(),
+          freezeAt: freezeAt(row).toISOString(),
         })),
         query,
         counted[0]?.total ?? 0,

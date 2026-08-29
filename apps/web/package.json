@@ -34,7 +34,8 @@
     "rehype-katex": "^7.0.1",
     "rehype-slug": "^6.0.0",
     "yaml": "^2.6.1",
-    "@redquant/design": "workspace:*"
+    "@redquant/design": "workspace:*",
+    "@redquant/content": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^19.0.2",

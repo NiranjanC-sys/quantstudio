@@ -801,3 +801,4 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .rq-problem-list > li { grid-template-columns: 32px minmax(0, 1fr); }
   .rq-problem-points { display: none; }
 }
+.rq-lesson-pending { color: var(--ink-subtle); font-size: 15px; }

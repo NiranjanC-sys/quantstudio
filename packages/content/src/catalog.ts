@@ -137,8 +137,24 @@ export function minutesFor(ids: readonly string[]): number {
   return ids.reduce((sum, id) => sum + (lessonIndex.get(id)?.minutes ?? 0), 0);
 }
 
+/**
+ * Shape of the catalogue, derived rather than declared.
+ *
+ * `perTrack` is included so a test can assert the distribution and not just
+ * the total: a track losing five lessons while another gains five would leave
+ * the totals untouched and the curriculum broken.
+ */
 export const CATALOG_COUNTS = {
   tracks: TRACKS.length,
   modules: MODULES.length,
   lessons: LESSONS.length,
+  perTrack: Object.fromEntries(
+    TRACKS.map((t) => [
+      t.id,
+      {
+        modules: MODULES.filter((m) => m.track === t.id).length,
+        lessons: LESSONS.filter((l) => l.track === t.id).length,
+      },
+    ]),
+  ) as Record<string, { modules: number; lessons: number }>,
 } as const;
