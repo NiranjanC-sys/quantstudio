@@ -20,10 +20,10 @@
     "check:cross-engine": "node scripts/cross-engine-check.mjs"
   },
   "devDependencies": {
-    "@types/node": "^22.10.2",
+    "@types/node": "^26.3.0",
     "turbo": "^2.3.3",
-    "typescript": "^5.7.2",
-    "vitest": "^2.1.8",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11",
     "@mdx-js/mdx": "^3.1.0",
     "remark-math": "^6.0.0",
     "remark-gfm": "^4.0.0",
