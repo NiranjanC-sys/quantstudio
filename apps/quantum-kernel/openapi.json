@@ -1,0 +1,1611 @@
+{
+  "components": {
+    "schemas": {
+      "Circuit": {
+        "additionalProperties": false,
+        "properties": {
+          "clbits": {
+            "default": 0,
+            "maximum": 64.0,
+            "minimum": 0.0,
+            "title": "Clbits",
+            "type": "integer"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "name": {
+            "default": "circuit",
+            "title": "Name",
+            "type": "string"
+          },
+          "ops": {
+            "items": {
+              "$ref": "#/components/schemas/Op"
+            },
+            "title": "Ops",
+            "type": "array"
+          },
+          "qubits": {
+            "maximum": 64.0,
+            "minimum": 1.0,
+            "title": "Qubits",
+            "type": "integer"
+          },
+          "version": {
+            "const": 1,
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "qubits"
+        ],
+        "title": "Circuit",
+        "type": "object"
+      },
+      "ClassicalCondition": {
+        "additionalProperties": false,
+        "description": "Execute the op only when the named classical bits hold ``value``.\n\n``bits`` is least-significant-first: ``bits=[2, 5], value=2`` means\n``clbit[2] == 0 and clbit[5] == 1``.",
+        "properties": {
+          "bits": {
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 1,
+            "title": "Bits",
+            "type": "array"
+          },
+          "value": {
+            "minimum": 0.0,
+            "title": "Value",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bits",
+          "value"
+        ],
+        "title": "ClassicalCondition",
+        "type": "object"
+      },
+      "ConvertRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "bindings": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Bindings",
+            "type": "object"
+          },
+          "circuit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Circuit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dialects": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dialects",
+            "type": "array"
+          },
+          "qasm": {
+            "anyOf": [
+              {
+                "maxLength": 262144,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qasm"
+          }
+        },
+        "title": "ConvertRequest",
+        "type": "object"
+      },
+      "CountsContains": {
+        "additionalProperties": false,
+        "properties": {
+          "forbidden": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Forbidden",
+            "type": "object"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint"
+          },
+          "kind": {
+            "const": "counts_contains",
+            "default": "counts_contains",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "outcomes": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Outcomes",
+            "type": "object"
+          },
+          "points": {
+            "default": 1.0,
+            "minimum": 0.0,
+            "title": "Points",
+            "type": "number"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "shots": {
+            "default": 4096,
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Shots",
+            "type": "integer"
+          }
+        },
+        "title": "CountsContains",
+        "type": "object"
+      },
+      "CustomPython": {
+        "additionalProperties": false,
+        "properties": {
+          "cpu_seconds": {
+            "default": 2,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Cpu Seconds",
+            "type": "integer"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint"
+          },
+          "kind": {
+            "const": "custom_python",
+            "default": "custom_python",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "points": {
+            "default": 1.0,
+            "minimum": 0.0,
+            "title": "Points",
+            "type": "number"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "shots": {
+            "default": 0,
+            "maximum": 1000000.0,
+            "minimum": 0.0,
+            "title": "Shots",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "CustomPython",
+        "type": "object"
+      },
+      "DistributionClose": {
+        "additionalProperties": false,
+        "properties": {
+          "alpha": {
+            "anyOf": [
+              {
+                "exclusiveMaximum": 1.0,
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 0.01,
+            "title": "Alpha"
+          },
+          "expected": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Expected",
+            "type": "object"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint"
+          },
+          "kind": {
+            "const": "distribution_close",
+            "default": "distribution_close",
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_tvd": {
+            "default": 0.05,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Max Tvd",
+            "type": "number"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "points": {
+            "default": 1.0,
+            "minimum": 0.0,
+            "title": "Points",
+            "type": "number"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "shots": {
+            "default": 4096,
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Shots",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected"
+        ],
+        "title": "DistributionClose",
+        "type": "object"
+      },
+      "ExecuteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "capture": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Capture",
+            "type": "array"
+          },
+          "cpu_seconds": {
+            "default": 2,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Cpu Seconds",
+            "type": "integer"
+          },
+          "extract_circuit": {
+            "default": true,
+            "title": "Extract Circuit",
+            "type": "boolean"
+          },
+          "seed": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Seed",
+            "type": "integer"
+          },
+          "source": {
+            "maxLength": 262144,
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "ExecuteRequest",
+        "type": "object"
+      },
+      "GateSetSubset": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_structural": {
+            "default": true,
+            "title": "Allow Structural",
+            "type": "boolean"
+          },
+          "allowed": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Allowed",
+            "type": "array"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint"
+          },
+          "kind": {
+            "const": "gate_set_subset",
+            "default": "gate_set_subset",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "points": {
+            "default": 1.0,
+            "minimum": 0.0,
+            "title": "Points",
+            "type": "number"
+          }
+        },
+        "required": [
+          "allowed"
+        ],
+        "title": "GateSetSubset",
+        "type": "object"
+      },
+      "GradeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "assertions": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "counts_contains": "#/components/schemas/CountsContains",
+                  "custom_python": "#/components/schemas/CustomPython",
+                  "distribution_close": "#/components/schemas/DistributionClose",
+                  "gate_set_subset": "#/components/schemas/GateSetSubset",
+                  "resource_bound": "#/components/schemas/ResourceBound",
+                  "statevector_equals": "#/components/schemas/StatevectorEquals",
+                  "unitary_equals": "#/components/schemas/UnitaryEquals"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/StatevectorEquals"
+                },
+                {
+                  "$ref": "#/components/schemas/UnitaryEquals"
+                },
+                {
+                  "$ref": "#/components/schemas/DistributionClose"
+                },
+                {
+                  "$ref": "#/components/schemas/CountsContains"
+                },
+                {
+                  "$ref": "#/components/schemas/ResourceBound"
+                },
+                {
+                  "$ref": "#/components/schemas/GateSetSubset"
+                },
+                {
+                  "$ref": "#/components/schemas/CustomPython"
+                }
+              ]
+            },
+            "title": "Assertions",
+            "type": "array"
+          },
+          "backend": {
+            "default": "native",
+            "title": "Backend",
+            "type": "string"
+          },
+          "bindings": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Bindings",
+            "type": "object"
+          },
+          "circuit": {
+            "$ref": "#/components/schemas/Circuit"
+          }
+        },
+        "required": [
+          "circuit"
+        ],
+        "title": "GradeRequest",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "NoiseModel": {
+        "additionalProperties": false,
+        "description": "The noise a request asks for, in the JSON the gateway forwards.\n\nEvery field is optional and defaults to noiseless, so ``{}`` is a valid,\nmeaningful noise model and the noisy and noiseless code paths are the same\ncode path.",
+        "properties": {
+          "amplitude_damping": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Amplitude Damping",
+            "type": "number"
+          },
+          "depolarizing1": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Depolarizing1",
+            "type": "number"
+          },
+          "depolarizing2": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Depolarizing2",
+            "type": "number"
+          },
+          "device": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device"
+          },
+          "gate_time_1q": {
+            "default": 35.0,
+            "minimum": 0.0,
+            "title": "Gate Time 1Q",
+            "type": "number"
+          },
+          "gate_time_2q": {
+            "default": 300.0,
+            "minimum": 0.0,
+            "title": "Gate Time 2Q",
+            "type": "number"
+          },
+          "phase_damping": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Phase Damping",
+            "type": "number"
+          },
+          "readout": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Readout",
+            "type": "number"
+          },
+          "readout_10": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Readout 10"
+          },
+          "t1": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T1"
+          },
+          "t2": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T2"
+          }
+        },
+        "title": "NoiseModel",
+        "type": "object"
+      },
+      "Op": {
+        "additionalProperties": false,
+        "properties": {
+          "cbits": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Cbits",
+            "type": "array"
+          },
+          "condition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClassicalCondition"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "controls": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Controls",
+            "type": "array"
+          },
+          "gate": {
+            "title": "Gate",
+            "type": "string"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "params": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "$ref": "#/components/schemas/Symbol"
+                }
+              ]
+            },
+            "title": "Params",
+            "type": "array"
+          },
+          "targets": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "gate"
+        ],
+        "title": "Op",
+        "type": "object"
+      },
+      "ResourceBound": {
+        "additionalProperties": false,
+        "properties": {
+          "hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint"
+          },
+          "kind": {
+            "const": "resource_bound",
+            "default": "resource_bound",
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_depth": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Depth"
+          },
+          "max_qubits": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Qubits"
+          },
+          "max_size": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Size"
+          },
+          "max_t_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max T Count"
+          },
+          "max_two_qubit_gates": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Two Qubit Gates"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "points": {
+            "default": 1.0,
+            "minimum": 0.0,
+            "title": "Points",
+            "type": "number"
+          }
+        },
+        "title": "ResourceBound",
+        "type": "object"
+      },
+      "SimOptions": {
+        "additionalProperties": false,
+        "description": "Everything a caller can vary about one simulation run.",
+        "properties": {
+          "bindings": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Bindings",
+            "type": "object"
+          },
+          "expectations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Expectations",
+            "type": "array"
+          },
+          "max_qubits": {
+            "default": 30,
+            "maximum": 64.0,
+            "minimum": 1.0,
+            "title": "Max Qubits",
+            "type": "integer"
+          },
+          "max_trajectories": {
+            "default": 8192,
+            "maximum": 200000.0,
+            "minimum": 1.0,
+            "title": "Max Trajectories",
+            "type": "integer"
+          },
+          "method": {
+            "default": "statevector",
+            "title": "Method",
+            "type": "string"
+          },
+          "noise": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NoiseModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reduced_density": {
+            "items": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "title": "Reduced Density",
+            "type": "array"
+          },
+          "return_bloch": {
+            "default": true,
+            "title": "Return Bloch",
+            "type": "boolean"
+          },
+          "return_probabilities": {
+            "default": true,
+            "title": "Return Probabilities",
+            "type": "boolean"
+          },
+          "return_statevector": {
+            "default": true,
+            "title": "Return Statevector",
+            "type": "boolean"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "shots": {
+            "default": 0,
+            "maximum": 1000000.0,
+            "minimum": 0.0,
+            "title": "Shots",
+            "type": "integer"
+          }
+        },
+        "title": "SimOptions",
+        "type": "object"
+      },
+      "SimulateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "backend": {
+            "default": "auto",
+            "description": "native, density, aer, cirq, pennylane, or auto",
+            "title": "Backend",
+            "type": "string"
+          },
+          "circuit": {
+            "$ref": "#/components/schemas/Circuit"
+          },
+          "include_visual": {
+            "default": false,
+            "title": "Include Visual",
+            "type": "boolean"
+          },
+          "options": {
+            "$ref": "#/components/schemas/SimOptions"
+          }
+        },
+        "required": [
+          "circuit"
+        ],
+        "title": "SimulateRequest",
+        "type": "object"
+      },
+      "StatevectorEquals": {
+        "additionalProperties": false,
+        "properties": {
+          "bindings": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Bindings",
+            "type": "object"
+          },
+          "expected": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            ],
+            "title": "Expected"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint"
+          },
+          "kind": {
+            "const": "statevector_equals",
+            "default": "statevector_equals",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "points": {
+            "default": 1.0,
+            "minimum": 0.0,
+            "title": "Points",
+            "type": "number"
+          },
+          "tolerance": {
+            "default": 1e-06,
+            "exclusiveMinimum": 0.0,
+            "title": "Tolerance",
+            "type": "number"
+          },
+          "up_to_global_phase": {
+            "default": true,
+            "title": "Up To Global Phase",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expected"
+        ],
+        "title": "StatevectorEquals",
+        "type": "object"
+      },
+      "Symbol": {
+        "additionalProperties": false,
+        "description": "A named, unbound gate parameter, e.g. the ``theta`` of a VQE ansatz.",
+        "properties": {
+          "symbol": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Symbol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "symbol"
+        ],
+        "title": "Symbol",
+        "type": "object"
+      },
+      "TranspileRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "circuit": {
+            "$ref": "#/components/schemas/Circuit"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TranspileTarget"
+          },
+          "verify": {
+            "default": false,
+            "title": "Verify",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "circuit"
+        ],
+        "title": "TranspileRequest",
+        "type": "object"
+      },
+      "TranspileTarget": {
+        "additionalProperties": false,
+        "description": "What to compile for. Every field has a defensible default.",
+        "properties": {
+          "basis": {
+            "default": "ibm",
+            "enum": [
+              "ibm",
+              "ion",
+              "u_cx",
+              "none"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "coupling_map": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coupling Map"
+          },
+          "device": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device"
+          },
+          "layout": {
+            "default": "greedy",
+            "enum": [
+              "trivial",
+              "greedy",
+              "none"
+            ],
+            "title": "Layout",
+            "type": "string"
+          },
+          "max_controls": {
+            "default": 6,
+            "maximum": 8.0,
+            "minimum": 1.0,
+            "title": "Max Controls",
+            "type": "integer"
+          },
+          "optimisation_level": {
+            "default": 2,
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Optimisation Level",
+            "type": "integer"
+          },
+          "optimise": {
+            "default": true,
+            "title": "Optimise",
+            "type": "boolean"
+          },
+          "route": {
+            "default": true,
+            "title": "Route",
+            "type": "boolean"
+          }
+        },
+        "title": "TranspileTarget",
+        "type": "object"
+      },
+      "UnitaryEquals": {
+        "additionalProperties": false,
+        "properties": {
+          "bindings": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Bindings",
+            "type": "object"
+          },
+          "expected": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              }
+            ],
+            "title": "Expected"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint"
+          },
+          "kind": {
+            "const": "unitary_equals",
+            "default": "unitary_equals",
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "points": {
+            "default": 1.0,
+            "minimum": 0.0,
+            "title": "Points",
+            "type": "number"
+          },
+          "tolerance": {
+            "default": 1e-06,
+            "exclusiveMinimum": 0.0,
+            "title": "Tolerance",
+            "type": "number"
+          },
+          "up_to_global_phase": {
+            "default": true,
+            "title": "Up To Global Phase",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expected"
+        ],
+        "title": "UnitaryEquals",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "The FastAPI surface of ``quantum-kernel``.\n\nScope, from section 3 of the system design: this service owns simulation,\ntranspilation, noise, metrics and visual payloads. It **never** does auth,\nentitlements or billing -- ``api-gateway`` has already done all three by the\ntime a request arrives, and it forwards the outcome in headers. That is why\n``X-RedQuant-Plan`` is *trusted* here: the kernel is not reachable from the\ninternet, it sits behind the gateway on the cluster network, and a service that\nre-derives entitlements from a token it cannot validate would be duplicating a\ndecision it is not authoritative for. The plan header decides only how large a\nsimulation may be, and the cap is applied on top of each backend's own ceiling,\nso a forged header can at worst buy a 32-qubit request that the memory guard\nthen refuses anyway.\n\nEndpoints\n---------\n\n======================================= ======================================\n``POST /v1/simulate``                   synchronous, tier T-B, 900 ms budget\n``POST /v1/simulate/async`` + ``/jobs`` tier T-C: heavy, noisy, density matrix\n``POST /v1/transpile``                  decompose, layout, route, translate\n``POST /v1/grade``                      run assertions against a circuit\n``POST /v1/execute``                    run untrusted learner Python\n``POST /v1/convert``                    IR <-> QASM3 / Qiskit / Cirq / PennyLane\n``GET  /v1/backends``                   which engines this pod actually has\n``GET  /healthz`` / ``/readyz``         liveness / readiness\n``GET  /metrics``                       Prometheus exposition\n======================================= ======================================\n\nEverything shares one convention, stated here because it is the single fact an\nAPI consumer most needs: **qubit 0 is the most significant bit of a basis\nindex**. ``probabilities[i]`` gives qubit ``q`` the value ``(i >> (n-1-q)) & 1``,\nand a ``counts`` key with ``countsKind == \"basis\"`` reads left to right from\nqubit 0. Classical-register keys (``countsKind == \"clbits\"``) put clbit 0 on the\n*right*, because every SDK prints them that way and fighting that would confuse\nmore people than it helped.\n",
+    "summary": "Statevector, density-matrix and noisy quantum simulation, transpilation, grading and sandboxed execution.",
+    "title": "RedQuant quantum-kernel",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/healthz": {
+      "get": {
+        "description": "Liveness: the process is up. Deliberately does no work.",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Healthz Healthz Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "description": "Readiness: the native engine can actually simulate.\n\nRuns a real two-qubit Bell circuit rather than checking a flag, because the\nfailure this guards against -- a broken NumPy/BLAS install in a rebuilt\nimage -- shows up only when something is multiplied.",
+        "operationId": "readyz_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readyz",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/v1/backends": {
+      "get": {
+        "description": "Which engines this pod has, and the ceilings each one enforces.",
+        "operationId": "list_backends_v1_backends_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Backends",
+        "tags": [
+          "introspection"
+        ]
+      }
+    },
+    "/v1/convert": {
+      "post": {
+        "description": "IR to source in any dialect, or OpenQASM 3 text back to IR.",
+        "operationId": "convert_v1_convert_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConvertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Convert",
+        "tags": [
+          "compilation"
+        ]
+      }
+    },
+    "/v1/execute": {
+      "post": {
+        "description": "Run untrusted learner Python. See ``app/sandbox.py`` for the threat model.",
+        "operationId": "execute_v1_execute_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecuteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute",
+        "tags": [
+          "sandbox"
+        ]
+      }
+    },
+    "/v1/grade": {
+      "post": {
+        "operationId": "grade_endpoint_v1_grade_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GradeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Grade Endpoint",
+        "tags": [
+          "grading"
+        ]
+      }
+    },
+    "/v1/jobs/{job_id}": {
+      "get": {
+        "description": "Poll an async job. 404 once it has expired or if the pod restarted.",
+        "operationId": "get_job_v1_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Job",
+        "tags": [
+          "simulation"
+        ]
+      }
+    },
+    "/v1/simulate": {
+      "post": {
+        "description": "Run a circuit synchronously (tier T-B). Budget: 900 ms.",
+        "operationId": "simulate_v1_simulate_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-redquant-plan",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Redquant-Plan"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Simulate",
+        "tags": [
+          "simulation"
+        ]
+      }
+    },
+    "/v1/simulate/async": {
+      "post": {
+        "description": "Enqueue a heavy or noisy run (tier T-C) and return a job id immediately.",
+        "operationId": "simulate_async_v1_simulate_async_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-redquant-plan",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Redquant-Plan"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Simulate Async",
+        "tags": [
+          "simulation"
+        ]
+      }
+    },
+    "/v1/transpile": {
+      "post": {
+        "operationId": "transpile_endpoint_v1_transpile_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranspileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transpile Endpoint",
+        "tags": [
+          "compilation"
+        ]
+      }
+    }
+  }
+}

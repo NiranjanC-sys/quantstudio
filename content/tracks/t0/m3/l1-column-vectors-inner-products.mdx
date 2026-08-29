@@ -1,0 +1,219 @@
+---
+id: t0.m3.l1
+title: Column Vectors, Inner Products, Norms
+type: concept
+track: t0
+module: t0.m3
+level: L0
+minutes: 13
+objectives:
+  - Compute the inner product and norm of vectors in R^n and C^n
+  - Apply conjugate symmetry to show that a complex inner product with itself is real
+  - Verify the Cauchy-Schwarz inequality on a concrete pair of vectors
+prerequisites: [t0.m2.l1]
+sources:
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+  - label: C191A Qubits, Quantum Mechanics and Computers (UC Berkeley)
+    url: https://www2.eecs.berkeley.edu/Courses/EECSCourseCode.phpC191A/
+tags: [linear-algebra]
+---
+
+A probabilistic state was normalised by summing its entries. A quantum state is
+normalised by summing the squares of the magnitudes of its entries. Both are
+statements that a vector has "length one", but under two different notions of
+length, and only the second one comes from an inner product. That difference is
+why quantum states live on a sphere and probabilistic ones live on a simplex,
+and it is why this lesson is about a single operation: the inner product.
+
+## Column vectors and the transpose that is not enough
+
+A vector in $\mathbb{C}^n$ is a column of $n$ complex numbers. For real vectors,
+the inner product is the familiar dot product,
+
+$$
+\langle u, v\rangle = u^{T} v = \sum_{k=1}^{n} u_k v_k .
+$$
+
+Take $u = (3, 4)^{T}$ and $v = (1, -2)^{T}$ in $\mathbb{R}^2$:
+$\langle u, v\rangle = 3 \cdot 1 + 4 \cdot (-2) = -5$.
+
+Length comes from the inner product of a vector with itself:
+$\langle u, u \rangle = 9 + 16 = 25$, so $\lVert u \rVert = 5$. That works
+because a real square is non-negative.
+
+Over $\mathbb{C}$ it stops working. For $z = (i, 0)^{T}$ the plain sum of squares
+gives $i^2 = -1$, and a vector of length $\sqrt{-1}$ is not a useful object. The
+fix is the one T0.M2.L1 already supplied: $z \bar z = |z|^2 \ge 0$. So conjugate
+the left argument.
+
+$$
+\langle u, v \rangle = u\dg v = \sum_{k=1}^{n} \overline{u_k}\, v_k .
+$$
+
+<Margin label="Which side gets conjugated">
+Physics conjugates the left argument, mathematics often conjugates the right.
+RedQuant follows physics, because it makes $\braket{\psi}{\phi}$ agree with
+Dirac notation in T0.M3.L3 and with every quantum text. The only thing you must
+never do is mix the two inside one derivation.
+</Margin>
+
+## The three properties
+
+The complex inner product satisfies:
+
+1. **Conjugate symmetry.** $\langle v, u \rangle = \overline{\langle u, v\rangle}$.
+2. **Linearity in the second argument.** $\langle u, \alpha v + \beta w\rangle =
+   \alpha\langle u, v\rangle + \beta\langle u, w\rangle$, and conjugate-linearity
+   in the first.
+3. **Positive definiteness.** $\langle u, u\rangle \ge 0$, with equality only for
+   $u = 0$.
+
+Property 3 follows from property 1 plus the definition. Setting $v = u$ in
+conjugate symmetry gives $\langle u, u\rangle = \overline{\langle u,
+u\rangle}$, and a number equal to its own conjugate has zero imaginary part, so
+$\langle u,u \rangle$ is real. Being explicitly
+$\sum_k \overline{u_k} u_k = \sum_k |u_k|^2$, it is also non-negative, and it
+vanishes only when every $|u_k| = 0$.
+
+That real non-negative number defines the **norm**,
+
+$$
+\lVert u \rVert = \sqrt{\langle u, u\rangle} = \sqrt{\textstyle\sum_k |u_k|^2},
+$$
+
+which is the $\ell_2$ norm that T0.M1.L1 contrasted with the $\ell_1$ norm of a
+probability vector.
+
+## A worked complex pair
+
+Let
+
+$$
+a = \begin{pmatrix} 1 + i \\ 2 - i \end{pmatrix},
+\qquad
+b = \begin{pmatrix} 3 \\ i \end{pmatrix}.
+$$
+
+Conjugate the entries of $a$, then pair them off with $b$:
+
+$$
+\langle a, b\rangle = \overline{(1+i)}\cdot 3 + \overline{(2-i)}\cdot i
+= (1-i)\cdot 3 + (2+i)\cdot i
+= 3 - 3i + 2i + i^2
+= 2 - i .
+$$
+
+Swapping the arguments should conjugate the answer:
+
+$$
+\langle b, a\rangle = \bar 3 (1+i) + \bar i (2-i) = 3 + 3i - i(2 - i)
+= 3 + 3i - 2i - 1 = 2 + i,
+$$
+
+which is $\overline{2-i}$, as conjugate symmetry demands. The norms are
+
+$$
+\lVert a \rVert = \sqrt{|1+i|^2 + |2-i|^2} = \sqrt{2 + 5} = \sqrt{7} = 2.645751,
+$$
+$$
+\lVert b \rVert = \sqrt{9 + 1} = \sqrt{10} = 3.162278 .
+$$
+
+## Cauchy-Schwarz
+
+For any $u, v$,
+
+$$
+\left| \langle u, v \rangle \right| \le \lVert u \rVert \, \lVert v \rVert,
+$$
+
+with equality exactly when one vector is a scalar multiple of the other.
+
+**Proof.** If $v = 0$ both sides vanish. Otherwise set
+$\lambda = \langle v, u\rangle / \lVert v \rVert^2$ and expand the non-negative
+quantity $\lVert u - \lambda v\rVert^2$:
+
+$$
+0 \le \langle u - \lambda v,\, u - \lambda v\rangle
+= \lVert u \rVert^2 - \bar\lambda \langle v, u\rangle - \lambda \langle u, v\rangle
++ |\lambda|^2 \lVert v\rVert^2 .
+$$
+
+Substituting $\lambda$, the last three terms collapse to
+$-|\langle u,v\rangle|^2 / \lVert v\rVert^2$, giving
+$0 \le \lVert u\rVert^2 - |\langle u, v\rangle|^2/\lVert v\rVert^2$. Multiply by
+$\lVert v \rVert^2$ and take square roots. $\blacksquare$
+
+Check it on the two examples. Real case: $|\langle u,v\rangle| = 5$ against
+$\lVert u\rVert \lVert v\rVert = 5 \cdot \sqrt5 = 11.180340$. Complex case:
+$|\langle a, b\rangle| = |2 - i| = \sqrt5 = 2.236068$ against
+$\sqrt7 \cdot \sqrt{10} = \sqrt{70} = 8.366600$. Both comfortably satisfied,
+because neither pair is parallel.
+
+<Callout tone="note" title="What the inequality is for">
+Cauchy-Schwarz is what guarantees $|\braket{\psi}{\phi}| \le 1$ for two
+normalised states, so the overlap can be read as a probability amplitude. It is
+also the reason the angle $\cos\theta = \langle u,v\rangle / (\lVert u\rVert
+\lVert v\rVert)$ between two real vectors is well defined: the right-hand side
+never leaves $[-1,1]$.
+</Callout>
+
+## Amplitudes are inner products
+
+Every number a simulator prints is an inner product. If the state of $n$ qubits
+is the unit vector $\ket{\psi} \in \mathbb{C}^{2^n}$ and $\ket{x}$ is a
+computational basis vector, the amplitude of $x$ is $\braket{x}{\psi}$, and the
+probability is $|\braket{x}{\psi}|^2$. Here is a two-qubit state built from a
+rotation on qubit 0 and a Hadamard on qubit 1:
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="Amplitudes are the inner products of the state with the four basis vectors. Their squared magnitudes sum to 1."
+  ir={{
+    version: 1,
+    name: "amplitudes-as-overlaps",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "r0", gate: "ry", targets: [0], params: [1.0471975511965976] },
+      { id: "h1", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+The four amplitudes are $0.612372$, $0.612372$, $0.353553$, $0.353553$. Their
+squares are $0.375$, $0.375$, $0.125$, $0.125$, which sum to exactly 1. That sum
+is $\lVert \psi \rVert^2$, and normalisation of a quantum state is nothing more
+than the statement that this inner product equals one.
+
+<Callout tone="gotcha" title="Two different normalisations, one word">
+"Normalised" means $\sum_i p_i = 1$ for a distribution and
+$\sum_i |\alpha_i|^2 = 1$ for a state. The words are the same and the
+constraints are not. A vector can satisfy one and fail the other, as
+$(0.7071, 0.7071)$ does.
+</Callout>
+
+<Check question="Let $p = (2, -1, i)^{T}$ and $q = (1, i, 1)^{T}$ in $\mathbb{C}^3$. Compute $\langle p, q\rangle$, $\lVert p \rVert$, $\lVert q\rVert$, and check Cauchy-Schwarz.">
+Conjugating $p$ gives $(2, -1, -i)$, so
+
+$$
+\langle p, q\rangle = 2 \cdot 1 + (-1)\cdot i + (-i)\cdot 1 = 2 - 2i .
+$$
+
+Norms: $\lVert p \rVert = \sqrt{4 + 1 + 1} = \sqrt6 = 2.449490$ and
+$\lVert q\rVert = \sqrt{1 + 1 + 1} = \sqrt3 = 1.732051$.
+
+Cauchy-Schwarz: $|\langle p, q\rangle| = |2 - 2i| = \sqrt8 = 2.828427$, and
+$\sqrt6 \sqrt3 = \sqrt{18} = 4.242641$. The inequality holds and is strict, so
+the two vectors are not parallel.
+</Check>
+
+## Where this comes from
+
+- [Microsoft Quantum Katas](https://github.com/microsoft/QuantumKatas), whose
+  linear-algebra kata drills exactly this sequence: complex dot products,
+  conjugation on the correct side, then norms.
+- [C191A, UC Berkeley](https://www2.eecs.berkeley.edu/Courses/EECSCourseCode.phpC191A/),
+  for the explicit linear-algebra bridge that treats the inner product as the
+  single structure a quantum state space adds to a plain vector space.

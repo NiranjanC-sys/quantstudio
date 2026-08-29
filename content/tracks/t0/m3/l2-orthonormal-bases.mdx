@@ -1,0 +1,207 @@
+---
+id: t0.m3.l2
+title: Orthonormal Bases and Change of Basis
+type: concept
+track: t0
+module: t0.m3
+level: L0
+minutes: 14
+objectives:
+  - Expand a given vector in an orthonormal basis by taking inner products
+  - Construct the change-of-basis matrix between two orthonormal bases of R^2
+  - Show that a change of basis between orthonormal bases preserves the norm
+prerequisites: [t0.m3.l1]
+sources:
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+  - label: C191A Qubits, Quantum Mechanics and Computers (UC Berkeley)
+    url: https://www2.eecs.berkeley.edu/Courses/EECSCourseCode.phpC191A/
+tags: [linear-algebra, bases]
+---
+
+A vector does not know what its coordinates are. It has coordinates only once
+you name a basis, and naming a different basis gives different numbers for the
+same arrow. In quantum computing this is not pedantry: measuring in the
+computational basis and measuring in the Hadamard basis are physically different
+experiments on the same state, and the numbers you get are the coordinates in
+one basis or the other. So the question is how to move between them, and what
+survives the move.
+
+## Orthonormal means two conditions
+
+A set $\{e_1, \dots, e_n\}$ in $\mathbb{C}^n$ is **orthonormal** when
+
+$$
+\langle e_j, e_k \rangle = \delta_{jk} =
+\begin{cases} 1, & j = k, \\ 0, & j \ne k. \end{cases}
+$$
+
+Unit length on the diagonal, mutual orthogonality off it. The standard basis
+$\{(1,0)^{T}, (0,1)^{T}\}$ qualifies trivially. So does
+
+$$
+\ket{+} = \isqrt \begin{pmatrix} 1 \\ 1 \end{pmatrix},
+\qquad
+\ket{-} = \isqrt \begin{pmatrix} 1 \\ -1 \end{pmatrix},
+$$
+
+since $\langle +, + \rangle = \tfrac12(1 + 1) = 1$, likewise for $\ket{-}$, and
+$\langle +, - \rangle = \tfrac12(1 - 1) = 0$.
+
+## Coordinates are inner products
+
+The point of orthonormality is that expansion coefficients require no solving.
+Suppose $v = \sum_k c_k e_k$. Take the inner product with $e_j$ and use
+linearity in the second argument:
+
+$$
+\langle e_j, v\rangle = \left\langle e_j, \sum_k c_k e_k \right\rangle
+= \sum_k c_k \langle e_j, e_k \rangle = \sum_k c_k \delta_{jk} = c_j .
+$$
+
+So $c_j = \langle e_j, v \rangle$ and
+
+$$
+v = \sum_k \langle e_k, v\rangle \, e_k .
+$$
+
+<Margin label="Contrast with a general basis">
+For a basis that is merely linearly independent, recovering coordinates means
+solving an $n \times n$ system. Orthonormality replaces that solve with $n$
+independent inner products, which is why every basis in quantum computing is
+orthonormal by construction.
+</Margin>
+
+Concretely, expand $w = (3,4)^{T}$ in the $\pm$ basis:
+
+$$
+\langle +, w\rangle = \isqrt(3 + 4) = \frac{7}{\sqrt2} = 4.949747,
+\qquad
+\langle -, w\rangle = \isqrt(3 - 4) = \frac{-1}{\sqrt2} = -0.707107 .
+$$
+
+So $w = 4.949747\ket{+} - 0.707107\ket{-}$. Check the length:
+$4.949747^2 + 0.707107^2 = 24.5 + 0.5 = 25$, and $\lVert w\rVert = 5$ as in the
+standard basis. The coordinates changed completely; the length did not.
+
+## The change-of-basis matrix
+
+Stack the new basis vectors as the **rows** of a matrix $U$, so that row $k$ is
+$e_k\dg$. Then $(Uv)_k = e_k\dg v = \langle e_k, v\rangle = c_k$, and $U$ maps
+old coordinates to new ones in a single product. For the $\pm$ basis,
+
+$$
+U = \isqrt \begin{pmatrix} 1 & 1 \\ 1 & -1 \end{pmatrix} = H,
+$$
+
+the Hadamard matrix, and $Hw = (4.949747,\; -0.707107)^{T}$, exactly the
+coefficients above.
+
+Orthonormality of the rows says precisely $UU\dg = I$: entry $(j,k)$ of
+$UU\dg$ is $e_j\dg e_k = \delta_{jk}$. A square matrix with $UU\dg = I$ also has
+$U\dg U = I$, so $U^{-1} = U\dg$ and the columns are orthonormal too. Such a
+matrix is **unitary**, the subject of T0.M4.L2. Going back is therefore free:
+$v = U\dg c$. For the Hadamard, $H\dg = H$, so $H$ is its own inverse.
+
+A second example in $\mathbb{R}^2$: rotate the axes by 30 degrees, taking
+$e_1' = (\cos 30^\circ, \sin 30^\circ)^{T} = (0.866025, 0.5)^{T}$ and
+$e_2' = (-0.5, 0.866025)^{T}$. Then
+
+$$
+U = \begin{pmatrix} 0.866025 & 0.5 \\ -0.5 & 0.866025 \end{pmatrix},
+\qquad
+Uw = \begin{pmatrix} 4.598076 \\ 1.964102 \end{pmatrix},
+$$
+
+and $4.598076^2 + 1.964102^2 = 21.142303 + 3.857697 = 25$. Same vector, a third
+set of coordinates, same length again.
+
+## Why the norm survives
+
+The general statement: if $U\dg U = I$ then $\lVert Uv \rVert = \lVert v \rVert$
+for every $v$. The proof is one line of adjoint arithmetic,
+
+$$
+\langle Uv, Uv\rangle = (Uv)\dg (Uv) = v\dg U\dg U v = v\dg v = \langle v, v\rangle .
+$$
+
+Slightly more is true: the whole inner product survives, since
+$\langle Uu, Uv\rangle = u\dg U\dg U v = \langle u, v\rangle$. Angles and
+lengths are both preserved, which is what "change of basis" ought to mean. If
+the coefficients are amplitudes, this is the statement that changing measurement
+basis cannot change the total probability away from 1.
+
+## Measuring in another basis
+
+Physically, measuring in the $\pm$ basis is done by applying $H$ and then
+measuring in the computational basis, because $H$ is exactly the matrix that
+rewrites $\pm$ coordinates as computational ones. Take the state
+$R_y(\pi/3)\ket{0} = 0.866025\ket{0} + 0.5\ket{1}$. Its $\pm$ coefficients are
+
+$$
+\langle +, \psi\rangle = \isqrt(0.866025 + 0.5) = 0.965926,
+\qquad
+\langle -, \psi\rangle = \isqrt(0.866025 - 0.5) = 0.258819,
+$$
+
+so the outcome probabilities should be $0.965926^2 = 0.933013$ and
+$0.258819^2 = 0.066987$.
+
+<Simulate
+  show="probabilities"
+  caption="A state prepared with Ry(pi/3), then rotated by H and measured. The outcomes report its coordinates in the plus/minus basis."
+  ir={{
+    version: 1,
+    name: "measure-in-x",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "r0", gate: "ry", targets: [0], params: [1.0471975511965976] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+>
+
+| outcome | meaning | probability |
+| --- | --- | --- |
+| $0$ | state was $\ket{+}$ | $0.933013$ |
+| $1$ | state was $\ket{-}$ | $0.066987$ |
+
+</Simulate>
+
+Without the $H$, the same state measures $0$ with probability
+$0.866025^2 = 0.75$. Same state, two bases, two completely different
+distributions, and both are honest descriptions of it.
+
+<Callout tone="gotcha" title="The basis is part of the experiment">
+There is no such thing as "the" probability of a state. There is a probability
+per basis. When a paper quotes a distribution without naming a basis, the
+computational basis is meant, and that is a convention rather than a fact about
+the state.
+</Callout>
+
+<Check question="Expand $\ket{0}$ in the $\pm$ basis, then in the basis $\ket{y_\pm} = \isqrt(\ket{0} \pm i \ket{1})$. What outcome probabilities does each basis predict?">
+In the $\pm$ basis, $\langle +, 0\rangle = \isqrt$ and
+$\langle -, 0\rangle = \isqrt$, so $\ket{0} = \isqrt(\ket{+} + \ket{-})$ and
+both outcomes have probability $0.5$.
+
+In the $y$ basis, conjugate the left vector first. Its entries are
+$\isqrt$ and $\pm i \isqrt$, whose conjugates are $\isqrt$ and $\mp i\isqrt$.
+Pairing against $\ket{0} = (1,0)^{T}$, only the first entry survives, so
+$\langle y_+, 0\rangle = \langle y_-, 0\rangle = \isqrt$ and again both
+probabilities are $0.5$.
+
+$\ket{0}$ is unbiased in both of these bases and completely certain in the
+computational basis. Three mutually unbiased bases is exactly what T1.M2 uses
+for single-qubit tomography.
+</Check>
+
+## Where this comes from
+
+- [Microsoft Quantum Katas](https://github.com/microsoft/QuantumKatas), whose
+  measurement katas are built on the identity "measure in basis $B$ equals apply
+  $B\dg$ then measure in the computational basis".
+- [C191A, UC Berkeley](https://www2.eecs.berkeley.edu/Courses/EECSCourseCode.phpC191A/),
+  which introduces change of basis as the mathematical content of choosing a
+  measurement.

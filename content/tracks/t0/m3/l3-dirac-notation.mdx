@@ -1,0 +1,225 @@
+---
+id: t0.m3.l3
+title: "Dirac Notation: Kets, Bras, Brackets"
+type: concept
+track: t0
+module: t0.m3
+level: L0
+minutes: 12
+objectives:
+  - Translate a column vector, its conjugate transpose and their product into bra-ket notation
+  - Expand an outer product |a><b| into an explicit matrix
+  - Apply the resolution of the identity to rewrite a vector in a chosen basis
+prerequisites: [t0.m3.l2]
+sources:
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: Preskill, Ph219/CS219 Quantum Computation lecture notes (Caltech)
+    url: http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html
+tags: [notation, dirac]
+---
+
+Everything in the last two lessons can be written with transposes, daggers and
+explicit sums. So why does every paper in the field use angle brackets instead?
+Because Dirac notation makes the type of each object visible in its shape. A ket
+is a column, a bra is a row, and whether a product is a number or a matrix is
+readable off the direction the brackets face. Once you can see types, whole
+derivations become mechanical.
+
+## Three objects, three shapes
+
+A **ket** $\ket{a}$ is a column vector in $\mathbb{C}^n$. A **bra** $\bra{a}$ is
+its conjugate transpose, a row vector: $\bra{a} = \ket{a}\dg$. For
+
+$$
+\ket{a} = \begin{pmatrix} 1 + i \\ 2 - i\end{pmatrix},
+\qquad
+\bra{a} = \begin{pmatrix} 1 - i & 2 + i \end{pmatrix} .
+$$
+
+Two ways to multiply a row and a column, and the shapes decide which:
+
+$$
+\underbrace{\braket{a}{b}}_{1 \times n \,\cdot\, n \times 1}
+= \text{a scalar},
+\qquad
+\underbrace{\ketbra{a}{b}}_{n \times 1 \,\cdot\, 1 \times n}
+= \text{an } n \times n \text{ matrix} .
+$$
+
+<Margin label="Reading direction">
+The bracket $\braket{a}{b}$ closes, so it collapses to a number. The outer
+product $\ketbra{a}{b}$ opens outward, so it expands to a matrix. Dirac's
+notation is one of the few in mathematics where the picture is the type
+signature.
+</Margin>
+
+The bracket is the inner product from T0.M3.L1, with the conjugation already
+built into the bra: $\braket{a}{b} = \sum_k \overline{a_k} b_k$. Conjugate
+symmetry reads $\braket{b}{a} = \overline{\braket{a}{b}}$, and the norm is
+$\lVert a \rVert = \sqrt{\braket{a}{a}}$.
+
+## Outer products are matrices you can read off
+
+To expand $\ketbra{a}{b}$, multiply every entry of the column by every entry of
+the conjugated row. The computational basis makes this concrete:
+
+$$
+\ketbra{0}{0} = \begin{pmatrix} 1 \\ 0 \end{pmatrix}\begin{pmatrix} 1 & 0\end{pmatrix}
+= \begin{pmatrix} 1 & 0 \\ 0 & 0\end{pmatrix},
+\qquad
+\ketbra{0}{1} = \begin{pmatrix} 0 & 1 \\ 0 & 0 \end{pmatrix} .
+$$
+
+In general $\ketbra{j}{k}$ is the matrix with a single 1 in row $j$, column $k$.
+That gives a decomposition of any matrix,
+
+$$
+A = \sum_{j,k} A_{jk} \ketbra{j}{k},
+$$
+
+which is worth reading in both directions. Left to right it says the matrix is
+the sum of its entries. Right to left it says any operator you can describe by
+"send $\ket{k}$ to something" is a sum of outer products. The Pauli gates:
+
+$$
+X = \ketbra{0}{1} + \ketbra{1}{0},
+\qquad
+Z = \ketbra{0}{0} - \ketbra{1}{1} .
+$$
+
+And the Hadamard, described by what it does to a basis, is
+$H = \ketbra{+}{0} + \ketbra{-}{1}$. Expanding,
+
+$$
+\isqrt\begin{pmatrix}1\\1\end{pmatrix}\begin{pmatrix}1&0\end{pmatrix}
++ \isqrt\begin{pmatrix}1\\-1\end{pmatrix}\begin{pmatrix}0&1\end{pmatrix}
+= \isqrt\begin{pmatrix}1&0\\1&0\end{pmatrix}
++ \isqrt\begin{pmatrix}0&1\\0&-1\end{pmatrix}
+= \isqrt\begin{pmatrix}1&1\\1&-1\end{pmatrix},
+$$
+
+the usual matrix. The general pattern is $U = \sum_k \ketbra{u_k}{k}$ whenever
+$U$ sends basis vector $k$ to $\ket{u_k}$.
+
+## Projectors
+
+The special case $b = a$ with $\ket{a}$ normalised gives a **projector**,
+$P = \ketbra{a}{a}$. It is idempotent,
+
+$$
+P^2 = \ket{a}\braket{a}{a}\bra{a} = \ket{a}\cdot 1 \cdot \bra{a} = P,
+$$
+
+because the inner bracket collapses to the number 1. Applying it to any vector
+gives $P\ket{v} = \ket{a}\braket{a}{v}$, that is, the component of $\ket{v}$
+along $\ket{a}$. For the $\pm$ basis,
+
+$$
+\ketbra{+}{+} = \half\begin{pmatrix}1&1\\1&1\end{pmatrix},
+\qquad
+\ketbra{-}{-} = \half\begin{pmatrix}1&-1\\-1&1\end{pmatrix} .
+$$
+
+## The resolution of the identity
+
+For any orthonormal basis $\{\ket{e_k}\}$,
+
+$$
+\sum_k \ketbra{e_k}{e_k} = I .
+$$
+
+This is the expansion rule of the previous lesson, wearing a better notation.
+Apply the left side to any $\ket{v}$:
+
+$$
+\left(\sum_k \ketbra{e_k}{e_k}\right)\ket{v} = \sum_k \ket{e_k}\braket{e_k}{v}
+= \sum_k c_k \ket{e_k} = \ket{v},
+$$
+
+using $c_k = \braket{e_k}{v}$. Check the two one-qubit cases numerically:
+$\ketbra{0}{0} + \ketbra{1}{1} = I$ by inspection, and
+$\ketbra{+}{+} + \ketbra{-}{-} = \half\big(\begin{smallmatrix}1&1\\1&1\end{smallmatrix}\big)
++ \half\big(\begin{smallmatrix}1&-1\\-1&1\end{smallmatrix}\big) = I$ because
+the off-diagonal halves cancel.
+
+The practical use is inserting $I$ wherever a derivation needs a basis. For
+instance,
+
+$$
+\braket{a}{b} = \bra{a} I \ket{b} = \sum_k \braket{a}{e_k}\braket{e_k}{b},
+$$
+
+which converts an abstract overlap into a sum over any basis you like. Almost
+every manipulation in T2 is an insertion of the identity in a well-chosen basis.
+
+## Probabilities are sandwiches
+
+The Born rule in this notation says the probability of outcome $x$ on state
+$\ket{\psi}$ is
+
+$$
+p(x) = \left|\braket{x}{\psi}\right|^2 = \bra{\psi} \ketbra{x}{x} \ket{\psi}
+= \bra{\psi} P_x \ket{\psi},
+$$
+
+using $|z|^2 = \bar z z$ and $\overline{\braket{x}{\psi}} = \braket{\psi}{x}$.
+Take the two-qubit state $\isqrt(\ket{01} + \ket{11})$, produced by a Hadamard
+on qubit 0 and an $X$ on qubit 1.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="The state (|01> + |11>)/sqrt(2). Qubit 0 is the most significant bit, so |01> is basis index 1."
+  ir={{
+    version: 1,
+    name: "outer-product-demo",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "x1", gate: "x", targets: [1] }
+    ]
+  }}
+/>
+
+The projector $P_{01} = \ketbra{01}{01}$ is the $4 \times 4$ matrix whose only
+non-zero entry is a 1 in row 1, column 1, counting from zero. Sandwiching,
+
+$$
+\bra{\psi}P_{01}\ket{\psi} = \left|\braket{01}{\psi}\right|^2
+= \left(\isqrt\right)^2 = 0.5 ,
+$$
+
+matching the simulated probability exactly. The two zero amplitudes are
+$\braket{00}{\psi} = 0$ and $\braket{10}{\psi} = 0$, which is why those rows are
+absent from the table.
+
+<Callout tone="warning" title="Kets are not variables">
+$\ket{\psi}$ is one symbol whose name happens to be $\psi$; the label inside the
+ket is a name, not a quantity you can do arithmetic on. $\ket{2\psi}$ means
+nothing, while $2\ket{\psi}$ means a vector twice as long. Similarly
+$\ket{01}$ names a basis state, and the 01 inside it is a bitstring, not the
+number one.
+</Callout>
+
+<Check question="Expand $\ketbra{+}{0}$ as an explicit matrix, then compute $\bra{1}\ketbra{+}{0}\ket{0}$.">
+$\ket{+} = \isqrt(1,1)^{T}$ and $\bra{0} = (1, 0)$, so
+
+$$
+\ketbra{+}{0} = \isqrt\begin{pmatrix}1\\1\end{pmatrix}\begin{pmatrix}1&0\end{pmatrix}
+= \isqrt \begin{pmatrix} 1 & 0 \\ 1 & 0 \end{pmatrix} .
+$$
+
+For the sandwich, group the brackets rather than multiplying matrices:
+$\braket{1}{+}\braket{0}{0} = \braket{1}{+} \cdot 1 = \isqrt = 0.707107$. It is
+also the entry in row 1, column 0 of the matrix above, as it must be.
+</Check>
+
+## Where this comes from
+
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 2.1, which introduces bras, kets and outer products in this order and
+  in these words.
+- [Preskill, Ph219](http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html),
+  chapter 2, for the habit of inserting a resolution of the identity as the
+  first move in almost every calculation.

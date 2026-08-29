@@ -84,6 +84,12 @@ patches:
         replicas: 0
         template:
           spec:
+            # The base pins this tier to the memory-optimised `kernel-heavy`
+            # pool because it asks for 96Gi there. Dev shrinks the request to
+            # 2Gi, which fits an ordinary node, and a dev cluster has no such
+            # pool - keeping the selector would leave the pod Pending.
+            nodeSelector: null
+            tolerations: null
             containers:
               - name: quantum-kernel-heavy
                 resources:

@@ -1,0 +1,174 @@
+---
+id: t1.m8.l3
+title: Mid-Circuit Measurement and Reset
+type: concept
+track: t1
+module: t1.m8
+level: L1
+minutes: 13
+objectives:
+  - Describe what reset does to a qubit and why it is not a unitary operation
+  - Reuse one physical qubit to emulate two logical ones with measurement and reset
+  - Identify the latency cost that mid-circuit measurement adds on real hardware
+prerequisites:
+  - t1.m8.l2
+sources:
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+  - label: CS269Q Elements of Quantum Computer Programming (Stanford)
+    url: https://cs269q.stanford.edu/
+tags: [circuits, mid-circuit]
+---
+
+Deferred measurement says you never *have* to measure in the middle. This lesson
+is about why you would want to anyway. The answer is that a measured qubit can be
+returned to $\ket{0}$ and used again, and on a device where qubits are the
+scarcest thing you own, a circuit that reuses one wire twice is a circuit that
+fits.
+
+## Reset is not a gate
+
+Every operation in T1.M3 was unitary, which means invertible: given the output
+state you can recover the input. Reset is the first operation in this track that
+is not.
+
+$$
+\mathrm{reset}: \ket{0} \mapsto \ket{0}, \qquad \ket{1} \mapsto \ket{0}.
+$$
+
+Two different inputs, one output. No matrix does that, because a matrix with two
+equal columns has determinant zero and cannot be unitary. Physically, reset is
+implemented as a measurement followed by an $X$ conditioned on the outcome, which
+is precisely the classically controlled construction from the previous lesson:
+
+$$
+\text{measure } q \to c, \qquad \text{then } X \text{ on } q \text{ if } c = 1.
+$$
+
+The information did not disappear. It moved into the classical bit, and if you
+throw that bit away the operation is irreversible in the thermodynamic sense you
+met in T0.M6.L3.
+
+<Margin label="Why it must be non-unitary">
+Reset takes a two-dimensional space onto a one-dimensional one. Any operation
+that reduces the dimension of the reachable set destroys information, and no
+unitary does that. Reset, measurement and decoherence are the only three
+non-unitary things in this whole track.
+</Margin>
+
+Here is a superposition being flattened. The Hadamard puts the qubit into
+$\ket{+}$, the reset drops it back onto $\ket{0}$, and the measurement returns 0
+every single time.
+
+<Circuit
+  caption="H then reset then measure. Stochastic because of the reset, but the outcome is 0 with probability 1 on every trajectory."
+  show={['probabilities']}
+  shots={4096}
+  ir={{
+    version: 1,
+    name: "reset-flattens",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "a", gate: "h", targets: [0] },
+      { id: "r", gate: "reset", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+Compare that with what an $X$ or an $H$ would have done. No unitary can take an
+unknown state to a known one. Reset can, and that is exactly what makes it
+useful and what makes it not a gate.
+
+## One wire, two logical qubits
+
+Here are two independent fair coins built the obvious way, on two qubits:
+
+<Circuit
+  caption="Two qubits, two Hadamards, two measurements. Four outcomes at 25% each."
+  show={['probabilities']}
+  ir={{
+    version: 1,
+    name: "two-coins-two-wires",
+    qubits: 2,
+    clbits: 2,
+    ops: [
+      { id: "a", gate: "h", targets: [0] },
+      { id: "b", gate: "h", targets: [1] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] }
+    ]
+  }}
+/>
+
+Now the same computation on one wire. Prepare, measure into classical bit 0,
+reset, prepare again, measure into classical bit 1.
+
+<Circuit
+  caption="One qubit doing the work of two. Width halved, depth up from 2 to 5, same pair of classical bits out."
+  show={['probabilities']}
+  shots={4096}
+  ir={{
+    version: 1,
+    name: "two-coins-one-wire",
+    qubits: 1,
+    clbits: 2,
+    ops: [
+      { id: "a", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "r", gate: "reset", targets: [0] },
+      { id: "b", gate: "h", targets: [0] },
+      { id: "m1", gate: "measure", targets: [0], cbits: [1] }
+    ]
+  }}
+/>
+
+The two classical bits are independent and uniform, so all four two-bit strings
+appear with probability $\tfrac14$, exactly as in the two-wire version. The panel
+cannot show you that, because it plots the *qubit* state and there is only one
+qubit left to plot, reported at close to half and half after averaging over
+trajectories. The footers tell the real story: width 2 and depth 2 for the first
+circuit, width 1 and depth 5 for the second.
+
+<Callout tone="gotcha" title="Reuse is not free">
+The single-wire version trades width for depth, and depth is time, and time is
+decoherence. Reuse pays off when the alternative is not running at all. It is a
+loss when you had the qubits anyway.
+</Callout>
+
+## The latency you are actually paying
+
+Gate times and measurement times are not the same order of magnitude. On
+superconducting hardware a single-qubit gate takes tens of nanoseconds and a
+two-qubit gate a few hundred. A projective readout takes on the order of a
+microsecond, because it has to integrate a weak signal for long enough to
+separate two distributions with confidence.
+
+That gap is the first cost. The second is the classical round trip. A mid-circuit
+measurement whose result controls a later gate requires the outcome to be
+digitised, routed to the controller, tested against a condition, and turned back
+into a pulse. During all of it the other qubits idle, and idling is not free: a
+qubit accumulates relaxation and dephasing whether or not you are doing anything
+to it, which is the subject of T1.M11.
+
+So the practical rule is not "avoid mid-circuit measurement", it is: know which
+resource is binding. If it is width, reuse. If it is coherence time, defer.
+
+<Check question="A colleague replaces a reset with an $X$ gate conditioned on nothing, arguing that it returns $\ket{1}$ to $\ket{0}$. When does this fail?">
+Whenever the qubit was not in $\ket{1}$. An unconditional $X$ maps $\ket{0}$ to
+$\ket{1}$, so it only works if you already know the qubit is in $\ket{1}$, which is
+the one case where you did not need a reset. On a superposition it fails worse
+than that: $X\ket{+} = \ket{+}$, so the qubit is left in the state you were trying
+to clear. Reset needs the measurement, because the measurement is what supplies
+the knowledge that decides whether the flip should happen.
+</Check>
+
+## Where this comes from
+
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses),
+  whose dynamic-circuits material treats mid-circuit measurement and reset as
+  first-class instructions with their own latency budget.
+- [CS269Q, Stanford](https://cs269q.stanford.edu/), for the instruction-set view
+  in which measurement and reset sit alongside gates in a program rather than
+  outside it.

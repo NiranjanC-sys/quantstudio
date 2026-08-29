@@ -1,0 +1,175 @@
+---
+id: t1.m1.l8
+title: The Bloch Sphere
+type: interactive
+track: t1
+module: t1.m1
+level: L1
+minutes: 8
+objectives:
+  - Locate |0>, |1>, |+>, |->, |+i> and |-i> on the Bloch sphere
+  - Predict the axis and angle of a given single-qubit rotation before applying it
+prerequisites: [t1.m1.l7]
+sources:
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+tags: [qubit, bloch, instrument]
+---
+
+Two real parameters survived the counting in T1.M1.L6, and two real parameters
+are what a point on a sphere has. This lesson is the sphere itself. Work it with
+your hands: predict where a gate will send the arrow before you look, then look.
+
+## The map
+
+A canonical one-qubit state
+$\cos\frac{\theta}{2}\ket{0} + e^{i\varphi}\sin\frac{\theta}{2}\ket{1}$
+becomes the unit vector
+
+$$
+\vec{r} = \begin{pmatrix} \sin\theta\cos\varphi \\ \sin\theta\sin\varphi \\ \cos\theta \end{pmatrix} ,
+$$
+
+with $\theta$ measured down from the north pole and $\varphi$ around the
+equator. The halving of $\theta$ is what makes the map work: states that are
+orthogonal as vectors, an angle of $90$ degrees apart in $\C^2$, come out
+antipodal on the sphere, $180$ degrees apart. $\ket{0}$ and $\ket{1}$ are
+opposite poles, not neighbours.
+
+<Margin label="Definition">
+Six named states sit on the axes. Along $z$: $\ket{0}$ at the north pole,
+$\ket{1}$ at the south. Along $x$: $\ket{+}$ and $\ket{-}$. Along $y$:
+$\ket{+i}$ and $\ket{-i}$. Each axis is the eigenbasis of the Pauli operator of
+the same name, which is why the three measurement bases of T1.M2.L3 are
+exactly these three axes.
+</Margin>
+
+<Simulate
+  show={['bloch', 'amplitudes']}
+  caption="Ry(pi/2) tips |0> from the north pole onto +x. The arrow is at (1, 0, 0), which is |+>."
+  ir={{
+    version: 1,
+    name: "z-to-x",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "r1", gate: "ry", targets: [0], params: [1.5707963267948966] }
+    ]
+  }}
+/>
+
+Rotate about $y$ by $\pi/2$ and the arrow travels from $+z$ to $+x$. That is the
+whole content of $R_y$: a right-handed rotation about the $y$ axis by the angle
+in the parameter. The state vector picked up the angle $\theta/2$ and the arrow
+picked up $\theta$.
+
+## Predict, then check
+
+Try $R_x(\pi/2)$ on $\ket{0}$ before reading on. Rotating $+z$ about the $x$
+axis by a quarter turn, right-handed, sends it to $-y$. So the answer should be
+$\ket{-i}$, with amplitudes $\left(\tfrac{1}{\sqrt2},\ -\tfrac{i}{\sqrt2}\right)$.
+
+<Simulate
+  show={['bloch', 'amplitudes']}
+  caption="Rx(pi/2) on |0>. The arrow lands on -y and the amplitude on |1> is purely imaginary and negative."
+  ir={{
+    version: 1,
+    name: "z-to-minus-y",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "r1", gate: "rx", targets: [0], params: [1.5707963267948966] }
+    ]
+  }}
+/>
+
+Now a partial turn. $R_x(\pi/3)$ takes $+z$ a third of the way round to $-y$, so
+the arrow should be $(0,\, -\sin(\pi/3),\, \cos(\pi/3)) = (0,\, -0.866025,\, 0.5)$,
+still on the surface since $0.866025^2 + 0.5^2 = 1$. The amplitudes are
+$\cos(\pi/6) = 0.866025$ on $\ket{0}$ and $-i\sin(\pi/6) = -0.5i$ on $\ket{1}$,
+so the outcome probabilities are $0.75$ and $0.25$. The height of the arrow and
+the outcome probabilities are the same information: $z = \Pr[0] - \Pr[1]$.
+
+<Simulate
+  show={['bloch', 'probabilities']}
+  caption="Rx(pi/3) on |0>. The arrow is at height z = 0.5, and the outcome probabilities are 0.75 and 0.25."
+  ir={{
+    version: 1,
+    name: "partial-x-turn",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "r1", gate: "rx", targets: [0], params: [1.0471975511965976] }
+    ]
+  }}
+/>
+
+## Reading a gate as an axis and an angle
+
+Every one-qubit unitary is a rotation of this sphere, and stating it as an axis
+and an angle is usually more useful than stating the matrix.
+
+| gate | axis | angle |
+| --- | --- | --- |
+| $X$ | $x$ | $\pi$ |
+| $Y$ | $y$ | $\pi$ |
+| $Z$ | $z$ | $\pi$ |
+| $S$ | $z$ | $\pi/2$ |
+| $T$ | $z$ | $\pi/4$ |
+| $H$ | $\tfrac{1}{\sqrt2}(x + z)$ | $\pi$ |
+
+The last row is the one worth pausing on. $H$ is a half turn about the diagonal
+axis midway between $x$ and $z$, which swaps those two axes and reverses $y$.
+That is why $H\ket{0} = \ket{+}$ and $H\ket{+} = \ket{0}$: the half turn
+exchanges the poles it sits between. It also explains T1.M1.L2 without
+contradiction. Restricted to the real $xz$ great circle, a half turn about an
+in-plane axis is a reflection of that circle in that axis, and the axis meets
+the circle at $22.5$ degrees.
+
+Two more predictions to make before looking. $T$ applied to $\ket{+}$ turns the
+arrow one eighth of the way round the equator from $+x$ towards $+y$, landing at
+$(\cos(\pi/4),\, \sin(\pi/4),\, 0) = (0.707107,\, 0.707107,\, 0)$. And $R_z$ on
+$\ket{0}$ does nothing at all to the arrow, since the north pole is on the
+rotation axis, which is the geometric statement that $R_z$ contributes only a
+global phase to $\ket{0}$.
+
+<Simulate
+  show={['bloch', 'amplitudes']}
+  caption="H then T. The arrow sits on the equator at 45 degrees between +x and +y."
+  ir={{
+    version: 1,
+    name: "eighth-turn",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "t1", gate: "t", targets: [0] }
+    ]
+  }}
+/>
+
+<Callout tone="warning" title="The inside of the ball is not empty">
+Every state in this module has an arrow of length exactly 1, on the surface.
+Shorter arrows are legal and they mean something: the state is mixed, either
+because of noise or because the qubit is entangled with something you are not
+looking at. T1.M5.L3 puts a Bell-pair qubit at the exact centre, arrow length 0.
+The figures above report that length as the purity.
+</Callout>
+
+<Check question="Where does $Z$ send $\ket{+}$, and where does it send $\ket{0}$?">
+$Z$ is a half turn about the $z$ axis. It sends $\ket{+}$ at $(1,0,0)$ to
+$(-1,0,0)$, which is $\ket{-}$: the equator point travels half way round. It
+sends $\ket{0}$ at $(0,0,1)$ to itself, because that point lies on the rotation
+axis. In amplitudes, $Z\ket{0} = \ket{0}$ exactly, with not even a phase.
+</Check>
+
+## Where this comes from
+
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses),
+  Basics of quantum information, for the $\theta$ and $\varphi$ convention used
+  here and for the axis-and-angle table.
+- [PennyLane Codebook](https://pennylane.ai/codebook), whose single-qubit
+  modules teach the sphere by prediction and check rather than by derivation,
+  which is the format of this lesson.

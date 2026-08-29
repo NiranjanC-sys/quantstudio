@@ -1,0 +1,190 @@
+---
+id: t1.m8.l1
+title: Circuits, Depth, Width, Barriers
+type: concept
+track: t1
+module: t1.m8
+level: L1
+minutes: 13
+objectives:
+  - Compute the depth and width of a circuit given its operation list
+  - Explain what a barrier does to scheduling and what it does not do to semantics
+  - Rewrite a circuit to reduce depth without changing its unitary
+prerequisites:
+  - t1.m4.l4
+  - t0.m6.l2
+sources:
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+  - label: CS269Q Elements of Quantum Computer Programming (Stanford)
+    url: https://cs269q.stanford.edu/
+tags: [circuits, cost]
+---
+
+Two circuits can compute the same unitary and cost wildly different amounts to
+run. Which number tells you that? Gate count is the obvious candidate and it is
+the wrong one, because gates on different qubits run at the same time. The
+number that predicts whether a circuit survives on hardware is **depth**, and
+learning to read it off an operation list is the first practical skill of the
+circuit model.
+
+## The three numbers
+
+A circuit is an ordered list of operations on a fixed set of wires. Three
+quantities describe its shape.
+
+**Width** is the number of qubits. It is fixed when you allocate the register, it
+is what limits which device can run the circuit at all, and it never changes
+during execution.
+
+**Size** is the number of operations, barriers excluded. It is what you count
+when you are paying per gate.
+
+**Depth** is the length of the longest chain of operations that must happen one
+after another. Formally, schedule every operation as early as possible: an
+operation goes into the first layer in which all of the qubits it touches are
+free. The depth is the number of layers.
+
+<Margin label="ASAP scheduling">
+Layers are derived, never stored. Keep a per-qubit frontier, place each operation
+at the maximum frontier over the qubits it touches, then advance those frontiers
+by one. That single pass is the whole algorithm.
+</Margin>
+
+Work an example by hand. Take four qubits and the operations
+$H_0$, $\mathrm{CX}_{0 \to 1}$, $\mathrm{CX}_{1 \to 2}$,
+$\mathrm{CX}_{2 \to 3}$, which build a four-qubit GHZ state.
+
+| operation | qubits touched | frontier before | layer |
+| --- | --- | --- | --- |
+| $H_0$ | $\{0\}$ | $(0,0,0,0)$ | 0 |
+| $\mathrm{CX}_{0 \to 1}$ | $\{0,1\}$ | $(1,0,0,0)$ | 1 |
+| $\mathrm{CX}_{1 \to 2}$ | $\{1,2\}$ | $(2,2,0,0)$ | 2 |
+| $\mathrm{CX}_{2 \to 3}$ | $\{2,3\}$ | $(2,3,3,0)$ | 3 |
+
+Four layers, so depth 4. Every CNOT waits for the one before it, because each
+one needs a qubit the previous one just touched.
+
+<Circuit
+  caption="GHZ on four qubits, built as a ladder. Read the footer: 4 qubits, depth 4, 4 gates, 3 two qubit."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "ghz4-ladder",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "a", gate: "h", targets: [0] },
+      { id: "b", gate: "x", targets: [1], controls: [0] },
+      { id: "c", gate: "x", targets: [2], controls: [1] },
+      { id: "d", gate: "x", targets: [3], controls: [2] }
+    ]
+  }}
+/>
+
+## Rewriting for depth
+
+The ladder is not the only way to spread the entanglement. Once qubit 0 and qubit
+1 are both correlated with the Hadamard, either of them can seed the next pair,
+and those two CNOTs are on disjoint wires, so they run together.
+
+<Circuit
+  caption="The same GHZ state, built as a tree. Same 4 gates and same 3 two-qubit gates, one layer shorter."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "ghz4-tree",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "a", gate: "h", targets: [0] },
+      { id: "b", gate: "x", targets: [1], controls: [0] },
+      { id: "c", gate: "x", targets: [2], controls: [0] },
+      { id: "d", gate: "x", targets: [3], controls: [1] }
+    ]
+  }}
+/>
+
+Both circuits produce $\tfrac{1}{\sqrt2}(\ket{0000} + \ket{1111})$, both use four
+gates, and both use three CNOTs. The tree has depth 3 and the ladder has depth 4.
+On four qubits that is a modest saving. Scale it and it is not: the ladder on $n$
+qubits has depth $n$, while the tree doubles the number of correlated qubits per
+layer and so has depth $1 + \lceil \log_2 n \rceil$. At $n = 8$ that is depth 8
+against depth 4, at $n = 64$ it is 64 against 7.
+
+<Callout tone="note" title="Depth is a lower bound on time, not the time">
+Real hardware adds constraints this model ignores: two-qubit gates only exist
+between physically coupled qubits, so a compiler inserts SWAPs, and a SWAP is
+three CNOTs. The depth of the circuit you wrote is a floor. T3.M3 is about the
+gap between that floor and what actually runs.
+</Callout>
+
+## Barriers
+
+A barrier is an operation with no matrix. It does nothing to the state. What it
+does is forbid the scheduler from moving operations across it, which means it
+also forbids the optimiser from cancelling a gate before it against a gate after
+it.
+
+Two Hadamards on two different qubits normally share a layer:
+
+<Circuit
+  caption="H on each of two qubits. Disjoint wires, one layer, depth 1."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "no-barrier",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "a", gate: "h", targets: [0] },
+      { id: "b", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+Put a barrier between them and the second one is pushed into its own layer:
+
+<Circuit
+  caption="The same two gates with a barrier between them. Identical state, depth 2."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "with-barrier",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "a", gate: "h", targets: [0] },
+      { id: "bar", gate: "barrier", targets: [0, 1] },
+      { id: "b", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+The two amplitude tables are identical, both showing the four basis states at
+$0.25$ each. The footers differ: depth 1 against depth 2, and the barrier is not
+counted in the gate total. A barrier changes cost, never semantics.
+
+That is exactly why barriers are useful for measurement. If you want to time a
+delay, or keep a decoupling sequence from being optimised into the identity, or
+compare a circuit against itself with one section held fixed, a barrier is the
+only way to say "do not touch this boundary" to a compiler that is otherwise
+allowed to rewrite anything it likes.
+
+<Check question="A circuit on 5 qubits has 12 gates and depth 4. What is the smallest number of gates that could occupy a single layer, and can depth ever exceed size?">
+With 12 gates spread over 4 layers, the average layer holds 3 gates, so some layer
+holds at least 3. The smallest a *particular* layer can be is 1, since a layer
+that exists contains at least one gate. Depth can never exceed size: each layer
+contains at least one operation, so depth is at most the number of operations,
+with equality exactly when every operation shares a qubit with the one before it.
+The ladder GHZ circuit above hits that bound, at 4 gates and depth 4.
+</Check>
+
+## Where this comes from
+
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses),
+  which reports depth, size and two-qubit count as the standard summary of a
+  circuit, in the same order this platform's figure footers use.
+- [CS269Q, Stanford](https://cs269q.stanford.edu/), for the treatment of the
+  circuit as a program with a cost model rather than as a picture, which is the
+  framing the rest of T1.M8 depends on.

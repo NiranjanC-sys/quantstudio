@@ -30,6 +30,20 @@ spec:
       automountServiceAccountToken: false
       priorityClassName: redquant-critical
       terminationGracePeriodSeconds: 60
+      # The T-C tier (§4: 31-40 qubits, tensor-network and noisy density-matrix)
+      # requests 96Gi/8 vCPU, which does not fit the c7g.2xlarge-class node the
+      # §1 fleet table sizes the other six tiers against (8 vCPU / 16 GiB).
+      # Without this selector the pod is permanently Pending: its memory request
+      # alone exceeds a whole general-pool node. Pin it to a dedicated
+      # memory-optimised pool, using the same `redquant.io/node-pool` convention
+      # cluster/runtimeclass-gvisor.yaml uses for the sandbox pool. The pool is
+      # tainted so nothing else lands on nodes this size.
+      nodeSelector:
+        redquant.io/node-pool: kernel-heavy
+      tolerations:
+        - key: redquant.io/kernel-heavy-only
+          operator: Exists
+          effect: NoSchedule
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001

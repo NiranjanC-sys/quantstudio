@@ -1,0 +1,178 @@
+---
+id: t1.m7.l5
+title: BB84
+type: lab
+track: t1
+module: t1.m7
+level: L1
+minutes: 40
+objectives:
+  - Implement basis sifting for BB84 and return the shared raw key
+  - Estimate the quantum bit error rate from a disclosed sample and flag an intercept-resend eavesdropper
+prerequisites:
+  - t1.m7.l4
+sources:
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+  - label: Cleve, QIC 710 Quantum Information Processing (Waterloo IQC)
+    url: https://cleve.iqc.uwaterloo.ca/qic710/
+tags: [lab, protocols, bb84]
+---
+
+Quantum money made non-orthogonality into an unforgeability argument, but it
+needed a bank holding a secret table. What if the two parties have no shared
+secret at all and want to end up with one? BB84 answers that, and its security
+argument is the same $\tfrac34$ calculation you did last lesson, read backwards:
+the forger's advantage becomes the eavesdropper's fingerprint.
+
+## The protocol, in the order you will code it
+
+1. Alice draws two random bit strings, values $v$ and bases $\theta^A$, each of
+   length $N$. She prepares qubit $i$ in $\ket{0}, \ket{1}, \ket{+}$ or $\ket{-}$
+   according to $(\theta^A_i, v_i)$, exactly as the bank did, and sends it.
+2. Bob draws his own random basis string $\theta^B$, measures qubit $i$ in basis
+   $\theta^B_i$, and records the outcome $w_i$.
+3. Alice and Bob announce $\theta^A$ and $\theta^B$ over a public authenticated
+   channel. They keep the positions where $\theta^A_i = \theta^B_i$ and discard
+   the rest. This is **sifting**, and it keeps about half the positions.
+4. On the kept positions, $w_i = v_i$ whenever the channel is undisturbed.
+5. They disclose a random sample of the sifted positions and compare. The
+   fraction that disagree is the **quantum bit error rate**, or QBER. If it is
+   too high they abort. Disclosed positions are then discarded.
+
+<Margin label="Why announcing bases is safe">
+The basis string says which measurement was made, not what came out. An
+eavesdropper who learns $\theta^A$ after the qubits have already been measured is
+too late: her measurement choice was locked in before the announcement.
+</Margin>
+
+## Where the error rate comes from
+
+When the bases match and nobody interferes, Bob's outcome is deterministic. Alice
+prepares $\ket{+}$, Bob measures in the $X$ basis, and the outcome is 0 with
+probability 1.
+
+<Circuit
+  caption="Matched bases, no eavesdropper. The first H prepares |+>, the second rotates the X basis onto the computational basis, and the outcome is certain."
+  show={['probabilities']}
+  ir={{
+    version: 1,
+    name: "bb84-clean",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "prep", gate: "h", targets: [0] },
+      { id: "bob", gate: "h", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+Now insert Eve, who measures every qubit in a basis she picks at random and
+re-prepares what she saw. This is the identical attack from the money lesson.
+Condition on a sifted position, so Alice and Bob agree on the basis.
+
+- Eve guesses the same basis, probability $\tfrac12$. She learns $v_i$, her
+  re-prepared qubit is exactly what Alice sent, and Bob's outcome is correct.
+  Error probability 0.
+- Eve guesses the other basis, probability $\tfrac12$. Her outcome is a fair coin,
+  and the state she re-prepares is unbiased in Alice's basis, so Bob's outcome is
+  a fair coin too. Error probability $\tfrac12$.
+
+$$
+\mathrm{QBER} = \half \cdot 0 + \half \cdot \half = \frac{1}{4}.
+$$
+
+<Circuit
+  caption="Alice prepares |+>, Eve measures in the computational basis, Bob measures in the X basis. Mid-circuit measurement makes this stochastic, so the panel shows one trajectory."
+  show={['probabilities', 'qasm']}
+  ir={{
+    version: 1,
+    name: "bb84-intercept-resend",
+    qubits: 1,
+    clbits: 2,
+    ops: [
+      { id: "prep", gate: "h", targets: [0] },
+      { id: "eve", gate: "measure", targets: [0], cbits: [0] },
+      { id: "bob", gate: "h", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [1] }
+    ]
+  }}
+/>
+
+Eve's measurement collapses $\ket{+}$ onto $\ket{0}$ or $\ket{1}$ with equal
+probability, and either of those is an equal superposition in the $X$ basis, so
+Bob's bit is a fair coin. Over many runs Bob disagrees with Alice on a quarter of
+the sifted positions.
+
+A QBER of $0.25$ on a channel whose hardware error floor is a few percent is not
+subtle. That is the entire security argument at this level: Eve cannot look
+without leaving a mark, and the mark is quantitative.
+
+<Callout tone="warning" title="What this argument does not prove">
+Intercept-resend is one attack. A full BB84 security proof bounds Eve's
+information for *every* attack allowed by quantum mechanics, and it does so by
+relating the QBER to the amount of privacy amplification needed. The lab below
+detects the textbook attack; it is not a proof of security.
+</Callout>
+
+## What to implement
+
+Two pure functions, no quantum simulation required. The protocol reduces to
+classical post-processing once the measurement outcomes exist.
+
+```python
+def sift(
+    alice_bases: list[int],
+    bob_bases: list[int],
+    alice_bits: list[int],
+    bob_bits: list[int],
+) -> tuple[list[int], list[int]]:
+    """Keep positions where the two bases agree."""
+
+
+def qber(sample_a: list[int], sample_b: list[int]) -> float:
+    """Fraction of disclosed positions whose bits disagree."""
+```
+
+`sift` returns the pair of kept bit lists, in the original order, keeping index
+$i$ exactly when `alice_bases[i] == bob_bases[i]`. Both returned lists have the
+same length, and on a clean channel they are equal.
+
+`qber` counts disagreements over the disclosed sample and divides by its length.
+An empty sample returns $0.0$ rather than raising, because a run that discloses
+nothing has observed no errors, not an undefined error rate.
+
+Worked cases the public tests use:
+
+| input | expected |
+| --- | --- |
+| bases $[0,0,1,1]$ and $[0,1,1,0]$ | two positions kept, indices 0 and 2 |
+| identical samples | QBER $0.0$ |
+| one disagreement in four disclosed positions | QBER $0.25$ |
+
+The hidden tests add a property check: every position your `sift` keeps must have
+matching bases. Returning too much is a bigger failure than returning too little,
+because a sifted key containing mismatched-basis positions is half noise and the
+QBER estimate built on it is meaningless.
+
+<Check question="Alice and Bob sift 1000 positions and measure a QBER of $0.02$. Should they abort?">
+No, and the reason is that $0.02$ is far below the $0.25$ that full
+intercept-resend produces and is consistent with ordinary hardware error. What
+they must do instead is account for it: a non-zero QBER means Eve *may* hold some
+partial information, so they run error correction to reconcile the two keys and
+then privacy amplification to compress the reconciled key down to a length short
+enough that Eve's residual knowledge is negligible. The threshold for aborting is
+set by how much compression the protocol can afford, not by whether the QBER is
+exactly zero, which on real hardware it never is.
+</Check>
+
+## Where this comes from
+
+- [Microsoft Quantum Katas](https://github.com/microsoft/QuantumKatas), whose
+  BB84 kata splits the protocol into preparation, measurement, sifting and error
+  estimation as separate graded steps. This lab grades the last two, because the
+  first two are already covered by T1.M2.
+- [Cleve, QIC 710](https://cleve.iqc.uwaterloo.ca/qic710/), for the treatment of
+  BB84 alongside the Lo-Chau style security argument, and for the framing of QBER
+  as the observable that bounds the eavesdropper.

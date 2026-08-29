@@ -1,0 +1,173 @@
+---
+id: t1.m8.l2
+title: Deferred Measurement
+type: concept
+track: t1
+module: t1.m8
+level: L1
+minutes: 13
+objectives:
+  - State the principle of deferred measurement and apply it to a conditional-X circuit
+  - Convert a classically controlled gate into a coherently controlled one
+  - Explain why deferring measurement costs qubits but never changes the output distribution
+prerequisites:
+  - t1.m8.l1
+  - t1.m2.l2
+sources:
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: Preskill, Ph219/CS219 Quantum Computation lecture notes (Caltech)
+    url: http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html
+tags: [circuits, measurement]
+---
+
+In the teleportation lesson you analysed a protocol with a measurement in the
+middle by drawing a circuit with no measurement in the middle, and then claimed
+the two agreed. That step was not a shortcut. It is a theorem, it has a name, and
+it is the single most useful structural fact about the circuit model: any
+measurement can be postponed to the end.
+
+## The claim
+
+**Principle of deferred measurement.** If a circuit measures a qubit and uses the
+classical outcome to control later operations, you may instead leave the qubit
+unmeasured, replace each classically controlled operation by the corresponding
+quantum-controlled operation on that qubit, and measure at the very end. The
+distribution over all measured bits is unchanged.
+
+<Margin label="Scope">
+The principle is about output distributions. The two circuits are not the same
+map on states, and after the measured qubit is measured they are not even in the
+same Hilbert space. What matches is everything you can observe.
+</Margin>
+
+## Proof on the smallest example
+
+Take one qubit in $\ket{\psi} = c_0\ket{0} + c_1\ket{1}$ and a second qubit in
+$\ket{0}$. The classical version measures qubit 0 and applies $X$ to qubit 1 if
+the outcome was 1.
+
+*Measure first.* The outcome is $a$ with probability $|c_a|^2$, and qubit 0
+collapses to $\ket{a}$. Then $X^a$ takes qubit 1 from $\ket{0}$ to $\ket{a}$. The
+pair of classical bits recorded at the end is $(a, a)$, with probability
+$|c_a|^2$.
+
+*Defer.* Apply $\mathrm{CX}_{0 \to 1}$ instead. Linearity gives
+
+$$
+\mathrm{CX}\big(c_0\ket{0} + c_1\ket{1}\big)\ket{0}
+= c_0\ket{00} + c_1\ket{11}.
+$$
+
+Measuring both qubits returns $(0,0)$ with probability $|c_0|^2$ and $(1,1)$ with
+probability $|c_1|^2$. Identical distribution. The proof for a general controlled
+operation is the same two lines with $U$ in place of $X$: the classical branch
+structure and the coherent branch structure are the same sum, and measurement in
+the computational basis cannot tell which one you built.
+
+Take $\ket{\psi} = \ket{+}$, so both probabilities are $\tfrac12$. Here is the
+deferred circuit:
+
+<Circuit
+  caption="Deferred: a coherent CNOT, then both qubits measured at the end. Exact statevector, so the amplitudes are reported."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "deferred",
+    qubits: 2,
+    clbits: 2,
+    ops: [
+      { id: "a", gate: "h", targets: [0] },
+      { id: "b", gate: "x", targets: [1], controls: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] }
+    ]
+  }}
+/>
+
+And here is the classical version, measuring qubit 0 first and conditioning the
+$X$ on the classical bit:
+
+<Circuit
+  caption="Classical control: measure, then apply X only if the recorded bit is 1. Averaged over 4096 trajectories."
+  show={['probabilities']}
+  shots={4096}
+  ir={{
+    version: 1,
+    name: "measure-then-control",
+    qubits: 2,
+    clbits: 2,
+    ops: [
+      { id: "a", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "cx", gate: "x", targets: [1], condition: { bits: [0], value: 1 } },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] }
+    ]
+  }}
+/>
+
+The second circuit contains a classical condition, so the simulator cannot
+evolve a single statevector through it. It samples trajectories instead, and the
+panel reports the average over them. Two things to read off. First, only
+$\ket{00}$ and $\ket{11}$ ever appear, at close to half each: the mismatched
+strings $\ket{01}$ and $\ket{10}$ have probability zero in both circuits.
+Second, the reported numbers are not exactly $0.5$, because 4096 samples of a
+fair coin do not land exactly even. The deferred circuit reports exactly $0.5$
+because it never sampled anything.
+
+## What deferring costs
+
+The principle says the distributions match. It does not say the two circuits are
+equally good to run.
+
+Deferring keeps the measured qubit alive for the rest of the circuit. That is one
+more qubit of width you cannot reuse, and one more qubit accumulating decoherence
+for the whole remaining depth. On a device with 5 usable qubits and a circuit
+that would otherwise need 7, deferring is not an option.
+
+Not deferring costs latency instead. A mid-circuit measurement has to complete,
+the result has to travel to the classical controller, the controller has to
+decide, and the decision has to reach the pulse generator, all while the
+untouched qubits sit idle and decohere. That round trip is the subject of the
+next two lessons.
+
+<Callout tone="note" title="Which direction you use it in">
+Analysts defer, because a circuit with no measurement in the middle has a
+statevector you can write down. Engineers un-defer, because a circuit that
+measures early frees a qubit. The principle guarantees the two views agree, so
+you are free to switch whenever it is convenient.
+</Callout>
+
+## Where the theorem earns its keep
+
+Three places in this track already depend on it.
+
+Teleportation, where the coherent circuit gave you an exact eight-amplitude
+statevector to read the correction table off, and the real protocol with two
+measurements and two conditional gates has the same statistics.
+
+Reset, which is defined as a measurement followed by a conditional $X$. Deferred
+measurement is what lets you reason about a reset as though it were a coherent
+operation into a fresh ancilla.
+
+Error correction, where syndrome extraction measures ancillas mid-circuit and
+applies corrections. Textbook analyses defer all of it, prove the code works, and
+only then worry about whether the hardware can turn a syndrome round in time.
+
+<Check question="A circuit measures qubit 0, and if the result is 1 applies $H$ to qubit 1. You defer the measurement. What does the circuit contain now, and what is its width?">
+A controlled-$H$ with qubit 0 as control and qubit 1 as target, followed by
+measurements of both qubits at the end. The width is unchanged at 2, because both
+qubits already existed; what changes is that qubit 0 must stay coherent until the
+final measurement instead of being freed early. The saving that deferral gives up
+is qubit *reuse*, not qubit count, and reuse is exactly what the next lesson
+buys back with reset.
+</Check>
+
+## Where this comes from
+
+- [Nielsen & Chuang, *Quantum Computation and Quantum Information*](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 4.4, which states the principle in the form used here and applies it to
+  teleportation immediately afterwards.
+- [Preskill, Ph219/CS219](http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html),
+  for the treatment of measurement as an operation that can be commuted through a
+  circuit, and for why that matters when analysing error correction.
