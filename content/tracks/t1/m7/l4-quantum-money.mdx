@@ -1,0 +1,210 @@
+---
+id: t1.m7.l4
+title: Quantum Money
+type: concept
+track: t1
+module: t1.m7
+level: L1
+minutes: 13
+objectives:
+  - Describe Wiesner quantum money and its verification procedure
+  - Compute the probability that a forger passes verification on a single qubit
+  - Explain which assumption fails when the bank must verify without the secret basis
+prerequisites:
+  - t1.m7.l3
+  - t1.m5.l4
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: Cleve, QIC 710 Quantum Information Processing (Waterloo IQC)
+    url: https://cleve.iqc.uwaterloo.ca/qic710/
+tags: [protocols, money]
+---
+
+Every anti-counterfeiting measure ever printed on a banknote has the same flaw:
+the note is classical, so a good enough copier reproduces it. Holograms and
+microprinting raise the cost of copying, they do not make it impossible. What
+would a banknote look like if copying it were forbidden by physics rather than
+made expensive by engineering? That question is older than quantum computing
+itself, and the answer is the first quantum cryptographic protocol anybody wrote
+down.
+
+## The scheme
+
+A banknote is a classical serial number $s$ together with $n$ qubits. For each
+position $i$ the bank draws two secret random bits: a basis bit $\theta_i$ and a
+value bit $v_i$. It prepares qubit $i$ in one of four states:
+
+| $\theta_i$ | $v_i$ | prepared state |
+| --- | --- | --- |
+| $0$ | $0$ | $\ket{0}$ |
+| $0$ | $1$ | $\ket{1}$ |
+| $1$ | $0$ | $\ket{+} = \tfrac{1}{\sqrt2}(\ket{0} + \ket{1})$ |
+| $1$ | $1$ | $\ket{-} = \tfrac{1}{\sqrt2}(\ket{0} - \ket{1})$ |
+
+The bank stores $(s, \theta, v)$ in a private table and hands the note over. The
+holder cannot read $\theta$ or $v$ from the note, because the four states are not
+mutually orthogonal: $\braket{0}{+} = \tfrac{1}{\sqrt2}$, so no measurement
+distinguishes $\ket{0}$ from $\ket{+}$ with certainty.
+
+<Margin label="Two bases">
+$\{\ket{0}, \ket{1}\}$ is the computational or $Z$ basis.
+$\{\ket{+}, \ket{-}\}$ is the $X$ basis. Measuring in the $X$ basis means
+applying $H$ and then measuring in the computational basis, because
+$H\ket{+} = \ket{0}$ and $H\ket{-} = \ket{1}$.
+</Margin>
+
+## Verification
+
+The note comes back to the bank. The bank looks up $\theta$ and $v$ by serial
+number, measures qubit $i$ in basis $\theta_i$, and checks that every outcome
+equals $v_i$. A genuine note passes with probability 1, because measuring a state
+in the basis it was prepared in returns the preparation with certainty.
+
+<Circuit
+  caption="A genuine note qubit: prepared in |+> by the bank, verified in the X basis. H prepares, H rotates the X basis back to the computational basis, and the outcome is 0 with certainty."
+  show={['probabilities']}
+  ir={{
+    version: 1,
+    name: "genuine-note",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "prep", gate: "h", targets: [0] },
+      { id: "check", gate: "h", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+## The forger
+
+A forger holds one note and wants two. No-cloning already rules out the obvious
+attack: there is no unitary that maps $\ket{\psi}\ket{0} \mapsto
+\ket{\psi}\ket{\psi}$ for all $\ket{\psi}$. But no-cloning is a statement about
+exactness, and a forger does not need exactness. He needs to pass verification.
+So measure and guess.
+
+The forger picks a basis at random for each qubit, measures, and prepares two
+copies of whatever he saw. Follow one qubit through, in the case where the bank
+prepared $\ket{+}$ and the forger guesses the computational basis:
+
+<Simulate
+  show="probabilities"
+  ir={{
+    version: 1,
+    name: "forger-wrong-basis",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "prep", gate: "h", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $0$ | $0.500000$ |
+| $1$ | $0.500000$ |
+
+</Simulate>
+
+A coin flip. The forger now holds $\ket{0}$ or $\ket{1}$, prepares copies of it,
+and the bank later measures one of those copies in the $X$ basis. Whichever of
+$\ket{0}$ or $\ket{1}$ he re-prepared, the verification measurement is again a
+coin flip:
+
+<Simulate
+  show="probabilities"
+  ir={{
+    version: 1,
+    name: "verify-resent-zero",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "check", gate: "h", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $0$ | $0.500000$ |
+| $1$ | $0.500000$ |
+
+</Simulate>
+
+Now assemble the per-qubit success probability. The forger guesses the basis
+correctly with probability $\tfrac12$, in which case his measurement returns
+$v_i$, his copies are exact, and verification passes with probability 1. He
+guesses wrongly with probability $\tfrac12$, in which case verification passes
+with probability $\tfrac12$. So
+
+$$
+\Pr[\text{one qubit passes}] = \half \cdot 1 + \half \cdot \half = \frac{3}{4}.
+$$
+
+The qubits are independent, so a forged note of $n$ qubits passes with
+probability $(3/4)^n$. That number falls off a cliff:
+
+| $n$ | $(3/4)^n$ |
+| --- | --- |
+| $4$ | $0.316406$ |
+| $8$ | $0.100113$ |
+| $20$ | $0.003171$ |
+| $40$ | $0.000010$ |
+
+Forty qubits per note and a forger who measures and guesses succeeds about once
+in a hundred thousand attempts. Nothing about that argument depends on the
+forger's computational power, his budget, or how long he waits. It depends only
+on the overlap between two non-orthogonal states, and $\tfrac34$ is also the best
+any attack can do on a single qubit of the scheme.
+
+<Callout tone="gotcha" title="Measure-and-resend is not cloning">
+The forger never violated no-cloning. He produced two states that are usually
+wrong. No-cloning says he cannot produce two that are always right; the $3/4$
+calculation says how wrong "usually wrong" is, and that quantitative version is
+what a security proof actually needs.
+</Callout>
+
+## The assumption that does not survive contact with a shop
+
+The scheme above requires the bank to hold $\theta$ and $v$ secret and to perform
+verification itself. That is fine for a bank and useless for a cafe. Suppose we
+try to make the note publicly verifiable by publishing $\theta$ so that anybody
+can check it.
+
+That destroys the scheme immediately. A forger who knows $\theta_i$ measures
+qubit $i$ in the correct basis every time, learns $v_i$ with certainty, and
+prepares as many perfect copies as he likes. The security came entirely from the
+verifier knowing something the holder does not. Publish it and the note becomes
+classical information, which copies freely.
+
+So Wiesner money is *private-key* quantum money: verification requires the secret,
+therefore it requires talking to the bank. Making money that anybody can verify
+without a secret is a genuinely different problem, and every proposal for it
+rests on a computational hardness assumption in addition to the physics. The
+physics alone gets you unforgeability against an unbounded adversary, but only if
+the verifier is trusted.
+
+<Check question="A forger measures every qubit of a 20-qubit note in the $X$ basis, rather than in a randomly chosen basis. Does he do better or worse than the random strategy?">
+Neither. His success probability is still $(3/4)^{20} \approx 0.003171$. The bank
+drew each $\theta_i$ uniformly and independently, so from the forger's point of
+view every position is equally likely to be a $Z$ position or an $X$ position. On
+the $X$ positions he is exactly right and passes with probability 1; on the $Z$
+positions he destroys the value and passes with probability $\tfrac12$. Averaging
+gives $\tfrac12 \cdot 1 + \tfrac12 \cdot \tfrac12 = \tfrac34$ per qubit, the same
+as guessing. There is no clever basis to pick, because the secret he would need in
+order to pick one is exactly the secret the scheme withholds.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), which
+  teaches quantum money early, as the first place non-orthogonality becomes a
+  security property rather than an inconvenience.
+- [Cleve, QIC 710](https://cleve.iqc.uwaterloo.ca/qic710/), for the same
+  measure-and-resend analysis carried forward into key distribution, where the
+  identical $\tfrac34$ calculation reappears as an error rate.

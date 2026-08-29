@@ -1,0 +1,211 @@
+---
+id: t1.m1.l7
+title: Global vs Relative Phase
+type: concept
+track: t1
+module: t1.m1
+level: L1
+minutes: 13
+objectives:
+  - Prove that a global phase changes no measurement probability in any basis
+  - Show that a relative phase changes the probabilities of an X-basis measurement
+  - Reduce a state to a canonical form with a real non-negative first amplitude
+prerequisites: [t1.m1.l6]
+sources:
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: Matuschak & Nielsen, Quantum Computing for the Very Curious
+    url: https://quantum.country/qcvc
+tags: [qubit, phase]
+---
+
+Complex amplitudes came with a free parameter that turns out to be pure
+bookkeeping, and a second one that is the engine of every quantum algorithm.
+They look nearly identical on the page. Telling them apart is the difference
+between a state you can simplify and a state whose structure you must respect.
+
+## Global phase: invisible, always
+
+A **global phase** multiplies the whole vector:
+$\ket{\psi} \mapsto e^{i\gamma}\ket{\psi}$ for a real $\gamma$. The claim is
+that no experiment distinguishes the two. The proof is one line and it covers
+every measurement, not just the computational one.
+
+A measurement in any orthonormal basis $\ket{m_1}, \dots, \ket{m_d}$ assigns
+outcome $k$ the probability $|\braket{m_k}{\psi}|^2$. Replace $\ket{\psi}$ by
+$e^{i\gamma}\ket{\psi}$:
+
+$$
+\left| \bra{m_k} \left( e^{i\gamma} \ket{\psi} \right) \right|^2
+= \left| e^{i\gamma} \right|^2 \left| \braket{m_k}{\psi} \right|^2
+= \left| \braket{m_k}{\psi} \right|^2 ,
+$$
+
+because $|e^{i\gamma}| = 1$ for every real $\gamma$. Every outcome of every
+measurement has an unchanged probability, so the two vectors are the same
+physical state. They are the same state after any gate as well, since
+$U(e^{i\gamma}\ket{\psi}) = e^{i\gamma}(U\ket{\psi})$: the factor commutes
+through everything and can never be caught.
+
+<Margin label="Notation">
+Writing $\ket{\psi} \simeq \ket{\phi}$ for "equal up to global phase" saves a
+great deal of ink. $-\ket{0} \simeq \ket{0}$, and
+$i\ket{1} \simeq \ket{1}$. On a *sub*system, the same factor is not global and
+the equivalence fails, which is the subject of T1.M9.
+</Margin>
+
+## Relative phase: visible in the right basis
+
+A **relative phase** is a phase between components:
+$\alpha\ket{0} + \beta\ket{1} \mapsto \alpha\ket{0} + e^{i\varphi}\beta\ket{1}$.
+It leaves $|\beta|$ alone, so the computational-basis probabilities are
+untouched, and beginners conclude it is invisible too. It is not. Measure in the
+$X$ basis instead.
+
+The $X$-basis probability of outcome $+$ is
+
+$$
+\left| \braket{+}{\psi} \right|^2
+= \left| \frac{\alpha + \beta}{\sqrt2} \right|^2
+= \frac{|\alpha|^2 + |\beta|^2 + 2\,\mathrm{Re}(\alpha^{*}\beta)}{2}
+= \frac{1}{2} + \mathrm{Re}(\alpha^{*}\beta) .
+$$
+
+The whole dependence sits in the cross term $\mathrm{Re}(\alpha^{*}\beta)$, and
+that term is exactly what a relative phase moves. Take
+$\alpha = \tfrac{1}{\sqrt2}$ throughout and vary $\beta$:
+
+| state | $\beta$ | $\mathrm{Re}(\alpha^{*}\beta)$ | $\Pr[+]$ |
+| --- | --- | --- | --- |
+| $\ket{+}$ | $\tfrac{1}{\sqrt2}$ | $0.5$ | $1$ |
+| $\ket{+i}$ | $\tfrac{i}{\sqrt2}$ | $0$ | $0.5$ |
+| $\ket{-}$ | $-\tfrac{1}{\sqrt2}$ | $-0.5$ | $0$ |
+
+Three states with identical computational-basis statistics and $X$-basis
+probabilities of $1$, $0.5$ and $0$. Applying $H$ before measuring turns the
+$X$-basis question into a computational-basis one, so the circuits below read
+those numbers off directly.
+
+<Simulate
+  show="probabilities"
+  caption="H then H. The state |+> has relative phase 0 and reads as |0> with certainty in the X basis."
+  ir={{
+    version: 1,
+    name: "plus-in-x",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "h2", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+<Simulate
+  show="probabilities"
+  caption="H, S, H. The relative phase of i splits the X-basis outcome evenly."
+  ir={{
+    version: 1,
+    name: "plus-i-in-x",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "s1", gate: "s", targets: [0] },
+      { id: "h2", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+Replacing $S$ with $Z$, a relative phase of $\pi$, gives outcome 1 with
+probability 1: the third row of the table. One gate between two Hadamards
+sweeps the answer from certain-0 through even to certain-1, and nothing in the
+computational-basis description of the middle state changes at all.
+
+## Telling them apart mechanically
+
+Given two vectors, they are the same state exactly when one is a scalar multiple
+of the other by a unit-modulus number. The test: form the ratio componentwise
+and see whether it is constant.
+
+$$
+\ket{\psi} = \begin{pmatrix} 0.5 - 0.5i \\ 0.5 + 0.5i \end{pmatrix},
+\qquad
+\ket{\phi} = \begin{pmatrix} 0.707107 \\ 0.707107 i \end{pmatrix} .
+$$
+
+Componentwise, $\tfrac{0.707107}{0.5 - 0.5i} = 0.707107 + 0.707107 i$ and
+$\tfrac{0.707107 i}{0.5 + 0.5i} = 0.707107 + 0.707107 i$. The ratio is constant
+and equals $e^{i\pi/4}$, so these are the same state up to global phase. The
+first is what $R_z(\pi/2)$ produces from $\ket{+}$ and the second is what $S$
+produces, which is why the two gates are interchangeable in a circuit whose
+result is measured.
+
+<Callout tone="gotcha" title="Rz and P differ by a global phase, until they do not">
+$R_z(\lambda) = e^{-i\lambda/2}\,P(\lambda)$, so on a lone qubit they are the
+same gate. Put either one under a control and the difference becomes a relative
+phase on the control qubit, and the two circuits stop agreeing. Global phase is
+only global while nothing else is watching.
+</Callout>
+
+## Canonical form
+
+Because the global phase is free, every state has a representative whose first
+non-zero amplitude is real and positive. Multiply by
+$e^{-i\arg \alpha}$:
+
+$$
+\ket{\psi} = \begin{pmatrix} \tfrac{1+i}{2} \\[2pt] \tfrac{1-i}{2} \end{pmatrix},
+\qquad \arg \alpha = \frac{\pi}{4},
+\qquad
+e^{-i\pi/4}\ket{\psi} = \begin{pmatrix} 0.707107 \\ -0.707107 i \end{pmatrix} .
+$$
+
+Check the second entry by hand:
+$\tfrac{1-i}{2} \cdot \tfrac{1-i}{\sqrt2} = \tfrac{(1-i)^2}{2\sqrt2}
+= \tfrac{-2i}{2\sqrt2} = -\tfrac{i}{\sqrt2}$. The canonical form is $\ket{-i}$,
+which the circuit below prepares directly with $H$ then $S^{\dagger}$. Its
+probabilities, $0.5$ and $0.5$, match those of the original, as they must.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="H then S-dagger prepares |-i>, the canonical form of the state above."
+  ir={{
+    version: 1,
+    name: "canonical-minus-i",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "sd", gate: "sdg", targets: [0] }
+    ]
+  }}
+/>
+
+In canonical form a one-qubit state is $\cos(\theta/2)\ket{0} +
+e^{i\varphi}\sin(\theta/2)\ket{1}$ with two real parameters and no leftover
+freedom, which is the parameterisation the Bloch sphere draws.
+
+<Check question="Are $\left(\tfrac{i}{\sqrt2},\ \tfrac{1}{\sqrt2}\right)$ and $\left(\tfrac{1}{\sqrt2},\ \tfrac{i}{\sqrt2}\right)$ the same state?">
+No. Componentwise ratios: $\tfrac{1/\sqrt2}{i/\sqrt2} = -i$ for the first entry
+and $\tfrac{i/\sqrt2}{1/\sqrt2} = i$ for the second. The ratio is not constant,
+so no global phase relates them. Put both in canonical form to be sure:
+multiplying the first by $e^{-i\pi/2} = -i$ gives
+$\left(\tfrac{1}{\sqrt2},\ -\tfrac{i}{\sqrt2}\right) = \ket{-i}$, while the
+second is already canonical and is $\ket{+i}$. They are opposite poles, and an
+$S^{\dagger}$ followed by $H$ separates them with certainty.
+</Check>
+
+## Where this comes from
+
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses),
+  Basics of quantum information, for the global-phase equivalence stated as a
+  quotient on the state space rather than as an afterthought.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 1.3.1, for the observation that relative phase within a superposition
+  has measurable consequences while global phase never does.
+- [Quantum Computing for the Very Curious](https://quantum.country/qcvc), whose
+  repeated drilling of this distinction is the reason it appears as its own
+  lesson here rather than as a remark inside another one.

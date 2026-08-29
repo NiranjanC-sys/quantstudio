@@ -1,0 +1,168 @@
+---
+id: t1.m7.l3
+title: Entanglement Swapping
+type: concept
+track: t1
+module: t1.m7
+level: L1
+minutes: 13
+objectives:
+  - Show that a Bell measurement on two halves of two Bell pairs entangles the untouched qubits
+  - Give the correction table that fixes the resulting state to a chosen Bell state
+  - Explain the role of swapping in a quantum repeater chain
+prerequisites:
+  - t1.m7.l2
+sources:
+  - label: QuTech Academy / QuTube (TU Delft)
+    url: https://www.qutube.nl/
+  - label: Cleve, QIC 710 Quantum Information Processing (Waterloo IQC)
+    url: https://cleve.iqc.uwaterloo.ca/qic710/
+tags: [protocols, swapping]
+---
+
+Alice and a middle station share a Bell pair. The middle station and Bob share a
+different Bell pair. Alice and Bob have never met, never exchanged a photon, and
+hold qubits that have never interacted with each other in any way. Can they end
+up entangled? They can, and the middle station can make it happen without ever
+learning anything about either qubit. This is entanglement swapping, and it is
+the operation that makes long-distance quantum links possible at all.
+
+## Four qubits, two pairs
+
+Number the qubits 0 to 3. Qubits 0 and 1 form one Bell pair, qubits 2 and 3 the
+other:
+
+$$
+\ket{\Phi^+}_{01} \otimes \ket{\Phi^+}_{23}
+= \frac{\ket{00} + \ket{11}}{\sqrt2} \otimes \frac{\ket{00} + \ket{11}}{\sqrt2}.
+$$
+
+Alice holds qubit 0. Bob holds qubit 3. The middle station holds qubits 1 and 2,
+one from each pair. Expanded, the joint state has four equal terms of amplitude
+$\tfrac12$:
+
+$$
+\half\big(\ket{0000} + \ket{0011} + \ket{1100} + \ket{1111}\big),
+$$
+
+reading $\ket{q_0 q_1 q_2 q_3}$. Qubit 0 is perfectly correlated with qubit 1 and
+qubit 2 with qubit 3, and there is no correlation at all between qubit 0 and
+qubit 3. Their joint reduced state is the uniform mixture over all four outcomes.
+
+<Margin label="Convention">
+Qubit 0 is the most significant bit. Alice holds $q_0$, Bob holds $q_3$, and the
+repeater station holds $q_1 q_2$ and measures them in the Bell basis.
+</Margin>
+
+## The measurement that does the work
+
+The station measures its two qubits in the Bell basis. As in teleportation, that
+means CNOT from qubit 1 to qubit 2, Hadamard on qubit 1, then a computational
+measurement of both. Here is the state after the basis change and before the
+measurement.
+
+<Circuit
+  caption="Two Bell pairs, then the repeater's Bell-basis rotation on qubits 1 and 2. Eight amplitudes of magnitude 0.3536, two of them negative."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "swap-pre-measurement",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "a", gate: "h", targets: [0] },
+      { id: "b", gate: "x", targets: [1], controls: [0] },
+      { id: "c", gate: "h", targets: [2] },
+      { id: "d", gate: "x", targets: [3], controls: [2] },
+      { id: "e", gate: "x", targets: [2], controls: [1] },
+      { id: "f", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+Eight basis states survive, each with amplitude $\pm\tfrac{1}{2\sqrt2} =
+\pm 0.353553$ and probability $0.125$. Sort them by the middle two labels
+$q_1 q_2$, which is what the station is about to read:
+
+| $q_1 q_2$ | surviving strings | Alice and Bob hold |
+| --- | --- | --- |
+| $00$ | $+\ket{0000}$, $+\ket{1001}$ | $\tfrac{1}{\sqrt2}(\ket{00} + \ket{11}) = \ket{\Phi^+}$ |
+| $01$ | $+\ket{0011}$, $+\ket{1010}$ | $\tfrac{1}{\sqrt2}(\ket{01} + \ket{10}) = \ket{\Psi^+}$ |
+| $10$ | $+\ket{0100}$, $-\ket{1101}$ | $\tfrac{1}{\sqrt2}(\ket{00} - \ket{11}) = \ket{\Phi^-}$ |
+| $11$ | $+\ket{0111}$, $-\ket{1110}$ | $\tfrac{1}{\sqrt2}(\ket{01} - \ket{10}) = \ket{\Psi^-}$ |
+
+Read the third row against the figure. The strings with $q_1 q_2 = 10$ are
+$\ket{0100}$ with amplitude $+0.353553$ and $\ket{1101}$ with amplitude
+$-0.353553$. Stripping the middle two labels leaves $q_0 q_3 = 00$ with a plus
+sign and $q_0 q_3 = 11$ with a minus sign, which is $\ket{\Phi^-}$ normalised by
+the factor $\sqrt2$ that renormalisation supplies after the measurement collapses
+the branch.
+
+Two qubits that never interacted are now maximally entangled. Nothing acted on
+qubit 0 or qubit 3 at any point in the circuit; check the operation list if you
+doubt it.
+
+## The correction table
+
+Writing the outcome as $q_1 = a$ and $q_2 = b$, Alice and Bob are left holding
+$(I \otimes X^{b} Z^{a})\ket{\Phi^+}$. To standardise on $\ket{\Phi^+}$, Bob
+applies the inverse to his qubit: $X$ first if $b = 1$, then $Z$ if $a = 1$.
+
+| $a b$ | resulting state | Bob applies |
+| --- | --- | --- |
+| $00$ | $\ket{\Phi^+}$ | nothing |
+| $01$ | $\ket{\Psi^+}$ | $X$ |
+| $10$ | $\ket{\Phi^-}$ | $Z$ |
+| $11$ | $\ket{\Psi^-}$ | $X$ then $Z$ |
+
+That is the same table as teleportation, which is not a coincidence: swapping
+*is* teleportation, with the teleported state being half of an entangled pair
+rather than an independent message. The station teleports qubit 2 onto qubit 0
+using the pair it shares with Alice, and qubit 2 was already tied to Bob.
+
+<Callout tone="note" title="Why the station learns nothing">
+All four outcomes occur with probability $\tfrac14$ regardless of anything else in
+the system, so the two bits the station publishes are uniformly random. They are
+not a measurement *of* Alice's or Bob's qubit, and the station cannot use them to
+reconstruct any property of the link it just created.
+</Callout>
+
+## Why repeaters need this
+
+Photon loss in fibre is exponential in distance. Send a photon 100 km through
+good fibre and only a small fraction arrives; send it 1000 km and essentially
+none does. A classical repeater fixes this by measuring the signal and
+retransmitting, which for a quantum state is exactly the operation no-cloning
+forbids.
+
+Swapping is the way out. Divide the 1000 km into segments short enough that
+entanglement can be established across each one with a workable success
+probability. Each segment is attempted independently and repeatedly until it
+succeeds, and success is heralded, meaning the station knows when it happened.
+Then swap adjacent segments together. Two segments become one link of double the
+length, four become one of quadruple, and the number of swapping levels grows
+logarithmically in the number of segments.
+
+The catch, and it is the reason the quantum internet is hard, is that a qubit
+waiting for its neighbouring segment to succeed has to *stay* coherent. That
+turns the engineering problem into a quantum memory problem, which is why the
+hardware track spends a whole module on memories and why T1.M11 starts measuring
+coherence times four modules from now.
+
+<Check question="The station measures and gets $a b = 11$, but never tells anybody. What do Alice and Bob share?">
+Nothing usable. Conditioned on the outcome they hold $\ket{\Psi^-}$, which is
+maximally entangled, but without the two classical bits they cannot know which of
+the four Bell states they have. Averaged over the four equally likely branches
+their joint state is the maximally mixed state on two qubits, which has no
+entanglement at all. The entanglement is real only once the heralding message
+arrives, which is again why swapping never signals faster than light.
+</Check>
+
+## Where this comes from
+
+- [QuTech Academy / QuTube](https://www.qutube.nl/), whose quantum internet
+  course builds the repeater stack out of exactly this primitive, with heralding
+  and memory lifetimes treated as first-class constraints rather than footnotes.
+- [Cleve, QIC 710](https://cleve.iqc.uwaterloo.ca/qic710/), for the presentation
+  of swapping as teleportation applied to half of an entangled pair, which is the
+  derivation used above.

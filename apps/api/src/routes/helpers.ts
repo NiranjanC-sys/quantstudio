@@ -65,6 +65,28 @@ export function authed(request: FastifyRequest): AuthContext {
   return request.auth;
 }
 
+/**
+ * Requires an internal service token (§8: "short-lived EdDSA-signed JWTs minted
+ * by the gateway"). Graders and the finaliser call back in with one of these;
+ * a user session must never reach these routes.
+ */
+export function requireServiceToken(request: FastifyRequest): AuthContext {
+  const auth = request.auth;
+  if (!auth || !auth.sessionKey.startsWith('svc:')) {
+    throw new ApiError('forbidden', 'This endpoint requires an internal service token.');
+  }
+  return auth;
+}
+
+/** §9 step 6: writes fail closed with Retry-After while the primary is down. */
+export function assertWritesEnabled(disabled: boolean): void {
+  if (disabled) {
+    throw new ApiError('write-unavailable', 'Writes are paused while the primary recovers.', {
+      retryAfterSeconds: 15,
+    });
+  }
+}
+
 export const uuidSchema = z.string().uuid();
 
 export const paginationSchema = z.object({

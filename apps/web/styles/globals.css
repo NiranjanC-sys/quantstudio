@@ -761,3 +761,43 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .rq-iv-id { display: none; }
   .rq-iv-meta { margin-left: 0; }
 }
+
+/* ============================================================= contests == */
+.rq-contest-list { list-style: none; margin: var(--space-5) 0 0; padding: 0; }
+.rq-contest-list > li { padding: var(--space-4) 0; }
+.rq-contest-list > li + li { border-top: 1px solid var(--hairline); }
+.rq-contest-head {
+  display: grid; grid-template-columns: 108px minmax(0, 1fr) 72px 96px;
+  gap: var(--space-3); align-items: baseline;
+}
+.rq-contest-date { color: var(--ink-subtle); font-size: 13px; }
+.rq-contest-title { margin: 0; font-size: 17px; font-weight: 500; }
+.rq-contest-title a { color: var(--ink); text-decoration: none; }
+.rq-contest-title a:hover { color: var(--accent); text-decoration: underline; }
+.rq-contest-meta { color: var(--ink-faint); font-size: 12px; text-align: right; }
+.rq-contest-summary {
+  margin: 6px 0 0 120px; font-family: var(--font-prose); font-size: 16px;
+  line-height: 1.5; color: var(--ink-subtle); max-width: 70ch;
+}
+@media (max-width: 720px) {
+  .rq-contest-head { grid-template-columns: minmax(0, 1fr); }
+  .rq-contest-meta { display: none; }
+  .rq-contest-summary { margin-left: 0; }
+}
+.rq-problem-list { list-style: none; margin: var(--space-5) 0 0; padding: 0; }
+.rq-problem-list > li {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr) 88px 72px;
+  gap: var(--space-4); align-items: baseline; padding: var(--space-4) 0;
+}
+.rq-problem-list > li + li { border-top: 1px solid var(--hairline); }
+.rq-problem-letter { color: var(--accent); font-size: 15px; }
+.rq-problem-title { margin: 0; font-size: 17px; font-weight: 500; }
+.rq-problem-summary {
+  margin: 5px 0 0; font-family: var(--font-prose); font-size: 16px;
+  line-height: 1.5; color: var(--ink-subtle); max-width: 68ch;
+}
+.rq-problem-points { color: var(--ink-subtle); text-align: right; }
+@media (max-width: 720px) {
+  .rq-problem-list > li { grid-template-columns: 32px minmax(0, 1fr); }
+  .rq-problem-points { display: none; }
+}

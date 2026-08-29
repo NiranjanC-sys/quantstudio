@@ -1,0 +1,190 @@
+---
+id: t1.m1.l6
+title: Complex Amplitudes
+type: concept
+track: t1
+module: t1.m1
+level: L1
+minutes: 13
+objectives:
+  - Compute outcome probabilities from complex amplitudes using the squared modulus
+  - Show that the set of one-qubit states is a sphere once complex amplitudes are allowed
+  - Construct the states |+i> and |-i> and verify their normalisation
+prerequisites: [t1.m1.l5, t0.m2.l2]
+sources:
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [qubit, complex]
+---
+
+The real circle has done a lot of work: superposition, interference,
+normalisation, gates as reflections and rotations. So what is missing that
+forces the amplitudes to be complex? The short answer is that the real theory is
+not closed under the operations physics actually supplies. The longer answer
+changes the state space from a circle to a sphere, and that sphere is where the
+rest of the track lives.
+
+## The rule, extended
+
+A one-qubit state is
+
+$$
+\ket{\psi} = \alpha\ket{0} + \beta\ket{1}
+= \begin{pmatrix} \alpha \\ \beta \end{pmatrix},
+\qquad \alpha, \beta \in \C,
+\qquad |\alpha|^2 + |\beta|^2 = 1 ,
+$$
+
+and the Born rule reads $\Pr[0] = |\alpha|^2$, $\Pr[1] = |\beta|^2$. The
+modulus bars are doing real work now. For $z = x + iy$,
+
+$$
+|z|^2 = z^{*} z = x^2 + y^2 ,
+$$
+
+which is a non-negative real number even though $z^2$ generally is not. Squaring
+without the bars would be a disaster: the amplitude $i$ would contribute
+$i^2 = -1$ to a probability.
+
+<Margin label="Notation">
+$z^{*}$ is the complex conjugate, $(x + iy)^{*} = x - iy$. Writing
+$|z|^2 = z^{*}z$ rather than $z^2$ is the single most common source of sign
+errors in first calculations. When in doubt, split into real and imaginary parts
+and add their squares.
+</Margin>
+
+Work one example all the way through. Let
+
+$$
+\ket{\psi} = \begin{pmatrix} 0.5 \\ 0.433013 + 0.75 i \end{pmatrix} .
+$$
+
+Then $|\alpha|^2 = 0.25$ and
+$|\beta|^2 = 0.433013^2 + 0.75^2 = 0.1875 + 0.5625 = 0.75$, which sum to 1, so
+this is a state, and it reads out as 1 three times in four. The gate
+$U(\theta, \varphi, \lambda)$ prepares it from $\ket{0}$ with
+$\theta = 2\pi/3$ and $\varphi = \pi/3$, because
+$U(\theta,\varphi,\lambda)\ket{0} = \cos(\theta/2)\ket{0} + e^{i\varphi}\sin(\theta/2)\ket{1}$
+and $e^{i\pi/3}\sin(\pi/3) = (0.5 + 0.866025i)(0.866025) = 0.433013 + 0.75i$.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="U(2pi/3, pi/3, 0) on |0>. The amplitude on |1> is complex; its squared modulus is 0.75."
+  ir={{
+    version: 1,
+    name: "complex-amplitude",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "u1", gate: "u", targets: [0], params: [2.0943951023931953, 1.0471975511965976, 0] }
+    ]
+  }}
+/>
+
+## Why real amplitudes are not enough
+
+Three reasons, in increasing order of force.
+
+**Closure under square roots.** The gate $Z$ is real. Its square root, the gate
+$S$ with $S^2 = Z$, is not: $S = \mathrm{diag}(1, i)$. Hardware supplies
+continuous families of gates and therefore supplies square roots of things,
+and the real $2\times 2$ orthogonal group is not closed under them in a way that
+keeps the algebra one-qubit sized.
+
+**Continuous time evolution.** A physical qubit evolves as
+$\ket{\psi(t)} = e^{-iHt}\ket{\psi(0)}$ for a Hermitian $H$. The $i$ in that
+exponential is not decoration; it is what makes the evolution length preserving
+rather than exponentially growing or decaying. T1.M3.L3 derives the rotation
+gates from exactly this exponential.
+
+**Counting states.** The real circle has one parameter, so real qubits form a
+one-dimensional family. The physically distinguishable one-qubit states form a
+two-dimensional family, and experiments confirm the second parameter exists: the
+states $\ket{+i}$ and $\ket{-i}$ below are perfectly distinguishable from each
+other and from every real state, and neither is on the circle.
+
+## The sphere, by counting
+
+Two complex amplitudes are four real numbers. Two constraints remove two of
+them.
+
+$$
+\underbrace{4}_{\alpha, \beta \in \C}
+\;-\; \underbrace{1}_{|\alpha|^2 + |\beta|^2 = 1}
+\;-\; \underbrace{1}_{\text{global phase}}
+\;=\; 2 .
+$$
+
+The normalisation constraint is one real equation. The global phase is the
+observation, proved in the next lesson, that $\ket{\psi}$ and
+$e^{i\gamma}\ket{\psi}$ give identical predictions for every experiment, so a
+whole circle of vectors describes one state. What is left is a two-parameter
+family, and writing it in the standard form
+
+$$
+\ket{\psi} = \cos\frac{\theta}{2}\ket{0}
++ e^{i\varphi} \sin\frac{\theta}{2} \ket{1},
+\qquad \theta \in [0, \pi], \ \varphi \in [0, 2\pi),
+$$
+
+makes $\theta$ a polar angle and $\varphi$ an azimuth. Those are spherical
+coordinates, and the surface they sweep is the Bloch sphere of T1.M1.L8. The
+real circle is the slice at $\varphi \in \{0, \pi\}$, which is the great circle
+through $\ket{0}$, $\ket{+}$, $\ket{1}$ and $\ket{-}$.
+
+## The two new poles
+
+Setting $\theta = \pi/2$ and $\varphi = \pm\pi/2$ gives
+
+$$
+\ket{+i} = \frac{\ket{0} + i\ket{1}}{\sqrt2},
+\qquad
+\ket{-i} = \frac{\ket{0} - i\ket{1}}{\sqrt2} .
+$$
+
+Normalisation: $\left|\tfrac{1}{\sqrt2}\right|^2 + \left|\tfrac{i}{\sqrt2}\right|^2
+= \tfrac12 + \tfrac12 = 1$, using $|i| = 1$. Both read 0 and 1 with probability
+$\tfrac12$, so in the computational basis they are indistinguishable from
+$\ket{+}$, from $\ket{-}$, and from each other. They are prepared by a Hadamard
+followed by $S$ or by $S^{\dagger}$.
+
+<Simulate
+  show={['amplitudes', 'probabilities', 'bloch']}
+  caption="H then S prepares |+i>. The amplitude on |1> is purely imaginary, and the Bloch vector points along +y."
+  ir={{
+    version: 1,
+    name: "plus-i",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "s1", gate: "s", targets: [0] }
+    ]
+  }}
+/>
+
+Swap $S$ for $S^{\dagger}$ and the amplitude on $\ket{1}$ becomes
+$-0.707107 i$: that is $\ket{-i}$, pointing along $-y$. The four states
+$\ket{+}, \ket{-}, \ket{+i}, \ket{-i}$ all have the same computational-basis
+statistics and are mutually distinguishable by other measurements, which is the
+clearest sign that the state space grew.
+
+<Check question="Is $\left(\tfrac{1+i}{2},\ \tfrac{1-i}{2}\right)$ a valid state? What are its outcome probabilities?">
+Yes. $\left|\tfrac{1+i}{2}\right|^2 = \tfrac{1^2 + 1^2}{4} = \tfrac12$ and
+$\left|\tfrac{1-i}{2}\right|^2 = \tfrac12$, so the squared moduli sum to 1 and
+each outcome has probability $\tfrac12$. Note that the naive squares would give
+$\left(\tfrac{1+i}{2}\right)^2 = \tfrac{i}{2}$ and
+$\left(\tfrac{1-i}{2}\right)^2 = -\tfrac{i}{2}$, summing to 0, which is the
+error the modulus bars exist to prevent.
+</Check>
+
+## Where this comes from
+
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses),
+  Basics of quantum information, for the $\cos(\theta/2)$, $e^{i\varphi}\sin(\theta/2)$
+  parameterisation and the parameter count that turns it into a sphere.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 1.2, which introduces $\ket{+i}$ and $\ket{-i}$ as the $y$ eigenstates
+  and uses them throughout as the third measurement basis.
