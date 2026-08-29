@@ -1,0 +1,108 @@
+---
+id: week-04.b
+contest: week-04
+slot: B
+title: Three Bits Of Phase
+points: 200
+difficulty: medium
+tags: [phase-estimation, qft, eigenphase, controlled-unitary]
+---
+
+Phase estimation is the engine underneath Shor, underneath quantum chemistry,
+and underneath most of what people mean by a quantum advantage. Its textbook
+form contains one step that looks like an implementation detail and is actually
+the whole cost model: counting qubit $k$ applies $U$ raised to a power of two,
+and whether you build that as repeated queries or as a single scaled rotation
+decides whether the circuit is affordable.
+
+## Task
+
+Let $U = P(2\pi\varphi)$ be the single-qubit phase gate with
+$\varphi = 3/8$, so $U\ket{1} = e^{2\pi i \varphi}\ket{1}$ and $\ket{1}$ is the
+eigenvector.
+
+Return a four-qubit circuit, three counting qubits at indices 0, 1 and 2 and the
+eigenvector qubit at index 3, that starts from $\ket{0000}$, prepares the
+eigenvector, runs phase estimation, and ends with the counting register holding
+$\ket{011}$ with probability 1. That is the binary expansion of
+$3/8 = 0.011_2$, read most significant bit first on qubit 0.
+
+The budget is seven two-qubit gates in total.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. A controlled phase is the `cp` gate, with the
+control first in `targets` and the angle in `params`:
+
+```python
+{"id": "cu0", "gate": "cp", "targets": [0, 3], "params": [9.42477796076938]}
+```
+
+That angle is $2\pi \cdot \tfrac38 \cdot 4 = 3\pi$, the power of two belonging to
+counting qubit 0. `cp` is symmetric in its two wires, so the order only matters
+for readability.
+The inverse QFT on the counting register is part of your circuit, not something
+the judge appends.
+
+Qubit 0 is the most significant bit of the basis index and also the most
+significant bit of the counting register, so the register reads $\ket{011}$ as
+qubit 0 holding 0, qubit 1 holding 1 and qubit 2 holding 1.
+
+## Worked example
+
+The reference solution prepares $\ket{1}$ on qubit 3 with an `x`, Hadamards the
+counting register, then applies one `cp` per counting qubit with angle
+$2\pi\varphi\,2^{\,n-1-k}$, that is $2\pi \cdot \tfrac38 \cdot 4$, then
+$\cdot\, 2$, then $\cdot\, 1$, and finishes with the three-qubit inverse QFT.
+Running it gives:
+
+```text
+outcome 0111 probability 1.0
+counting register reads 011 = phi * 8
+```
+
+The full four-qubit outcome is $\ket{0111}$: counting register $011$, eigenvector
+qubit still in $\ket{1}$ where it started, as it must be, since it is an
+eigenvector and the algorithm only ever reads its phase. Because $3/8$ is exact
+in three binary digits, the probability is 1 rather than the $\ge 4/\pi^2$ the
+general bound promises. The circuit has 14 ops, depth 10 and seven two-qubit
+gates.
+
+## Constraints
+
+- `qubits` is exactly 4 and `clbits` is exactly 0.
+- At most **seven** two-qubit gates in total, counting the controlled unitaries and everything inside the inverse QFT.
+- The eigenvector qubit must come back in $\ket{1}$, unentangled from the counting register.
+- Allowed gates: `h`, `x`, `p`, `cp`, `swap`, `rz`.
+- No `measure`, no `reset`, no classical conditions.
+
+## Scoring
+
+200 points for the first accepted submission. The judge runs
+`statevector_equals` against $\ket{0111}$ with `up_to_global_phase` set to true
+and a tolerance of $10^{-9}$, then `resource_bound` with
+`max_two_qubit_gates` of 7, then `gate_set_subset` over the list above. A
+circuit that repeats the unit controlled unitary $2^{\,n-1-k}$ times is correct
+and spends eleven two-qubit gates, so it fails the resource bound rather than the
+state check. No partial credit, one penalty minute per rejected submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+@@SNIPPET:week-04-b@@
+```
+
+Output:
+
+```text
+@@OUTPUT:week-04-b@@
+```

@@ -1,0 +1,109 @@
+---
+id: week-03.b
+contest: week-03
+slot: B
+title: Bell In A Hardware Basis
+points: 200
+difficulty: medium
+tags: [transpilation, basis-gates, sx, rz, cz, bell-state]
+---
+
+Write `h` and `cx` in a notebook and something downstream rewrites them, because
+a fixed-frequency transmon does not know those words. What it knows is a virtual
+$R_z$, which costs nothing because it is a change of reference frame in the
+control electronics, a calibrated $\sqrt{X}$ pulse, and one two-qubit
+interaction. This problem asks you to do that rewrite by hand, once, on the
+smallest circuit that has anything to rewrite.
+
+## Task
+
+Return a two-qubit circuit that starts from $\ket{00}$ and produces the Bell
+state
+
+$$
+\ket{\Phi^+} = \tfrac{1}{\sqrt 2}\left(\ket{00} + \ket{11}\right)
+$$
+
+up to a global phase, using only the gates `rz`, `sx` and `cz`, with at most one
+`cz`.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. Angles go in `params` in radians:
+
+```python
+{"id": "h0a", "gate": "rz", "targets": [0], "params": [1.5707963267948966]}
+```
+
+The two identities you need are
+
+$$
+H = R_z(\pi/2)\,\sqrt{X}\,R_z(\pi/2) \quad \text{up to a global phase},
+$$
+
+reading right to left as matrices, that is $R_z$ applied first in circuit order,
+and
+
+$$
+\mathrm{CNOT}(0 \to 1) = (I \otimes H)\,\mathrm{CZ}\,(I \otimes H).
+$$
+
+Here $\sqrt{X}$ is the `sx` gate, $\tfrac12\begin{pmatrix} 1+i & 1-i \\ 1-i & 1+i \end{pmatrix}$.
+
+Qubit 0 is the most significant bit, so $\ket{00}$ and $\ket{11}$ are basis
+indices 0 and 3.
+
+## Worked example
+
+The reference solution compiles three Hadamards, one on qubit 0 to make the
+superposition and two around the `cz` to turn it into a CNOT, and leaves the `cz`
+alone. That is nine single-qubit gates, one two-qubit gate, 10 ops and depth 7.
+Running it gives:
+
+```text
+|00> (-0.5-0.5j)
+|11> (-0.5-0.5j)
+|<Bell|psi>| = 1.0
+```
+
+Both amplitudes are $\tfrac{1}{\sqrt2}e^{-3i\pi/4}$, so the overlap with the
+ideal Bell state has modulus exactly 1 and the state is correct. The phase is the
+price of the $H$ identity holding only up to a factor of $e^{-i\pi/4}$, paid
+three times over, and it is unobservable.
+
+## Constraints
+
+- `qubits` is exactly 2 and `clbits` is exactly 0.
+- Allowed gates: `rz`, `sx`, `cz`. Nothing else. `h`, `x` and `cx` are all rejected.
+- At most one `cz`.
+- At most twelve single-qubit gates, so a per-gate rewrite that never simplifies still fits, but a brute-force search that emits dozens does not.
+
+## Scoring
+
+200 points for the first accepted submission. The judge runs
+`statevector_equals` against $\ket{\Phi^+}$ with `up_to_global_phase` set to
+true, because the compiled circuit cannot avoid picking up a phase, then
+`resource_bound` with `max_two_qubit_gates` of 1 and `max_size` of 13, then
+`gate_set_subset` with `allowed` set to `["rz", "sx", "cz"]`. No partial credit,
+one penalty minute per rejected submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+@@SNIPPET:week-03-b@@
+```
+
+Output:
+
+```text
+@@OUTPUT:week-03-b@@
+```

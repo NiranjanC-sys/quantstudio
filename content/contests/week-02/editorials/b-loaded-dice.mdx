@@ -1,0 +1,70 @@
+---
+id: week-02.b.editorial
+contest: week-02
+slot: B
+kind: editorial
+title: "Editorial: Loaded Dice"
+points: 200
+difficulty: medium
+---
+
+## The intended solution
+
+Build the amplitude tree, then compile the second level into two CNOTs instead
+of four.
+
+Level one is the marginal of qubit 0. The two states with qubit 0 reading 0
+carry $0.1 + 0.2 = 0.3$, so an uncontrolled $R_y(\theta_0)$ with
+$\theta_0 = 2\arccos\sqrt{0.3} = 1.9823131728623848$ does it.
+
+Level two needs two different rotations on qubit 1, one for each value of qubit
+0: $\theta_A = 2\arccos\sqrt{0.2/0.3}$ in the zero branch and
+$\theta_B = 2\arccos\sqrt{0.4/0.7}$ in the one branch. That object is a uniformly
+controlled rotation, and the standard identity for it is
+
+$$
+R_y(\alpha)\,\mathrm{CNOT}\,R_y(\beta)\,\mathrm{CNOT}
+$$
+
+with $\alpha = (\theta_A + \theta_B)/2$ and $\beta = (\theta_A - \theta_B)/2$.
+Trace it through: when qubit 0 is 0, neither CNOT fires and the two rotations
+compose into $R_y(\alpha + \beta) = R_y(\theta_A)$. When qubit 0 is 1, the first
+CNOT flips qubit 1, and because $X R_y(\beta) X = R_y(-\beta)$, the composition
+is $R_y(\alpha - \beta) = R_y(\theta_B)$, with the second CNOT returning the
+wire. Two CNOTs, two branches, both correct.
+
+The reference solution's angles are $\alpha = 1.8123885659746404$ and
+$\beta = 0.09824467027437822$, and the resulting probabilities print as exactly
+$0.1$, $0.2$, $0.3$ and $0.4$ at six decimal places.
+
+## Why the naive answer is too expensive
+
+The literal reading of the amplitude tree gives each leaf its own controlled
+rotation: an $R_y$ on qubit 1 controlled on qubit 0 being 1, and a second one
+controlled on qubit 0 being 0, the latter written by conjugating the control with
+two $X$ gates. Each controlled $R_y$ costs two CNOTs once decomposed, so the
+naive second level costs four CNOTs, double the budget. The saving is not a
+trick specific to two qubits: a uniformly controlled rotation over $k$ controls
+costs $2^k$ CNOTs by this construction and $2^k$ is already optimal, but the
+naive per-branch version costs $2 \cdot 2^k$.
+
+The other expensive route is a black-box state preparation call. Generic
+routines emit a Schmidt or Householder decomposition with a fixed CNOT count
+that ignores how simple this particular distribution is, and they routinely emit
+`rz` and `p` gates that leave complex amplitudes. This problem checks amplitudes
+without allowing a global phase, so a state that is right up to per-branch phases
+fails.
+
+## Common wrong answers
+
+Using $\theta = 2\arcsin\sqrt p$ instead of $2\arccos\sqrt p$ puts $1 - p$ where
+$p$ belongs at every node of the tree. It is not a reversal of the target and it
+is not close to it: the circuit returns
+$(0.466667, 0.233333, 0.171429, 0.128571)$.
+
+Forgetting the halving, that is passing $\theta_A$ and $\theta_B$ straight in as
+$\alpha$ and $\beta$, is worse and harder to spot from the circuit diagram, since
+every gate is in the right place. It returns
+$(0.017172, 0.282828, 0.693265, 0.006735)$. Both failures are why the checked
+quantity is the amplitude vector at a tolerance of $10^{-6}$ rather than a
+sampled histogram.

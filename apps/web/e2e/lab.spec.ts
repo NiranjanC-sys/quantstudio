@@ -84,6 +84,26 @@ test.describe('circuit lab', () => {
     await expect(page.locator('.rq-amp-table tbody tr')).toHaveCount(1);
   });
 
+  test('the lab renders in the dark Instrument register regardless of theme', async ({ page }) => {
+    // The register is defined by the surface, not by the reader's preference,
+    // and the token aliases must re-resolve inside the subtree for that to hold.
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto('/lab');
+    const bg = await page.locator('[data-register="instrument"]').evaluate(
+      (el) => getComputedStyle(el).backgroundColor,
+    );
+    expect(bg).toBe('rgb(8, 9, 11)');
+  });
+
+  test('server backends are offered, and require a session', async ({ page }) => {
+    const panel = page.locator('.rq-server');
+    await expect(panel.getByLabel('Simulation backend')).toBeVisible();
+    await panel.getByRole('button', { name: 'Run' }).click();
+    // Credits are debited server side, so an anonymous run must be refused
+    // rather than silently succeeding.
+    await expect(panel).toContainText(/sign in/i, { timeout: 10_000 });
+  });
+
   test('the qubit count caps at the browser engine limit', async ({ page }) => {
     await page.locator('#tb-qubits').fill('14');
     await expect(page.locator('.rq-results-foot')).toContainText('14');

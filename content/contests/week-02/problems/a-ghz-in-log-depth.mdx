@@ -1,0 +1,99 @@
+---
+id: week-02.a
+contest: week-02
+slot: A
+title: GHZ In Log Depth
+points: 100
+difficulty: easy
+tags: [ghz, entanglement, depth, parallelism]
+---
+
+Depth is the clock. Two gates that touch disjoint wires run in the same layer,
+two gates that share a wire do not, and on hardware where every qubit is decaying
+the number of layers is what decides whether your state survives. The GHZ state
+is the smallest place where the obvious circuit and the good circuit have
+different depths.
+
+## Task
+
+Return a four-qubit circuit that starts from $\ket{0000}$ and produces
+
+$$
+\ket{\mathrm{GHZ}_4} = \tfrac{1}{\sqrt 2}\left(\ket{0000} + \ket{1111}\right),
+$$
+
+in circuit depth at most 3.
+
+The obvious circuit, a Hadamard followed by a chain of three CNOTs, has depth 4.
+Beating it by one layer is the entire problem, and the technique scales: the
+same idea gives depth $1 + \lceil \log_2 n \rceil$ for $n$ qubits where the chain
+gives $n$.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order, and a CNOT is written as an `x` gate carrying one
+control:
+
+```python
+{"id": "fan1", "gate": "x", "targets": [1], "controls": [0]}
+```
+
+Depth is not something you write down. The judge derives it by as-soon-as-possible
+scheduling: each op is placed in the earliest layer in which none of the qubits
+it touches, controls included, is already busy. Two CNOTs that share even one
+wire land in different layers.
+
+Qubit 0 is the most significant bit, so $\ket{1111}$ has every wire excited and
+the leftmost character is qubit 0.
+
+## Worked example
+
+The reference solution is `h` on qubit 0, then CNOT from 0 to 1, then CNOT from
+0 to 2 and CNOT from 1 to 3. The last two share no wire, so they schedule into
+the same layer: layer 0 holds the Hadamard, layer 1 holds one CNOT, layer 2
+holds two. Running it gives:
+
+| basis state | amplitude |
+| --- | --- |
+| $\ket{0000}$ | $0.707107$ |
+| $\ket{1111}$ | $0.707107$ |
+
+All fourteen other amplitudes are zero. The measured metrics are 4 ops, depth 3,
+three two-qubit gates.
+
+## Constraints
+
+- `qubits` is exactly 4 and `clbits` is exactly 0.
+- Circuit depth at most 3, computed by the ASAP rule above.
+- At most three two-qubit gates, which is the information-theoretic minimum: three CNOTs are needed to correlate four wires.
+- Allowed gates: `h`, `x`, `z`, `s`, `sdg`, `cz`, and `x` carrying a single control.
+- No `measure`, no `reset`, no classical conditions.
+
+## Scoring
+
+100 points for the first accepted submission. The judge runs
+`statevector_equals` against the GHZ state with `up_to_global_phase` set to true,
+`resource_bound` with `max_depth` of 3 and `max_two_qubit_gates` of 3, and
+`gate_set_subset` over the list above. No partial credit, one penalty minute per
+rejected submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+@@SNIPPET:week-02-a@@
+```
+
+Output:
+
+```text
+@@OUTPUT:week-02-a@@
+```

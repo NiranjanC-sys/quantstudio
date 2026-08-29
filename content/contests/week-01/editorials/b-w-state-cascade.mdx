@@ -1,0 +1,58 @@
+---
+id: week-01.b.editorial
+contest: week-01
+slot: B
+kind: editorial
+title: "Editorial: Three-Qubit W State"
+points: 200
+difficulty: medium
+---
+
+## The intended solution
+
+Think of the single excitation as a unit of water poured onto qubit 0 and then
+split down a chain.
+
+1. `x` on qubit 0. The state is $\ket{100}$, all the excitation on the first wire.
+2. Controlled $R_y(\theta_1)$ on qubit 1, controlled by qubit 0, with
+   $\theta_1 = 2\arccos(1/\sqrt3) = 1.9106332362490184$. This writes
+   $\cos(\theta_1/2)\ket{10} + \sin(\theta_1/2)\ket{11}$ on the first two wires,
+   and $\cos(\theta_1/2) = 1/\sqrt3$ exactly.
+3. CNOT from qubit 1 onto qubit 0. Wherever qubit 1 took the excitation, qubit 0
+   gives its own up, turning $\ket{11}$ into $\ket{01}$. The state is now
+   $\tfrac{1}{\sqrt3}\ket{100} + \sqrt{\tfrac23}\ket{010}$.
+4. Controlled $R_y(\pi/2)$ on qubit 2, controlled by qubit 1, splitting the
+   remaining $\sqrt{2/3}$ into two equal halves of $1/\sqrt3$.
+5. CNOT from qubit 2 onto qubit 1, moving the second half down to
+   $\ket{001}$.
+
+Four two-qubit gates, no ancilla, no three-wire gate, and every amplitude comes
+out at $0.57735$.
+
+The angle rule generalises: to leave a fraction $p$ of the probability behind,
+use $\theta = 2\arccos\sqrt p$. Here the first split leaves $1/3$ and the second
+leaves $1/2$ of what remains.
+
+## Why the naive answer is too deep
+
+The textbook route to an arbitrary three-qubit state is a full state-preparation
+tree: a uniformly controlled rotation on each level, which for three qubits means
+one $R_y$, two singly controlled $R_y$s and four doubly controlled $R_y$s. Each
+doubly controlled rotation decomposes into two CNOTs and two singly controlled
+rotations, so the total lands near a dozen two-qubit gates and depth in the
+teens. It produces the right state and blows the budget of four.
+
+The other tempting shortcut is to prepare $\ket{+++}$ and try to project onto the
+weight-one subspace. There is no unitary that does this. Post-selection would
+work and is not available: the judge simulates a closed circuit with no
+measurement.
+
+## Common wrong answers
+
+The single most common failure is $\theta_1 = 2\arcsin(1/\sqrt3) = 1.2309594$,
+which leaves $2/3$ on qubit 0 instead of $1/3$ and produces amplitudes
+$0.8165, 0.4082, 0.4082$. It is still a legal state, it is still supported on
+weight-one strings, and it is not the W state. Using $\pi/3$ for either angle
+fails the same way. Because all three target amplitudes are equal, a plot of the
+probabilities is the fastest possible check: if the three bars are not level,
+the arccosine is wrong.

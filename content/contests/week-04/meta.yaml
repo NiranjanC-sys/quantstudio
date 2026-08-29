@@ -1,0 +1,43 @@
+# Weekly contest 4.
+#
+# Every amplitude, probability and gate count quoted in problems/ and
+# editorials/ was produced by running the reference circuits in solutions/
+# through the kernel and through Qiskit. Nothing here is from memory.
+id: week-04
+title: "Weekly Contest 4: The Algorithm Kernels"
+date: "2026-09-26"
+durationMinutes: 90
+ratingRange: "1400-2000"
+summary: >-
+  The four subroutines every quantum algorithm is assembled from: Simon's
+  sampler, exact phase estimation on a budget, the Fourier transform with its
+  final swap, and the hidden shift that needs a bent function to work at all.
+problems:
+  - id: a-simon-period
+    title: Simon's Period
+    points: 100
+    difficulty: easy
+    summary: >-
+      Build one Simon run whose query register samples uniformly from the four
+      strings orthogonal to the period.
+  - id: b-phase-estimation-three-bits
+    title: Three Bits Of Phase
+    points: 200
+    difficulty: medium
+    summary: >-
+      Read an eigenphase of 3/8 exactly, inside a budget of seven two-qubit
+      gates.
+  - id: c-fourier-transform-exact
+    title: The Exact Fourier Transform
+    points: 300
+    difficulty: medium-hard
+    summary: >-
+      Implement the three-qubit QFT as the exact discrete Fourier matrix, final
+      swap included.
+  - id: d-hidden-shift
+    title: Hidden Shift
+    points: 400
+    difficulty: hard
+    summary: >-
+      Recover a four-bit shift of the bent function x0 x1 XOR x2 x3 with
+      probability 1 from two oracle calls.

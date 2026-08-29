@@ -1,0 +1,70 @@
+---
+id: week-02.c.editorial
+contest: week-02
+slot: C
+kind: editorial
+title: "Editorial: Read The Mask"
+points: 300
+difficulty: medium-hard
+---
+
+## The intended solution
+
+Bernstein-Vazirani, in four steps and ten ops.
+
+1. Prepare the answer wire in $\ket{-}$: `x` then `h` on qubit 3.
+2. Hadamard the three query qubits, producing
+   $\tfrac{1}{\sqrt 8}\sum_x \ket{x}$.
+3. Call the oracle once. For $f(x) = s \cdot x \bmod 2$ that is one CNOT from
+   query qubit $i$ into the answer wire for each $i$ with $s_i = 1$. With
+   $s = 101$ that is two CNOTs, from qubit 0 and from qubit 2.
+4. Hadamard the query register again.
+
+Step 1 is what makes step 3 write into the phase. With the answer wire in
+$\ket{-}$,
+
+$$
+U_f \ket{x}\ket{-} = (-1)^{f(x)}\ket{x}\ket{-},
+$$
+
+so after step 3 the query register holds
+$\tfrac{1}{\sqrt 8}\sum_x (-1)^{s \cdot x}\ket{x}$, which is exactly
+$H^{\otimes 3}\ket{s}$. Step 4 applies $H^{\otimes 3}$ again, and $H^2 = I$, so
+the register lands on $\ket{s}$ with amplitude 1. The final state is
+$\ket{101}\otimes\ket{-}$, and the printed query marginal is
+`query register 101 probability 1.0`.
+
+The answer wire is the tell. It goes in as $\ket{-}$ and comes out as $\ket{-}$,
+unentangled, having contributed a sign and nothing else. If your answer wire
+comes out entangled with the query register you have built a different oracle,
+and the amplitude check will say so even when the marginal looks right.
+
+## Why the naive answer is too slow
+
+Classically you need three queries, one per bit, and that is a proven lower
+bound: each query returns a single bit, and $s$ carries three. The quantum
+circuit uses one, and the count does not grow with $n$. That is the whole point,
+and it is why the resource bound caps two-qubit gates at two rather than at
+something comfortable. Two CNOTs is one oracle call for this particular mask, so
+the ceiling makes a second call impossible to hide.
+
+The other route people try under time pressure is to run Deutsch-Jozsa style
+reasoning three times, once per bit, with three separate oracle blocks and three
+ancillas. It works, it costs six CNOTs and five wires, and it fails both the
+qubit count and the gate count.
+
+## Common wrong answers
+
+Skipping the `x` before the `h` on the answer wire leaves it in $\ket{+}$ instead
+of $\ket{-}$. Then $U_f\ket{x}\ket{+} = \ket{x}\ket{+}$ with no sign at all, the
+oracle becomes invisible, and the query register returns to $\ket{000}$. This is
+the single most common failure and it produces a confident, deterministic, wrong
+answer.
+
+Hadamarding the answer wire again at the end is harmless to the query marginal
+but changes the four-qubit state to $\ket{101}\otimes\ket{1}$, which the
+`statevector_equals` check rejects. Reading the mask off in the wrong order is
+the other classic: $s_0$ belongs to qubit 0, which is the leftmost character of
+the basis label here and the *last* Qiskit wire. On a palindromic mask like
+$101$ that mistake is invisible, which is why the hidden tests use a
+non-palindromic one.

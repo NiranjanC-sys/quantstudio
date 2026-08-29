@@ -1,0 +1,106 @@
+---
+id: week-04.a
+contest: week-04
+slot: A
+title: Simon's Period
+points: 100
+difficulty: easy
+tags: [simon, hidden-subgroup, oracle, sampling]
+---
+
+Simon's algorithm was the first problem with a proven exponential separation
+between quantum and classical query complexity, and it is the direct ancestor of
+Shor's. It also has an unusual shape for a quantum algorithm: the circuit does
+not produce the answer. It produces one random linear constraint on the answer,
+and you run it a handful of times and solve a linear system classically. This
+problem is one run of that circuit.
+
+## Task
+
+The oracle computes
+
+$$
+f(x_0 x_1 x_2) = (x_0 \oplus x_1,\; x_2),
+$$
+
+a two-to-one function whose period is $s = 110$, meaning $f(x) = f(x \oplus s)$
+for every $x$ and $s$ is the only nonzero string with that property.
+
+Return a five-qubit circuit, three query qubits at indices 0, 1 and 2 and two
+output qubits at indices 3 and 4, that starts from $\ket{00000}$ and ends with
+the query register distributed uniformly over the four strings $z$ satisfying
+$z \cdot s = 0 \bmod 2$.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. The oracle is yours to build, and for this $f$ it
+is three CNOTs: from qubit 0 into qubit 3, from qubit 1 into qubit 3, and from
+qubit 2 into qubit 4.
+
+```python
+{"id": "o0", "gate": "x", "targets": [3], "controls": [0]}
+```
+
+The judge simulates from $\ket{00000}$ with no measurement, then sums the
+probability of each three-bit query string over the four output states.
+
+Qubit 0 is the most significant bit, so the query register occupies the top
+three bits of the basis index and the output register the bottom two.
+
+## Worked example
+
+The strings orthogonal to $s = 110$ are those with $z_0 \oplus z_1 = 0$, namely
+$000$, $001$, $110$ and $111$. Running the reference solution and summing the
+query marginal gives:
+
+```text
+z = 000 probability 0.25
+z = 001 probability 0.25
+z = 110 probability 0.25
+z = 111 probability 0.25
+```
+
+The four strings $z$ with $z \cdot s = 1$, that is $010$, $011$, $100$ and $101$,
+have probability zero and are never sampled. Two independent runs give two
+constraints; with $000$ carrying no information, three or four runs is what it
+usually takes to pin $s$ down to a single nonzero solution. The circuit has 9
+ops, depth 4 and three two-qubit gates.
+
+## Constraints
+
+- `qubits` is exactly 5 and `clbits` is exactly 0.
+- At most three two-qubit gates, which is one oracle call and no room for a second.
+- Allowed gates: `h`, `x`, `z`, and `x` carrying a single control.
+- No `measure`, no `reset`, no classical conditions.
+
+## Scoring
+
+100 points for the first accepted submission. The judge runs a `custom_python`
+check that marginalises `PROBABILITIES` over the output register and asserts
+that each of $000$, $001$, $110$ and $111$ carries $0.25$ to within $10^{-9}$
+and that the other four strings carry zero, then `resource_bound` with
+`max_two_qubit_gates` of 3, then `gate_set_subset`. The marginal is checked
+exactly rather than sampled, so a circuit that leaks a little weight onto a
+string with $z \cdot s = 1$ is rejected even when a histogram would not notice.
+No partial credit, one penalty minute per rejected submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+@@SNIPPET:week-04-a@@
+```
+
+Output:
+
+```text
+@@OUTPUT:week-04-a@@
+```

@@ -1,0 +1,44 @@
+# Weekly contest 6.
+#
+# Every amplitude, probability and gate count quoted in problems/ and
+# editorials/ was produced by running the reference circuits in solutions/
+# through the kernel and through Qiskit. Nothing here is from memory.
+id: week-06
+title: "Weekly Contest 6: Gate Budgets At The Limit"
+date: "2026-10-10"
+durationMinutes: 90
+ratingRange: "1800-2400"
+summary: >-
+  Four problems where the budget is the problem. A Toffoli in three CNOTs if you
+  will accept one wrong sign, a Fredkin in eight two-qubit gates, a Heisenberg
+  bond as a root of SWAP, and a Grover run that finishes at probability 1
+  instead of 0.945.
+problems:
+  - id: a-margolus-in-three
+    title: Margolus In Three
+    points: 100
+    difficulty: easy
+    summary: >-
+      Build the relative-phase Toffoli in three CNOTs and name the single matrix
+      entry that differs from the real one.
+  - id: b-fredkin-budget
+    title: The Fredkin Budget
+    points: 200
+    difficulty: medium
+    summary: >-
+      Implement an exact controlled SWAP in at most eight two-qubit gates and a
+      T-count of seven.
+  - id: c-heisenberg-trotter-step
+    title: One Trotter Step
+    points: 300
+    difficulty: medium-hard
+    summary: >-
+      Apply one first-order Trotter step of the three-site Heisenberg chain in
+      six two-qubit gates rather than twelve.
+  - id: d-exact-grover
+    title: Exact Grover
+    points: 400
+    difficulty: hard
+    summary: >-
+      Find the single marked item among eight with probability 1, where ordinary
+      Grover stalls at 0.945.

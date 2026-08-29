@@ -1,0 +1,98 @@
+---
+id: week-01.b
+contest: week-01
+slot: B
+title: Three-Qubit W State
+points: 200
+difficulty: medium
+tags: [state-preparation, entanglement, w-state, controlled-rotation]
+---
+
+The GHZ state is two gates of work. The W state, its stubborn cousin, is not,
+because you cannot reach it by flipping a coin once and copying the answer. Its
+three terms have to be carved out of a single excitation and handed along a
+chain, and getting the angles right is the whole exercise.
+
+## Task
+
+Return a three-qubit circuit that starts from $\ket{000}$ and produces
+
+$$
+\ket{W} = \tfrac{1}{\sqrt 3}\left(\ket{001} + \ket{010} + \ket{100}\right).
+$$
+
+Exactly one qubit is excited in every term, and the three terms carry equal,
+real, positive amplitude.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. Each op carries a unique `id`, a `gate` key, a
+list of `targets`, an optional list of `controls` holding positive controls, and
+an optional list of `params` holding angles in radians. A controlled rotation is
+written as the base gate with a control attached, for example
+
+```python
+{"id": "split1", "gate": "ry", "targets": [1], "controls": [0], "params": [1.9106332362490184]}
+```
+
+which applies $R_y(\theta)$ to qubit 1 when qubit 0 is $\ket{1}$. The judge
+simulates from $\ket{000}$ with no measurement.
+
+Qubit 0 is the most significant bit. Basis index $i$ gives qubit $q$ the value
+`(i >> (n - 1 - q)) & 1`, so $\ket{100}$ means qubit 0 excited and the other two
+in the ground state.
+
+## Worked example
+
+The reference solution seeds the excitation on qubit 0 with an $X$, splits off a
+$1/\sqrt3$ share with a controlled $R_y(2\arccos(1/\sqrt3))$, hands the rest
+down with a CNOT, splits the remainder in half with a controlled $R_y(\pi/2)$
+and hands that down too. Running it gives:
+
+| basis state | amplitude | probability |
+| --- | --- | --- |
+| $\ket{001}$ | $0.57735$ | $0.333333$ |
+| $\ket{010}$ | $0.57735$ | $0.333333$ |
+| $\ket{100}$ | $0.57735$ | $0.333333$ |
+
+Every other amplitude is zero to machine precision. Note the first angle:
+$2\arccos(1/\sqrt3) = 1.9106332362490184$ radians, not $\pi/3$ and not
+$2\arcsin(1/\sqrt3)$. Both of those near misses leave a state that still looks
+like a W state on a bar chart and fails the amplitude check.
+
+## Constraints
+
+- `qubits` is exactly 3 and `clbits` is exactly 0.
+- At most **four** two-qubit gates. A controlled rotation counts as one.
+- No gate may touch three wires at once, so no `ccx`, `ccz` or `cswap`, and no ancilla qubit.
+- Allowed gates: `x`, `h`, `ry`, `rz`, `p`, `s`, `sdg`, plus any of those carrying a single control.
+- No `measure`, no `reset`, no classical conditions.
+
+## Scoring
+
+200 points for the first accepted submission. The judge runs
+`statevector_equals` against $\ket{W}$ with `up_to_global_phase` set to true and
+a tolerance of $10^{-6}$, `resource_bound` with `max_two_qubit_gates` of 4 and
+`max_qubits` of 3, and `gate_set_subset` over the list above. No partial credit,
+one penalty minute per rejected submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+@@SNIPPET:week-01-b@@
+```
+
+Output:
+
+```text
+@@OUTPUT:week-01-b@@
+```

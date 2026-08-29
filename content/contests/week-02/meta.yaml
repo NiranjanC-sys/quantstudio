@@ -1,0 +1,43 @@
+# Weekly contest 2.
+#
+# Every amplitude, probability and gate count quoted in problems/ and
+# editorials/ was produced by running the reference circuits in solutions/
+# through the kernel and through Qiskit. Nothing here is from memory.
+id: week-02
+title: "Weekly Contest 2: Depth, Distributions and Oracles"
+date: "2026-09-12"
+durationMinutes: 90
+ratingRange: "1000-1600"
+summary: >-
+  Entangle four qubits in logarithmic depth, load an arbitrary distribution into
+  amplitudes on a two-CNOT budget, read a hidden mask in one query, and find two
+  marked items with a single Grover iteration that lands exactly.
+problems:
+  - id: a-ghz-in-log-depth
+    title: GHZ In Log Depth
+    points: 100
+    difficulty: easy
+    summary: >-
+      Prepare the four-qubit GHZ state in depth 3 rather than the depth 4 a
+      CNOT chain costs.
+  - id: b-loaded-dice
+    title: Loaded Dice
+    points: 200
+    difficulty: medium
+    summary: >-
+      Load the distribution (0.1, 0.2, 0.3, 0.4) into the squared amplitudes of
+      two qubits using at most two CNOTs.
+  - id: c-read-the-mask
+    title: Read The Mask
+    points: 300
+    difficulty: medium-hard
+    summary: >-
+      Recover a three-bit hidden mask from a single oracle query, with the query
+      register ending on the answer with probability 1.
+  - id: d-two-marked-grover
+    title: Two Marked Items
+    points: 400
+    difficulty: hard
+    summary: >-
+      Search eight items with two marked, and land on the marked subspace with
+      probability exactly 1 after one iteration.

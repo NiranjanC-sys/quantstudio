@@ -1,0 +1,76 @@
+---
+id: week-03.c.editorial
+contest: week-03
+slot: C
+kind: editorial
+title: "Editorial: CNOT From iSWAP"
+points: 300
+difficulty: medium-hard
+---
+
+## The intended solution
+
+Five ops:
+
+```text
+iswap 0, 1
+h     0
+iswap 0, 1
+sdg   0
+sx    1
+```
+
+Materialised and divided by $e^{i\pi/4}$, that is CNOT exactly. Two entangling
+gates, three single-qubit gates, depth 4.
+
+The shape is forced and the details are not. Any two-iSWAP solution has to be
+iSWAP, some single-qubit layer, iSWAP, some single-qubit layer, with an optional
+layer at the front. What varies between solutions is which single-qubit gates go
+in those layers, and the reference circuit's particular choice, an `h` in the
+middle and `sdg` with `sx` at the end, came out of an exhaustive search over
+Clifford-plus-$\sqrt X$ layers. A hand-derived answer using $R_z$ and $R_x$
+rotations with the same iSWAP placement is equally acceptable and will score the
+same.
+
+## Why one iSWAP is impossible
+
+This is the part worth understanding, because it explains why the exercise is
+not "find the right single-qubit gates and you can do it in one".
+
+Strip the local gates from any two-qubit unitary and what is left is a point
+$(c_1, c_2, c_3)$ in the Weyl chamber, the canonical coordinates of
+$\exp(-i(c_1 XX + c_2 YY + c_3 ZZ))$. Local gates before and after cannot move
+that point. CNOT sits at $(\pi/4, 0, 0)$. iSWAP sits at $(\pi/4, \pi/4, 0)$.
+They are different points, so no amount of single-qubit dressing turns one
+application of iSWAP into a CNOT. Two applications give you access to a whole
+region of the chamber, CNOT included, and that is why the answer is exactly two.
+
+The same argument run the other way says a CZ costs two iSWAPs as well, and that
+a SWAP, sitting at $(\pi/4, \pi/4, \pi/4)$, costs three.
+
+## Why the naive answer is too expensive
+
+The reflex is to reach for the identity $\mathrm{iSWAP} = \mathrm{SWAP}$ times a
+phase on the exchanged subspace, then to write SWAP as three CNOTs and invert.
+That gives a CNOT built from three iSWAPs plus a pile of single-qubit corrections,
+and it fails `max_two_qubit_gates` of 2. It is the right instinct applied one
+level too coarsely: the exchange that iSWAP performs is not something you have to
+undo with a third entangler, because the second iSWAP already undoes it.
+
+The other expensive route is to call a generic KAK routine and let it emit
+whatever entangler count it likes. Generic routines target CNOT or CZ as their
+basis gate; asking one for an iSWAP-based circuit without telling it the basis
+usually produces a CNOT circuit with each CNOT then expanded into two iSWAPs, for
+a total of four.
+
+## Common wrong answers
+
+Omitting the middle single-qubit gate gives $\mathrm{iSWAP}^2$, which is
+$\mathrm{diag}(1, -1, -1, 1)$ on the exchanged subspace, a diagonal Clifford, not
+a CNOT. It is a common near miss because the circuit looks symmetric and
+plausible.
+
+Getting the final layer wrong shows up as a matrix that is CNOT with two entries
+carrying a factor of $\pm i$. Since `up_to_global_phase` divides out a single
+common phase, entries that disagree with each other by a phase are still a
+failure, and the message names the first mismatching entry.

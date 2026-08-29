@@ -16,6 +16,7 @@ import { contestRoutes } from './contests.js';
 import { healthRoutes } from './health.js';
 import { instructorRoutes } from './instructor.js';
 import { labRoutes } from './labs.js';
+import { simulateRoutes } from './simulate.js';
 import { leaderboardRoutes } from './leaderboard.js';
 import { progressRoutes } from './progress.js';
 import { tutorRoutes } from './tutor.js';
@@ -33,6 +34,7 @@ export const ROUTE_MOUNTS: readonly RouteMount[] = [
   { prefix: '/catalog', plugin: catalogRoutes },
   { prefix: '/progress', plugin: progressRoutes },
   { prefix: '/labs', plugin: labRoutes },
+  { prefix: '/simulate', plugin: simulateRoutes },
   { prefix: '/contests', plugin: contestRoutes },
   { prefix: '/leaderboard', plugin: leaderboardRoutes },
   { prefix: '/billing', plugin: billingRoutes },

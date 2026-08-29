@@ -231,9 +231,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .rq-lab-inspector { border-left: 1px solid var(--hairline); min-height: 0; overflow: hidden; }
 .rq-lab-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .rq-lab-lower {
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 360px);
   border-top: 1px solid var(--hairline); min-height: 0; height: 46%;
 }
+.rq-lab-server { border-left: 1px solid var(--hairline); min-width: 0; min-height: 0; }
 .rq-lab-code { border-right: 1px solid var(--hairline); min-width: 0; min-height: 0; }
 .rq-lab-results { min-width: 0; min-height: 0; }
 
@@ -861,4 +862,36 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .rq-next-list li { grid-template-columns: minmax(0, 1fr) 64px; }
   .rq-next-id { display: none; }
   .rq-lesson-type { display: none; }
+}
+
+/* ====================================================== server backends == */
+.rq-server { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.rq-server-body { flex: 1; overflow: auto; padding: var(--space-3) var(--space-4); }
+.rq-server-stats { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: grid; gap: 3px; }
+.rq-server-stats li { display: flex; justify-content: space-between; gap: var(--space-3); font-size: 12px; }
+.rq-server-stats li span:first-child {
+  color: var(--ink-subtle); text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px;
+}
+.rq-server-warnings {
+  list-style: none; margin: var(--space-3) 0 0; padding: 0;
+  font-size: 12px; color: var(--warning);
+}
+.rq-verdict-warn { border-left: 3px solid var(--warning); color: var(--ink-muted); background: var(--surface-1); }
+
+@media (max-width: 1400px) {
+  .rq-lab-lower { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .rq-lab-server { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--hairline); min-height: 240px; }
+}
+@media (max-width: 860px) {
+  .rq-lab-server { grid-column: auto; }
+}
+
+/* A focusable scroll region needs a visible focus ring, but should not show
+   one when it is merely clicked. :focus-visible gives keyboard users the ring
+   and leaves pointer users alone. */
+.rq-results-body:focus-visible,
+.rq-server-body:focus-visible,
+.rq-canvas-scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }

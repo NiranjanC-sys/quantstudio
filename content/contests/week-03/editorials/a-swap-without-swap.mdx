@@ -1,0 +1,69 @@
+---
+id: week-03.a.editorial
+contest: week-03
+slot: A
+kind: editorial
+title: "Editorial: SWAP Without SWAP"
+points: 100
+difficulty: easy
+---
+
+## The intended solution
+
+Three CNOTs, alternating direction:
+
+```text
+CNOT 0 -> 1
+CNOT 1 -> 0
+CNOT 0 -> 1
+```
+
+On basis states, write the register as an ordered pair $(a, b)$. A CNOT adds its
+control into its target modulo 2, so the three steps give
+
+$$
+(a, b) \;\to\; (a, a \oplus b) \;\to\; (b, a \oplus b) \;\to\; (b, a),
+$$
+
+because $a \oplus (a \oplus b) = b$ and then $(a \oplus b) \oplus b = a$. The
+contents have changed places using no scratch space, which is the classical XOR
+swap trick verbatim. Since the map is correct on all four basis states and CNOT
+is linear, it is correct on every superposition, and the resulting operator is
+the SWAP matrix exactly, not up to a phase.
+
+The reverse order, 1 to 0 then 0 to 1 then 1 to 0, works equally well. Both are
+depth 3.
+
+## Why three, and why not two
+
+Three is not merely what this construction costs, it is the minimum. In the
+canonical picture, every two-qubit gate reduces to a point
+$\exp(-i(a\,XX + b\,YY + c\,ZZ)/2)$ in the Weyl chamber, and the CNOT count is a
+function of that point: one CNOT reaches the points with two coordinates zero,
+two CNOTs reach the points with one coordinate zero, and three are needed for
+everything else. SWAP sits at $a = b = c = \pi/2$, the far corner, with all three
+coordinates maximal. It is as non-local as a two-qubit gate can be, so it costs
+the maximum.
+
+That is also the reason routing dominates compiled circuit sizes. A single
+logical two-qubit gate between distant wires costs one CNOT for the gate plus six
+for the SWAP there and back, and the SWAP count grows with the distance across
+the coupling map.
+
+## Why the naive answer is rejected
+
+Writing `{"gate": "swap", "targets": [0, 1]}` produces exactly the right matrix
+and fails `gate_set_subset`, whose `allowed` list is `["x"]`. That is not
+pedantry: the problem exists because hardware has no SWAP, so a solution that
+assumes one has answered a different question.
+
+The other rejected shortcut is three CNOTs in the same direction. They compose to
+the identity on the target and leave the control alone, and the resulting
+operator is the identity, not SWAP. Direction is the whole content of the trick.
+
+## Common wrong answers
+
+Two CNOTs in opposite directions give $(a, b) \to (b, a \oplus b)$, which is a
+legitimate reversible map, is entangling, and is not SWAP. It is easy to convince
+yourself otherwise by checking only $\ket{01}$ and $\ket{10}$: those two do
+exchange. Check $\ket{11}$ as well and it goes to $\ket{10}$, which SWAP fixes.

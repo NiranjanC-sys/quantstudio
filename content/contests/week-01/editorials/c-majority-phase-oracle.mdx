@@ -1,0 +1,67 @@
+---
+id: week-01.c.editorial
+contest: week-01
+slot: C
+kind: editorial
+title: "Editorial: Majority Phase Oracle"
+points: 300
+difficulty: medium-hard
+---
+
+## The intended solution
+
+Three Hadamards, then three CZ gates, one on each pair of wires. Six ops, depth
+4, three two-qubit gates, and not a Toffoli in sight.
+
+The identity that makes it work is
+
+$$
+\mathrm{MAJ}(x_0, x_1, x_2) = x_0 x_1 \oplus x_1 x_2 \oplus x_0 x_2 .
+$$
+
+Check it on the weight of $x$. If no bits are set, no product is set and both
+sides are 0. If one bit is set, every product still has a zero factor, so both
+sides are 0. If two bits are set, exactly one of the three products is 1, the
+XOR is 1, and majority is 1. If all three are set, all three products are 1, the
+XOR of three ones is 1, and majority is 1. So the two functions agree on all
+eight inputs.
+
+Now push it into the phase. $(-1)^{a \oplus b} = (-1)^a (-1)^b$, so
+
+$$
+(-1)^{\mathrm{MAJ}(x)} = (-1)^{x_0 x_1}\,(-1)^{x_1 x_2}\,(-1)^{x_0 x_2},
+$$
+
+and each factor is precisely what a CZ on that pair of wires applies. The oracle
+factorises into three commuting two-qubit diagonal gates.
+
+The XOR step is the part worth remembering. Over the integers,
+$x_0x_1 + x_1x_2 + x_0x_2$ takes the values 0, 0, 1 and 3, so it is **not** equal
+to majority as an integer. It is equal modulo 2, and modulo 2 is all a sign
+needs.
+
+## Why the naive answer is too deep
+
+The generic phase-oracle recipe is: allocate an ancilla in $\ket{-}$, compute
+$f(x)$ into it reversibly, and uncompute the scratch. For majority the standard
+reversible circuit is three Toffolis into the ancilla, one per pair, then three
+more to uncompute the scratch bits, on a register that is now four or five wires
+wide. Every Toffoli is itself seven $T$ gates. The result is a circuit an order
+of magnitude larger than three CZs, and it violates all three of this problem's
+constraints at once: the ancilla, the three-wire gates, and the two-qubit gate
+budget.
+
+The lesson generalises well beyond majority. Any Boolean function whose
+algebraic normal form has degree 2 is a product of CZ gates and single-qubit
+$Z$ gates, and needs no ancilla at all. Degree 3 is where Toffolis become
+unavoidable.
+
+## Common wrong answers
+
+Applying the three CZ gates without the Hadamard layer leaves $\ket{000}$
+untouched, since it is a $+1$ eigenstate of every CZ. Applying `ccz` gives
+$(-1)^{x_0x_1x_2}$, which is the AND of the three bits, not the majority: it
+flips the sign of $\ket{111}$ only, and leaves $\ket{011}$, $\ket{101}$ and
+$\ket{110}$ positive. Adding single-qubit `z` gates on top of the three CZs adds
+the linear terms $(-1)^{x_0 + x_1 + x_2}$, which flips four signs that should
+not move.

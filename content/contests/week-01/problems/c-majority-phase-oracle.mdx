@@ -1,0 +1,97 @@
+---
+id: week-01.c
+contest: week-01
+slot: C
+title: Majority Phase Oracle
+points: 300
+difficulty: medium-hard
+tags: [oracle, phase-kickback, boolean-function, cz]
+---
+
+A phase oracle for a Boolean function $f$ maps $\ket{x} \mapsto (-1)^{f(x)}\ket{x}$.
+The lazy way to build one is to compute $f$ into an ancilla held in $\ket{-}$
+and uncompute it, which for the majority function costs Toffolis. The oracle you
+are asked for here costs three Clifford gates, because majority on three bits is
+hiding a quadratic form.
+
+## Task
+
+Let $\mathrm{MAJ}(x_0, x_1, x_2)$ be 1 when at least two of the three bits are 1,
+and 0 otherwise. Return a three-qubit circuit that starts from $\ket{000}$ and
+produces
+
+$$
+\ket{\psi} = \frac{1}{\sqrt 8}\sum_{x \in \{0,1\}^3} (-1)^{\mathrm{MAJ}(x)} \ket{x}.
+$$
+
+That is: build the uniform superposition, then apply the majority phase oracle
+to it. Both halves are part of the answer.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. Each op carries a unique `id`, a `gate` key, a
+list of `targets`, an optional list of `controls`, and an optional list of
+`params`. A `cz` is written with both wires in `targets`, since it is symmetric:
+
+```python
+{"id": "p01", "gate": "cz", "targets": [0, 1]}
+```
+
+The judge simulates from $\ket{000}$ with no measurement.
+
+Qubit 0 is the most significant bit, so the bit string $x_0 x_1 x_2$ that labels
+a basis state reads left to right, and $x_0$ is the first character.
+
+## Worked example
+
+Every amplitude has magnitude $1/\sqrt 8 = 0.353553$. Only the signs vary, and
+they are exactly the truth table of majority:
+
+| $x$ | $\mathrm{MAJ}(x)$ | sign | $x$ | $\mathrm{MAJ}(x)$ | sign |
+| --- | --- | --- | --- | --- | --- |
+| $000$ | $0$ | $+$ | $100$ | $0$ | $+$ |
+| $001$ | $0$ | $+$ | $101$ | $1$ | $-$ |
+| $010$ | $0$ | $+$ | $110$ | $1$ | $-$ |
+| $011$ | $1$ | $-$ | $111$ | $1$ | $-$ |
+
+Running the reference solution prints the sign vector
+`[1, 1, 1, -1, 1, -1, -1, -1]` in basis order $000$ through $111$, which is that
+table read down the two sign columns.
+
+## Constraints
+
+- `qubits` is exactly 3 and `clbits` is exactly 0.
+- No ancilla: the circuit is exactly three wires wide.
+- No gate may touch three wires at once. `ccx`, `ccz` and `cswap` are rejected.
+- At most **three** two-qubit gates.
+- Allowed gates: `h`, `x`, `z`, `s`, `sdg`, `cz`, and `x` carrying a single control.
+- No `measure`, no `reset`, no classical conditions.
+
+## Scoring
+
+300 points for the first accepted submission. The judge runs
+`statevector_equals` against the eight signed amplitudes above with
+`up_to_global_phase` set to true, `resource_bound` with `max_two_qubit_gates` of
+3 and `max_qubits` of 3, and `gate_set_subset` over the list above. No partial
+credit, one penalty minute per rejected submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+@@SNIPPET:week-01-c@@
+```
+
+Output:
+
+```text
+@@OUTPUT:week-01-c@@
+```

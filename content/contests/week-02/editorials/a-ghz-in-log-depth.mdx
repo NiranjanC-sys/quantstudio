@@ -1,0 +1,59 @@
+---
+id: week-02.a.editorial
+contest: week-02
+slot: A
+kind: editorial
+title: "Editorial: GHZ In Log Depth"
+points: 100
+difficulty: easy
+---
+
+## The intended solution
+
+Fan out by doubling. One Hadamard, then a CNOT that turns one entangled qubit
+into two, then two CNOTs in parallel that turn two into four.
+
+```text
+layer 0:  H  on qubit 0
+layer 1:  CNOT 0 -> 1
+layer 2:  CNOT 0 -> 2   and   CNOT 1 -> 3
+```
+
+The two gates in layer 2 touch wires 0, 2 and 1, 3, which are disjoint, so the
+ASAP scheduler puts them in the same layer. Depth 3, three CNOTs, and the state
+comes out as $0.707107$ on $\ket{0000}$ and $0.707107$ on $\ket{1111}$.
+
+Why it works: after layer 1 the register is
+$\tfrac{1}{\sqrt2}(\ket{00} + \ket{11})$ on wires 0 and 1. A CNOT from an
+already-correlated wire onto a fresh $\ket{0}$ extends the correlation without
+disturbing it, because $\mathrm{CNOT}\ket{a}\ket{0} = \ket{a}\ket{a}$ on basis
+states and the map is linear. Two wires can each do that at once, so the number
+of entangled qubits doubles per layer. For $n$ qubits the depth is
+$1 + \lceil \log_2 n \rceil$.
+
+## Why the naive answer is too deep
+
+The chain, `h` on qubit 0 then CNOT 0 to 1, 1 to 2, 2 to 3, is correct and has
+depth 4. Each CNOT reuses the wire the previous one just wrote, so no two of
+them can share a layer. It fails `max_depth` of 3 by exactly one layer, and the
+gap grows linearly: at $n = 16$ the chain costs depth 16 and the doubling costs
+depth 5.
+
+On real hardware the difference is larger than the layer count suggests, because
+the chain also holds the earliest qubit idle and decohering for the whole run.
+The doubling circuit finishes every wire's work within a couple of layers of
+when that wire is first touched.
+
+## Common wrong answers
+
+Trying to parallelise the chain by writing CNOT 0 to 1 and CNOT 1 to 2 next to
+each other does not help: they share wire 1, so the scheduler separates them
+anyway, and depth is still 4. The ASAP rule is derived from the ops you submit,
+not from the order you write them in, so reordering the list changes nothing
+unless the dependency structure changes.
+
+Using three Hadamards and three CZ gates instead reaches
+$\tfrac{1}{\sqrt2}(\ket{0000} + \ket{1111})$ only if you also undo the extra
+Hadamards, and the undo costs another layer. A CZ sandwiched between two
+Hadamards on the target is a CNOT, which is the identity you would use if the
+hardware had no CNOT, but it does not save depth here.

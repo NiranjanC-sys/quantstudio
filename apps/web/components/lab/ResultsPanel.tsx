@@ -48,7 +48,12 @@ export function ResultsPanel() {
         </div>
       ) : result ? (
         <>
-          <div className="rq-results-body">
+          <div
+            className="rq-results-body"
+            tabIndex={0}
+            role="region"
+            aria-label={`${tab} readout`}
+          >
             {tab === 'amplitudes' && <Amplitudes result={result} />}
             {tab === 'probabilities' && <Probabilities result={result} />}
             {tab === 'bloch' && <BlochGrid result={result} />}

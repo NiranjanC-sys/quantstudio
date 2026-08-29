@@ -1,0 +1,73 @@
+---
+id: week-02.d.editorial
+contest: week-02
+slot: D
+kind: editorial
+title: "Editorial: Two Marked Items"
+points: 400
+difficulty: hard
+---
+
+## The intended solution
+
+Start with the arithmetic, not the circuit. With $N = 8$ and $M = 2$,
+
+$$
+\theta = 2\arcsin\sqrt{M/N} = 2\arcsin\tfrac12 = \frac{\pi}{3},
+$$
+
+and after $k$ iterations the probability on the marked subspace is
+$\sin^2\!\big((2k+1)\theta/2\big) = \sin^2\!\big((2k+1)\pi/6\big)$. That is
+$0.25$ at $k = 0$, exactly $1$ at $k = 1$, and back to $0.25$ at $k = 2$. One
+iteration, and it is exact rather than approximate, because $\theta$ divides
+$\pi/2$ a whole number of times only for these small cases.
+
+The circuit is then routine:
+
+- Hadamard all three wires.
+- Oracle: flip the sign of $\ket{010}$ and of $\ket{101}$. Each is a `ccz`
+  conjugated by $X$ gates on the wires that read 0 in that string. For $010$ that
+  is $X$ on wires 0 and 2; for $101$ it is $X$ on wire 1.
+- Diffusion: $H^{\otimes 3}$, $X^{\otimes 3}$, `ccz`, $X^{\otimes 3}$,
+  $H^{\otimes 3}$, which is the reflection about the uniform state.
+
+Three three-wire gates in total, 24 ops, depth 11. Running it gives amplitude
+$-0.707107$ on each of $\ket{010}$ and $\ket{101}$ and zero everywhere else. The
+overall minus sign is a global phase and is accepted.
+
+Marking two states costs two `ccz` gates but no extra iterations. That is the
+part worth internalising: doubling $M$ shortens the search, it does not lengthen
+the oracle in any way that matters.
+
+## Why the naive answer is wrong, not just slow
+
+The instinct is to compute the iteration count from
+$\lfloor \tfrac{\pi}{4}\sqrt{N/M} \rfloor = \lfloor 1.5708 \rfloor = 1$, which
+happens to give the right answer here, and then to assume the result is
+approximate and add a second iteration for safety. A second iteration is not
+insurance. It rotates past the target and lands back at $0.25$, throwing away
+three quarters of the probability you already had. Grover is a rotation, not a
+convergent process.
+
+The other naive move is to build the oracle from a full multi-controlled
+construction with an ancilla: allocate a fourth wire, compute the AND of the
+three query bits into it with two Toffolis, phase it, uncompute. That is correct
+and costs four wires and four three-wire gates for what an $X$-conjugated `ccz`
+does in one, so it fails `max_qubits` and the multi-qubit gate check at the same
+time.
+
+## Common wrong answers
+
+Conjugating with $X$ on the wrong wires marks the complement string. Marking
+$\ket{101}$ requires an $X$ on wire 1 only, because wires 0 and 2 already read 1.
+Putting the $X$ gates on wires 0 and 2 instead makes the second block mark
+$\ket{010}$ as well, the same state the first block marked, and two sign flips of
+one state cancel. The oracle then marks nothing, the diffusion operator has
+nothing to amplify, and the circuit returns the flat distribution: every one of
+the eight outcomes at $0.125$.
+
+Omitting the $X^{\otimes 3}$ layers inside the diffusion operator reflects about
+$\ket{111}$ rather than about the uniform superposition. It is a legitimate
+unitary and it is not Grover's diffusion, and it produces the same tell: all
+eight outcomes at $0.125$. A flat histogram is the signature of a broken Grover
+circuit, and it is worth checking for before you start rereading your angles.

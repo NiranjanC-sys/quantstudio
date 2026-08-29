@@ -1,0 +1,107 @@
+---
+id: week-02.b
+contest: week-02
+slot: B
+title: Loaded Dice
+points: 200
+difficulty: medium
+tags: [state-preparation, amplitude-encoding, uniformly-controlled-rotation]
+---
+
+Half of quantum finance and most of quantum machine learning starts with the
+same unglamorous step: get a classical probability distribution into the
+amplitudes of a register. Do it badly and the loading costs more than the
+algorithm saves. This problem is that step at its smallest useful size, with a
+gate budget tight enough that the obvious construction does not fit.
+
+## Task
+
+Return a two-qubit circuit that starts from $\ket{00}$ and produces a state whose
+measurement probabilities in the computational basis are
+
+$$
+p(00) = 0.1, \quad p(01) = 0.2, \quad p(10) = 0.3, \quad p(11) = 0.4,
+$$
+
+using at most two CNOTs. All four amplitudes must be real and non-negative, so
+the state is $\sqrt{0.1}\ket{00} + \sqrt{0.2}\ket{01} + \sqrt{0.3}\ket{10} + \sqrt{0.4}\ket{11}$.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. Angles go in `params` and are in radians. An
+uncontrolled rotation looks like
+
+```python
+{"id": "marginal", "gate": "ry", "targets": [0], "params": [1.9823131728623848]}
+```
+
+and $R_y(\theta)$ sends $\ket{0}$ to $\cos(\theta/2)\ket{0} + \sin(\theta/2)\ket{1}$,
+which is the convention that makes $\theta = 2\arccos\sqrt p$ leave probability
+$p$ on $\ket{0}$.
+
+Qubit 0 is the most significant bit, so $p(01)$ is the probability of qubit 0
+reading 0 and qubit 1 reading 1.
+
+## Worked example
+
+The reference solution is a two-level amplitude tree. The marginal of qubit 0 is
+$p(0\cdot) = 0.1 + 0.2 = 0.3$, so the first rotation is
+$\theta_0 = 2\arccos\sqrt{0.3} = 1.9823131728623848$. The two conditional angles
+are $\theta_A = 2\arccos\sqrt{0.2/0.3} = 1.9106332362490186$ in the branch where
+qubit 0 is 0, and $\theta_B = 2\arccos\sqrt{0.4/0.7} = 1.7141438957002622$ in the
+branch where it is 1. Those two are applied at once by
+$R_y(\alpha)$, CNOT, $R_y(\beta)$, CNOT with
+
+$$
+\alpha = \tfrac{\theta_A + \theta_B}{2} = 1.8123885659746404, \qquad
+\beta = \tfrac{\theta_A - \theta_B}{2} = 0.09824467027437822 .
+$$
+
+Running it gives:
+
+| basis state | probability |
+| --- | --- |
+| $\ket{00}$ | $0.1$ |
+| $\ket{01}$ | $0.2$ |
+| $\ket{10}$ | $0.3$ |
+| $\ket{11}$ | $0.4$ |
+
+to six decimal places, with 5 ops, depth 4 and two CNOTs.
+
+## Constraints
+
+- `qubits` is exactly 2 and `clbits` is exactly 0.
+- At most **two** two-qubit gates.
+- Every amplitude must be real and non-negative, checked directly rather than through the probabilities.
+- Allowed gates: `ry`, `rz`, `h`, `x`, `p`, and `x` carrying a single control.
+- No `measure`, no `reset`, no classical conditions.
+
+## Scoring
+
+200 points for the first accepted submission. The judge runs
+`statevector_equals` against the four square roots above with
+`up_to_global_phase` set to false, because the sign of each amplitude is part of
+the specification, then `resource_bound` with `max_two_qubit_gates` of 2, then
+`gate_set_subset`. Tolerance is $10^{-6}$. No partial credit, one penalty minute
+per rejected submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+@@SNIPPET:week-02-b@@
+```
+
+Output:
+
+```text
+@@OUTPUT:week-02-b@@
+```

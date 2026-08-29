@@ -1,0 +1,73 @@
+---
+id: week-03.b.editorial
+contest: week-03
+slot: B
+kind: editorial
+title: "Editorial: Bell In A Hardware Basis"
+points: 200
+difficulty: medium
+---
+
+## The intended solution
+
+Two rewrites, applied mechanically, and nothing else.
+
+The first is the single-qubit one. Up to a global phase of $e^{-i\pi/4}$,
+
+$$
+H = R_z(\pi/2)\;\sqrt{X}\;R_z(\pi/2),
+$$
+
+which you can verify by multiplying: the product is
+$\begin{pmatrix} 0.5-0.5i & 0.5-0.5i \\ 0.5-0.5i & -0.5+0.5i \end{pmatrix}$,
+and dividing by $e^{-i\pi/4}$ gives $H$ exactly. Three ops per Hadamard, and two
+of the three are free on hardware because a virtual $R_z$ is a phase bookkeeping
+update on the next pulse rather than a pulse of its own.
+
+The second is the two-qubit one:
+
+$$
+\mathrm{CNOT}(0 \to 1) = (I \otimes H)\,\mathrm{CZ}\,(I \otimes H),
+$$
+
+which holds because $H Z H = X$, so conjugating the controlled-$Z$ on its target
+turns the $Z$ into an $X$ while leaving the control alone.
+
+Put them together. The Bell circuit is $H$ on qubit 0 then CNOT from 0 to 1,
+which becomes $H_0$, then $H_1$, `cz`, $H_1$. Expand each $H$ into
+$R_z, \sqrt X, R_z$ and you have nine single-qubit gates and one `cz`: 10 ops,
+depth 7. The state comes out as $\tfrac{1}{\sqrt2}e^{-3i\pi/4}$ on each of
+$\ket{00}$ and $\ket{11}$, an overlap of modulus exactly 1 with the ideal Bell
+state.
+
+## Why the naive answer does not fit
+
+The naive answer is to submit `h` and `cx` and let a transpiler deal with it.
+Here there is no transpiler: `gate_set_subset` allows exactly `rz`, `sx` and
+`cz`, and anything else is a rejection. That is the honest situation on hardware,
+where the basis gates are a property of the calibration and not a preference.
+
+The other approach that fails is numerical: run a generic single-qubit
+decomposition on $H$ to get an Euler angle triple, then a generic KAK
+decomposition on the CNOT. It works and it emits three $R_z$ and two $\sqrt X$
+gates per Hadamard-equivalent block, because a generic $U(2)$ needs the full
+$R_z R_y R_z$ triple. Fifteen or more single-qubit gates is the usual result,
+which fits inside `max_size` of 13 only after a peephole pass that merges
+adjacent $R_z$ gates. Doing the algebra by hand and noticing that $H$ needs only
+two $R_z$ gates, not three, is what keeps the circuit small.
+
+## Common wrong answers
+
+Dropping the trailing $R_z(\pi/2)$ from each Hadamard, on the theory that a
+final $R_z$ before a $Z$-basis measurement is unobservable, is the most common
+failure. It is unobservable at the very end of a circuit and nowhere else: here
+two of the three truncated blocks sit before a `cz`, which is not a measurement.
+The circuit returns $0.353553 - 0.353553i$ on the first three basis states and
+its negative on $\ket{11}$, that is $0.25$ on every outcome and an overlap of
+exactly $0.0$ with the Bell state.
+
+Putting the compiled Hadamards around the `cz` on qubit 0 rather than qubit 1
+builds the CNOT with control and target exchanged. Starting from $\ket{00}$ with
+the superposition already on qubit 0, that produces the product state with
+amplitude $-0.5 - 0.5i$ on $\ket{00}$ and on $\ket{10}$: no entanglement at all,
+and an overlap of $0.5$.

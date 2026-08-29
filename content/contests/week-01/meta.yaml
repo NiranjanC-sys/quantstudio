@@ -1,0 +1,43 @@
+# Weekly contest 1.
+#
+# Every amplitude, probability and gate count quoted in problems/ and
+# editorials/ was produced by running the reference circuits in solutions/
+# through the kernel and through Qiskit. Nothing here is from memory.
+id: week-01
+title: "Weekly Contest 1: Phases and Cascades"
+date: "2026-09-05"
+durationMinutes: 90
+ratingRange: "800-1400"
+summary: >-
+  Four construction problems on two and three qubits. Put a minus sign in one
+  corner of a uniform superposition, build a W state with no ancilla, write a
+  majority function into the phase, and pay the seven-T price for a CCZ.
+problems:
+  - id: a-signed-corner
+    title: Signed Corner
+    points: 100
+    difficulty: easy
+    summary: >-
+      Prepare the uniform two-qubit superposition carrying a minus sign on |11>
+      and nowhere else, in at most one two-qubit gate.
+  - id: b-w-state-cascade
+    title: Three-Qubit W State
+    points: 200
+    difficulty: medium
+    summary: >-
+      Prepare (|001> + |010> + |100>)/sqrt(3) on three qubits with no ancilla
+      and no three-qubit gate.
+  - id: c-majority-phase-oracle
+    title: Majority Phase Oracle
+    points: 300
+    difficulty: medium-hard
+    summary: >-
+      Apply (-1)^MAJ(x) to every basis state of the uniform three-qubit
+      superposition without using a Toffoli.
+  - id: d-ccz-from-t-gates
+    title: CCZ From T Gates
+    points: 400
+    difficulty: hard
+    summary: >-
+      Build an exact CCZ in Clifford plus T with no ancilla, seven T gates and
+      six CNOTs.

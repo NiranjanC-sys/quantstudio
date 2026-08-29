@@ -1,0 +1,105 @@
+---
+id: week-01.a
+contest: week-01
+slot: A
+title: Signed Corner
+points: 100
+difficulty: easy
+tags: [superposition, phase, cz, clifford]
+---
+
+Every uniform superposition looks the same from the outside. Measure
+$H^{\otimes 2}\ket{00}$ a million times and you get four outcomes at one in four
+each, and you would get exactly the same histogram from a state with a minus
+sign hidden in it. This problem asks you to put that minus sign in one specific
+corner, which is the smallest possible exercise in the thing that separates
+amplitudes from probabilities.
+
+## Task
+
+Return a two-qubit circuit that starts from $\ket{00}$ and produces
+
+$$
+\ket{\psi} = \tfrac{1}{2}\left(\ket{00} + \ket{01} + \ket{10} - \ket{11}\right).
+$$
+
+All four basis states carry the same magnitude. Only $\ket{11}$ carries the
+minus sign.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+The dictionary it returns has exactly this shape:
+
+```python
+{
+    "version": 1,
+    "name": "signed-corner",
+    "qubits": 2,
+    "clbits": 0,
+    "ops": [
+        {"id": "h0", "gate": "h", "targets": [0]},
+        # ... more ops, applied in list order
+    ],
+}
+```
+
+Each op carries a unique `id`, a `gate` key from the registry, a list of
+`targets`, an optional list of `controls` holding positive controls, and an
+optional list of `params` holding angles in radians. The judge simulates from
+$\ket{00}$ with no measurement.
+
+Qubit 0 is the most significant bit. Basis index $i$ gives qubit $q$ the value
+`(i >> (n - 1 - q)) & 1`, so $\ket{q_0 q_1}$ reads left to right, the Cirq and
+Nielsen and Chuang convention rather than the Qiskit one.
+
+## Worked example
+
+Running the reference solution and printing the four amplitudes gives:
+
+| basis state | amplitude | probability |
+| --- | --- | --- |
+| $\ket{00}$ | $0.5$ | $0.25$ |
+| $\ket{01}$ | $0.5$ | $0.25$ |
+| $\ket{10}$ | $0.5$ | $0.25$ |
+| $\ket{11}$ | $-0.5$ | $0.25$ |
+
+The probabilities are flat, so a counts-based check would accept the wrong
+answer. The judge compares amplitudes.
+
+## Constraints
+
+- `qubits` is exactly 2 and `clbits` is exactly 0.
+- At most **one** two-qubit gate. A solution that reaches for two has missed the point.
+- Circuit depth at most 3.
+- Allowed gates: `h`, `x`, `y`, `z`, `s`, `sdg`, `t`, `tdg`, `sx`, `rx`, `ry`, `rz`, `p`, `cz`, and `x` carrying a single control.
+- No `measure`, no `reset`, no classical conditions.
+
+## Scoring
+
+100 points for the first accepted submission. The judge runs three assertions:
+`statevector_equals` against the target above with `up_to_global_phase` set to
+true, `resource_bound` with `max_two_qubit_gates` of 1 and `max_depth` of 3, and
+`gate_set_subset` over the list above. There is no partial credit, and each
+rejected submission costs one penalty minute.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses, so you
+can reproduce its verdict locally:
+
+```python
+@@SNIPPET:week-01-a@@
+```
+
+Output:
+
+```text
+@@OUTPUT:week-01-a@@
+```

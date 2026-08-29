@@ -833,6 +833,19 @@
               }
             ]
           },
+          "probability_top_k": {
+            "anyOf": [
+              {
+                "maximum": 4096.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probability Top K"
+          },
           "reduced_density": {
             "items": {
               "items": {

@@ -1,0 +1,96 @@
+---
+id: week-03.a
+contest: week-03
+slot: A
+title: SWAP Without SWAP
+points: 100
+difficulty: easy
+tags: [swap, cnot, routing, decomposition]
+---
+
+No superconducting chip has a SWAP instruction. It has a two-qubit entangling
+gate and a compiler, and every time your algorithm needs two logical qubits that
+sit on non-adjacent physical wires, the compiler inserts SWAPs and pays for them
+in the only currency the hardware accepts. Knowing what a SWAP actually costs is
+the first step to knowing why routing dominates the gate count of real circuits.
+
+## Task
+
+Return a two-qubit circuit whose unitary is exactly the SWAP matrix
+
+$$
+\mathrm{SWAP} = \begin{pmatrix} 1 & 0 & 0 & 0 \\ 0 & 0 & 1 & 0 \\ 0 & 1 & 0 & 0 \\ 0 & 0 & 0 & 1 \end{pmatrix},
+$$
+
+using CNOT gates and nothing else. No single-qubit gates at all, and the `swap`
+gate itself is rejected by the gate-set check.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. A CNOT is written as an `x` gate carrying one
+control, and the direction matters:
+
+```python
+{"id": "cx1", "gate": "x", "targets": [1], "controls": [0]}
+```
+
+flips qubit 1 when qubit 0 is $\ket{1}$, while swapping the two lists gives the
+opposite direction. The judge materialises the full $4 \times 4$ operator and
+compares it entry by entry against SWAP.
+
+Qubit 0 is the most significant bit, so row and column index $i$ assigns qubit 0
+the value `(i >> 1) & 1` and qubit 1 the value `i & 1`. In that ordering SWAP
+exchanges indices 1 and 2 and fixes 0 and 3, which is the matrix above.
+
+## Worked example
+
+Three CNOTs, alternating direction: 0 controls 1, then 1 controls 0, then 0
+controls 1 again. Materialising the operator gives
+
+```text
+[[1, 0, 0, 0], [0, 0, 1, 0], [0, 1, 0, 0], [0, 0, 0, 1]]
+is SWAP: True
+```
+
+This is the quantum reading of the classical XOR swap trick. On basis states,
+writing the register as a pair $(a, b)$, the three CNOTs compute
+$(a, a \oplus b)$, then $(a \oplus (a \oplus b), a \oplus b) = (b, a \oplus b)$,
+then $(b, b \oplus (a \oplus b)) = (b, a)$. Three additions modulo 2 and the
+contents have changed places. The circuit has 3 ops, depth 3 and no single-qubit
+gates.
+
+## Constraints
+
+- `qubits` is exactly 2 and `clbits` is exactly 0.
+- At most three two-qubit gates. Three is also the proven minimum: SWAP sits at the far corner of the two-qubit Weyl chamber and no pair of CNOTs can reach it.
+- Allowed gates: `x` carrying exactly one control. Nothing else, including no bare `x` and no `swap`.
+- No `measure`, no `reset`, no classical conditions.
+
+## Scoring
+
+100 points for the first accepted submission. The judge runs `unitary_equals`
+against the SWAP matrix with `up_to_global_phase` set to true and a tolerance of
+$10^{-9}$, then `resource_bound` with `max_two_qubit_gates` of 3 and `max_size`
+of 3, then `gate_set_subset` with `allowed` set to `["x"]`. No partial credit,
+one penalty minute per rejected submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+@@SNIPPET:week-03-a@@
+```
+
+Output:
+
+```text
+@@OUTPUT:week-03-a@@
+```

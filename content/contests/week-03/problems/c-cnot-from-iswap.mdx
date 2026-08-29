@@ -1,0 +1,103 @@
+---
+id: week-03.c
+contest: week-03
+slot: C
+title: CNOT From iSWAP
+points: 300
+difficulty: medium-hard
+tags: [iswap, entangling-gate, weyl-chamber, decomposition]
+---
+
+Not every chip's native entangler is a CZ. Tunable-coupler devices and several
+flux-based architectures give you an iSWAP, and a compiler targeting them has to
+answer one question before it can do anything else: how many iSWAPs does a CNOT
+cost? The answer is two, and neither the upper bound nor the lower bound is
+obvious.
+
+## Task
+
+Return a two-qubit circuit whose unitary equals
+
+$$
+\mathrm{CNOT}(0 \to 1) = \begin{pmatrix} 1 & 0 & 0 & 0 \\ 0 & 1 & 0 & 0 \\ 0 & 0 & 0 & 1 \\ 0 & 0 & 1 & 0 \end{pmatrix}
+$$
+
+up to a global phase, using exactly two `iswap` gates plus single-qubit gates.
+
+The iSWAP gate is
+
+$$
+\mathrm{iSWAP} = \begin{pmatrix} 1 & 0 & 0 & 0 \\ 0 & 0 & i & 0 \\ 0 & i & 0 & 0 \\ 0 & 0 & 0 & 1 \end{pmatrix},
+$$
+
+that is, a SWAP with a factor of $i$ on the two states it exchanges.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. `iswap` is symmetric, so both wires go in
+`targets`:
+
+```python
+{"id": "is1", "gate": "iswap", "targets": [0, 1]}
+```
+
+The judge materialises the full $4 \times 4$ operator, divides out the phase of
+the first nonzero entry, and compares against CNOT.
+
+Qubit 0 is the most significant bit and is the control of the target CNOT, so
+the operator exchanges basis indices 2 and 3 and fixes 0 and 1.
+
+## Worked example
+
+The reference solution is five ops: `iswap`, then `h` on qubit 0, then `iswap`,
+then `sdg` on qubit 0 and `sx` on qubit 1. Materialising the operator and
+dividing out the phase gives:
+
+```text
+global phase: (0.707107+0.707107j)
+matches CNOT up to that phase: True
+```
+
+The leftover factor is $e^{i\pi/4}$, which is unobservable and expected: each
+iSWAP contributes an $i$ on the exchanged subspace, and no arrangement of
+single-qubit gates removes the overall phase without also removing the gate. Its
+metrics are 5 ops, depth 4, two two-qubit gates.
+
+## Constraints
+
+- `qubits` is exactly 2 and `clbits` is exactly 0.
+- Exactly two `iswap` gates. Not one, not three: one is provably impossible, and three wastes the entangling budget the problem is about.
+- At most four single-qubit gates.
+- Allowed gates: `iswap`, `h`, `s`, `sdg`, `sx`, `sxdg`, `x`, `y`, `z`, `rz`.
+- No `cx`, no `cz`, no `swap`, and no `measure`, `reset` or classical condition.
+
+## Scoring
+
+300 points for the first accepted submission. The judge runs `unitary_equals`
+against CNOT with `up_to_global_phase` set to true and a tolerance of $10^{-9}$,
+then `resource_bound` with `max_two_qubit_gates` of 2 and `max_size` of 6, then
+`gate_set_subset` over the list above. A submission using one `iswap` cannot
+pass the unitary check no matter what single-qubit gates surround it, which is
+the point of the problem. No partial credit, one penalty minute per rejected
+submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+@@SNIPPET:week-03-c@@
+```
+
+Output:
+
+```text
+@@OUTPUT:week-03-c@@
+```

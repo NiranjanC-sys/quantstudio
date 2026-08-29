@@ -697,7 +697,10 @@ def _run_simulation(
     SIM_QUBITS.observe(circuit.qubits)
     result: SimResult = backend.run(circuit, options)
     payload: dict[str, Any] = {
-        "result": result.to_payload(include_statevector=options.return_statevector),
+        "result": result.to_payload(
+            include_statevector=options.return_statevector,
+            probability_top_k=options.probability_top_k,
+        ),
         "metrics": circuit_metrics(circuit).to_dict(),
     }
     if req.include_visual:

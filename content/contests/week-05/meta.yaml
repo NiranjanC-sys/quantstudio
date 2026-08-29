@@ -1,0 +1,43 @@
+# Weekly contest 5.
+#
+# Every amplitude, probability and gate count quoted in problems/ and
+# editorials/ was produced by running the reference circuits in solutions/
+# through the kernel and through Qiskit. Nothing here is from memory.
+id: week-05
+title: "Weekly Contest 5: Codes And Syndromes"
+date: "2026-10-03"
+durationMinutes: 90
+ratingRange: "1600-2200"
+summary: >-
+  Encode a logical qubit, extract a syndrome in the wrong basis on purpose,
+  correct an error that is in superposition with no measurement anywhere, and
+  prepare the Steane logical zero from its generator matrix.
+problems:
+  - id: a-repetition-encoder
+    title: The Repetition Encoder
+    points: 100
+    difficulty: easy
+    summary: >-
+      Encode cos(pi/8)|0> + sin(pi/8)|1> into the three-qubit repetition code in
+      three gates.
+  - id: b-phase-flip-syndrome
+    title: Phase-Flip Syndrome
+    points: 200
+    difficulty: medium
+    summary: >-
+      Extract the two stabiliser parities of the phase-flip code and pin a Z
+      error on the middle qubit with certainty.
+  - id: c-decode-the-syndrome
+    title: Decode The Syndrome
+    points: 300
+    difficulty: medium-hard
+    summary: >-
+      Correct a bit-flip error held in superposition over all four fault
+      branches, using a lookup table made of Toffolis.
+  - id: d-steane-logical-zero
+    title: Steane Logical Zero
+    points: 400
+    difficulty: hard
+    summary: >-
+      Prepare the Steane code logical zero as the uniform superposition over
+      eight Hamming codewords, in nine CNOTs.

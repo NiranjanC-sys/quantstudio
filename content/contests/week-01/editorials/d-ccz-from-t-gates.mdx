@@ -1,0 +1,74 @@
+---
+id: week-01.d.editorial
+contest: week-01
+slot: D
+kind: editorial
+title: "Editorial: CCZ From T Gates"
+points: 400
+difficulty: hard
+---
+
+## The intended solution
+
+CCZ is diagonal, so the whole problem lives in the exponent. Write the phase it
+applies to $\ket{x_0 x_1 x_2}$ as $\exp(i\pi x_0 x_1 x_2)$ and expand the cubic
+product in terms of parities, which is what a circuit of CNOTs and $T$ gates can
+actually produce. The identity is
+
+$$
+x_0 x_1 x_2 = \tfrac{1}{4}\Big[ x_0 + x_1 + x_2 - (x_0 \oplus x_1) - (x_1 \oplus x_2) - (x_0 \oplus x_2) + (x_0 \oplus x_1 \oplus x_2) \Big],
+$$
+
+valid for bits, and the factor of $1/4$ is exactly why $T = \mathrm{diag}(1, e^{i\pi/4})$
+is the right unit of currency: seven terms, each worth one $\pi/4$ rotation,
+signed as the identity says.
+
+The circuit realises it by parking each parity on a wire long enough to rotate
+it. Alternating CNOTs from qubit 1 and qubit 0 into qubit 2 make qubit 2 hold, in
+turn, $x_2$, then $x_1 \oplus x_2$, then $x_0 \oplus x_1 \oplus x_2$, then
+$x_0 \oplus x_2$, with a $T$ or $T^{\dagger}$ applied at each stop. The tail,
+`t` on qubit 0, `tdg` on qubit 1, and a CNOT pair on those two wires, supplies
+the remaining $x_0$, $x_1$ and $x_0 \oplus x_1$ terms. Seven $T$ gates, six
+CNOTs, depth 10, and the resulting operator has diagonal
+`[1, 1, 1, 1, 1, 1, 1, -1]` with a largest off-diagonal entry of $0.0$.
+
+Seven is not an accident of this particular circuit. Seven is the known minimum
+T-count for an exact ancilla-free Clifford plus $T$ implementation of CCZ or the
+Toffoli. You can beat it only by changing the rules: with one ancilla and a
+mid-circuit measurement with classical feedforward, the count drops to four.
+Neither is allowed here.
+
+## Why the naive answer is too deep
+
+Two naive answers show up, and they fail in opposite directions.
+
+The first is to write `ccz` and hope. The gate-set check rejects it, because the
+point of the problem is that a fault-tolerant machine does not have a CCZ
+instruction to call.
+
+The second is to reach for a generic synthesis routine: decompose the diagonal
+$8 \times 8$ unitary with a standard multiplexed-rotation cascade, or run a
+Toffoli through a naive controlled-controlled-$U$ construction that expands
+$C\text{-}V$, $C\text{-}V^{\dagger}$ and $C\text{-}V$ with $V = \sqrt{X}$. That
+route is correct and costs far more: the $\sqrt{X}$ construction alone needs
+three controlled-$V$ gates, each of which is two CNOTs plus $T$-family
+rotations once you push it into Clifford plus $T$, and the T-count lands in the
+teens rather than at seven.
+
+## Common wrong answers
+
+Truncating the tail is the classic. Stopping after the first nine ops leaves a
+perfectly legal diagonal unitary,
+
+```text
+[1, 1, e^(i pi/4), e^(i pi/4), 1, 1, e^(-i pi/4), e^(3 i pi/4)]
+```
+
+which is not CCZ and is not even $-1$ on $\ket{111}$. `unitary_equals` with
+`up_to_global_phase` rejects it, because a global phase multiplies all eight
+entries by the same number and these entries disagree with each other.
+
+Swapping any single `t` for a `tdg`, or the reverse, has a sharper signature:
+whichever of the seven you flip, exactly four of the eight diagonal entries come
+out wrong and the rest are untouched. The failure message names the first
+mismatch, which tells you which parity term you rotated the wrong way.

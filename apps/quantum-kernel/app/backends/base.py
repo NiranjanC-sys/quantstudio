@@ -60,6 +60,11 @@ class SimOptions(BaseModel):
     #: this and the backend's own ceiling.
     max_qubits: int = Field(default=30, ge=1, le=64)
     return_statevector: bool = True
+    #: When set, the payload carries the largest ``k`` basis-state
+    #: probabilities as (index, p) pairs plus the residual mass, instead of the
+    #: full 2**n vector. A 20 qubit run is a million floats, which no client can
+    #: display and no latency budget can afford to ship.
+    probability_top_k: int | None = Field(default=None, ge=1, le=4096)
     return_probabilities: bool = True
     return_bloch: bool = True
     #: Subsystems to return reduced density matrices for, as qubit index lists.
@@ -109,7 +114,11 @@ class SimResult:
     warnings: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_payload(self, include_statevector: bool = True) -> dict[str, Any]:
+    def to_payload(
+        self,
+        include_statevector: bool = True,
+        probability_top_k: int | None = None,
+    ) -> dict[str, Any]:
         """JSON-safe form. Complex vectors are interleaved re/im to match the
         ``Float64Array`` layout the TypeScript engine and the WebGL instruments
         already use, so the frontend needs no conversion step."""
@@ -118,7 +127,11 @@ class SimResult:
             "method": self.method,
             "qubits": self.qubits,
             "clbits": self.clbits,
-            "probabilities": [float(p) for p in self.probabilities],
+            "probabilities": (
+                None
+                if probability_top_k is not None
+                else [float(p) for p in self.probabilities]
+            ),
             "counts": self.counts,
             "countsKind": self.counts_kind,
             "bloch": [b.to_dict() for b in self.bloch],
@@ -131,6 +144,20 @@ class SimResult:
             "warnings": self.warnings,
             "metadata": self.metadata,
         }
+        if probability_top_k is not None:
+            probs = self.probabilities
+            k = min(probability_top_k, len(probs))
+            # argpartition is O(n) rather than the O(n log n) of a full sort,
+            # which matters at 2**30 entries.
+            idx = np.argpartition(probs, -k)[-k:]
+            idx = idx[np.argsort(-probs[idx])]
+            kept = [(int(i), float(probs[i])) for i in idx if probs[i] > 0]
+            payload["probabilitiesTopK"] = kept
+            payload["probabilitiesResidual"] = float(
+                max(0.0, 1.0 - sum(p for _, p in kept))
+            )
+            payload["probabilitiesTruncated"] = True
+
         if include_statevector and self.statevector is not None:
             payload["statevector"] = interleave(self.statevector)
         else:

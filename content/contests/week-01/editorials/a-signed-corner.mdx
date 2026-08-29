@@ -1,0 +1,52 @@
+---
+id: week-01.a.editorial
+contest: week-01
+slot: A
+kind: editorial
+title: "Editorial: Signed Corner"
+points: 100
+difficulty: easy
+---
+
+## The intended solution
+
+Two Hadamards, then one CZ. Three gates, depth 2, one two-qubit gate.
+
+$H^{\otimes 2}\ket{00}$ is the flat superposition with every amplitude $+1/2$.
+CZ is diagonal and multiplies a basis state by $(-1)^{x_0 x_1}$, and the product
+$x_0 x_1$ is 1 on $\ket{11}$ and nowhere else. So the sign lands exactly where it
+is wanted, and no amplitude moves.
+
+That is the whole solution, and the reason it is worth a problem is the sentence
+underneath it: **CZ is the only diagonal two-qubit Clifford whose phase depends
+on both qubits at once.** Every single-qubit diagonal gate contributes a phase
+$(-1)^{x_0}$ or $(-1)^{x_1}$, which are linear in the bits. A minus sign on
+$\ket{11}$ alone is the quadratic term. You cannot make a quadratic function of
+two bits out of linear ones, so at least one genuinely two-qubit diagonal gate is
+necessary, and one is enough.
+
+## Why the naive answer is too deep
+
+The reflex answer is to write the sign as a controlled operation on the target
+state: put an $X$ on each qubit that should be 0 in the marked string, apply a
+controlled-Z, and undo the $X$s. For $\ket{11}$ the marked string has no zeros, so
+that recipe collapses to a bare CZ and costs nothing extra. Try it for
+$\ket{01}$ instead and you spend two more $X$ gates and two more layers of depth
+for no gain, because $\mathrm{CZ}$ conjugated by $X$ on qubit 0 is just a
+different diagonal Clifford.
+
+The genuinely slow answer, and the one that fails the resource bound, is to
+build a phase oracle the textbook way: allocate an ancilla, prepare it in
+$\ket{-}$, compute $x_0 \wedge x_1$ into it with a Toffoli, and uncompute. That
+is three qubits, one three-wire gate and depth 5 to reproduce a single CZ. Every
+part of it is wasted: the ancilla, the Toffoli, and the uncompute.
+
+## Common wrong answers
+
+Applying `z` to qubit 0 or qubit 1 gives
+$\tfrac12(\ket{00} + \ket{01} - \ket{10} - \ket{11})$, which has two minus signs
+rather than one. Applying `s` twice is the same gate. Applying `cz` before the
+Hadamards does nothing at all, because $\ket{00}$ is an eigenstate of CZ with
+eigenvalue 1, and a submission that does that produces the unsigned uniform
+state and passes any probability-only check. The judge compares amplitudes for
+exactly this reason.

@@ -1,0 +1,105 @@
+---
+id: week-01.d
+contest: week-01
+slot: D
+title: CCZ From T Gates
+points: 400
+difficulty: hard
+tags: [clifford-t, t-count, ccz, fault-tolerance, decomposition]
+---
+
+On a fault-tolerant machine the Clifford gates are close to free and the $T$
+gates are not: each one is a magic state, and a magic state is a factory, a
+distillation round and a large pile of physical qubits. So the cost model that
+matters is not gate count but T-count, and the first place a beginner meets that
+cost model is the three-qubit controlled-Z.
+
+## Task
+
+Return a three-qubit circuit whose unitary is exactly
+
+$$
+\mathrm{CCZ} = \mathrm{diag}(1, 1, 1, 1, 1, 1, 1, -1),
+$$
+
+built from Clifford plus $T$ only, with no ancilla qubit, no gate touching three
+wires at once, and a T-count of at most seven.
+
+The gate is symmetric in its three wires, so there is no control and no target
+to get the wrong way round. The only thing that can be wrong is the arithmetic.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. A CNOT is written as an `x` gate carrying one
+control:
+
+```python
+{"id": "cx1", "gate": "x", "targets": [2], "controls": [1]}
+```
+
+which flips qubit 2 when qubit 1 is $\ket{1}$. `t` is $\mathrm{diag}(1, e^{i\pi/4})$
+and `tdg` is its inverse. The judge does not simulate a single input state here:
+it materialises the full $8 \times 8$ operator and compares it entry by entry.
+
+Qubit 0 is the most significant bit, so row and column index $i$ of that operator
+assigns qubit $q$ the value `(i >> (2 - q)) & 1`.
+
+## Worked example
+
+The reference solution is the standard seven-T, six-CNOT circuit: alternating
+CNOTs from qubits 1 and 0 into qubit 2 with $T$ and $T^{\dagger}$ between them,
+then a two-CNOT tail on qubits 0 and 1 that cancels the leftover one-qubit and
+two-qubit phase terms. Materialising its operator gives a diagonal of
+
+```text
+[1, 1, 1, 1, 1, 1, 1, -1]
+```
+
+and a largest off-diagonal entry of $0.0$, so the match with CCZ is exact rather
+than up to a global phase. Its metrics are 13 ops, depth 10, six two-qubit gates
+and a T-count of seven.
+
+<Callout tone="gotcha" title="The tail is not optional">
+Drop the final `t` on qubit 0, `tdg` on qubit 1 and the two CNOTs between them
+and you get a circuit whose diagonal is still $(1,\ldots,1,-1)$ in magnitude but
+whose entries pick up stray eighth roots of unity on the states of odd weight.
+It is a different diagonal unitary, and no choice of global phase repairs it.
+</Callout>
+
+## Constraints
+
+- `qubits` is exactly 3 and `clbits` is exactly 0. No ancilla.
+- T-count at most 7, counting `t` and `tdg` together.
+- At most six two-qubit gates.
+- No gate may touch three wires at once, so writing `ccz` directly is rejected.
+- Allowed gates: `h`, `s`, `sdg`, `t`, `tdg`, `x`, `z`, `cz`, and `x` carrying a single control.
+- No `measure`, no `reset`, no classical conditions.
+
+## Scoring
+
+400 points for the first accepted submission. The judge runs `unitary_equals`
+against the CCZ matrix with `up_to_global_phase` set to true and a tolerance of
+$10^{-9}$, then `resource_bound` with `max_t_count` of 7 and
+`max_two_qubit_gates` of 6, then `gate_set_subset`. No partial credit, one
+penalty minute per rejected submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+@@SNIPPET:week-01-d@@
+```
+
+Output:
+
+```text
+@@OUTPUT:week-01-d@@
+```

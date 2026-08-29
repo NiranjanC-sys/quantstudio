@@ -1,0 +1,42 @@
+# Weekly contest 3.
+#
+# Every amplitude, probability and gate count quoted in problems/ and
+# editorials/ was produced by running the reference circuits in solutions/
+# through the kernel and through Qiskit. Nothing here is from memory.
+id: week-03
+title: "Weekly Contest 3: Compiling To The Hardware Basis"
+date: "2026-09-19"
+durationMinutes: 90
+ratingRange: "1200-1800"
+summary: >-
+  Four decomposition problems. Trade a SWAP for CNOTs, rewrite a Bell
+  preparation into the rz and sx basis a superconducting chip actually runs,
+  build a CNOT out of iSWAPs, and hit a generic two-qubit gate in three CNOTs.
+problems:
+  - id: a-swap-without-swap
+    title: SWAP Without SWAP
+    points: 100
+    difficulty: easy
+    summary: >-
+      Implement the two-qubit SWAP exactly, using CNOTs only and nothing else.
+  - id: b-bell-in-a-hardware-basis
+    title: Bell In A Hardware Basis
+    points: 200
+    difficulty: medium
+    summary: >-
+      Prepare a Bell pair using only rz, sx and a single cz, the native gate set
+      of a fixed-frequency transmon device.
+  - id: c-cnot-from-iswap
+    title: CNOT From iSWAP
+    points: 300
+    difficulty: medium-hard
+    summary: >-
+      Build a CNOT from exactly two iSWAP gates plus single-qubit gates, correct
+      up to a global phase.
+  - id: d-three-cnot-canonical
+    title: Three CNOTs For The Canonical Gate
+    points: 400
+    difficulty: hard
+    summary: >-
+      Implement exp(-i(a XX + b YY + c ZZ)/2) with all three coefficients
+      nonzero, in the three CNOTs the Weyl chamber says are necessary.

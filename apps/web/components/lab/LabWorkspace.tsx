@@ -6,6 +6,7 @@ import { GatePalette } from '@/components/circuit/GatePalette';
 import { Inspector } from '@/components/circuit/Inspector';
 import { ResultsPanel } from '@/components/lab/ResultsPanel';
 import { CodePanel } from '@/components/lab/CodePanel';
+import { ServerRun } from '@/components/lab/ServerRun';
 import { Toolbar } from '@/components/lab/Toolbar';
 import { useCircuit } from '@/lib/circuit-store';
 
@@ -43,6 +44,9 @@ export function LabWorkspace() {
           </section>
           <section className="rq-lab-results" aria-label="Simulation results">
             <ResultsPanel />
+          </section>
+          <section className="rq-lab-server" aria-label="Server backends">
+            <ServerRun />
           </section>
         </div>
       </main>

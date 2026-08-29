@@ -1,0 +1,85 @@
+---
+id: week-03.d.editorial
+contest: week-03
+slot: D
+kind: editorial
+title: "Editorial: Three CNOTs For The Canonical Gate"
+points: 400
+difficulty: hard
+---
+
+## The intended solution
+
+Use the Vatan and Williams circuit, which is the standard three-CNOT template
+for an arbitrary point of the Weyl chamber, and just fill in its three angles.
+
+Write the target as $\exp(i(A\,XX + B\,YY + C\,ZZ))$, so that
+$A = a/2 = \pi/6$, $B = b/2 = \pi/8$ and $C = c/2 = \pi/10$. The template is
+
+```text
+rz(-pi/2)  on qubit 1
+CNOT 1 -> 0
+rz(2C - pi/2)  on qubit 0
+ry(pi/2 - 2A)  on qubit 1
+CNOT 0 -> 1
+ry(2B - pi/2)  on qubit 1
+CNOT 1 -> 0
+rz(pi/2)   on qubit 0
+```
+
+with the three free angles evaluating to $-0.9424777960769379$,
+$0.5235987755982989$ and $-0.7853981633974483$. Eight ops, depth 7, three CNOTs,
+and the operator matches the target up to a global phase of $e^{i\pi/4}$.
+
+Two structural facts make the template work. The CNOT directions alternate, which
+is what lets the three interaction terms be produced independently rather than
+compounding. And the two $R_z(\pm\pi/2)$ frame changes at the ends are fixed,
+independent of $(a, b, c)$: only the middle three angles carry the parameters.
+
+A useful sanity check while debugging: the canonical gate is block diagonal in
+the parity basis. It never moves weight between the even subspace, spanned by
+$\ket{00}$ and $\ket{11}$, and the odd one, spanned by $\ket{01}$ and $\ket{10}$.
+Applied to $\ket{00}$ the reference circuit gives $0.982963$ on $\ket{00}$ and
+$0.017037$ on $\ket{11}$, and exactly zero on the other two. If your circuit puts
+any weight on $\ket{01}$ or $\ket{10}$ from that input, the error is structural,
+not a wrong angle.
+
+## Why the naive answer is rejected
+
+The naive answer is three two-qubit rotations: `rxx(pi/3)`, `ryy(pi/4)`,
+`rzz(pi/5)`. The three terms commute, so the product is exactly the target, and
+it is also exactly a restatement of the question. The gate-set check rejects
+`rxx`, `ryy` and `rzz` for that reason.
+
+The interesting cost question is what those three rotations become once compiled.
+Each $R_{PP}(\theta)$ is a CNOT, a single-qubit rotation, a CNOT, with a basis
+change on both wires for $XX$ and $YY$. That is six CNOTs for the three terms,
+exactly double the optimum, and the excess is not removable by peephole
+simplification: the middle CNOT pair of adjacent terms does cancel, taking the
+count from six to four, and four is still one more than three. Reaching three
+requires the interleaved template, where the single-qubit rotations sit between
+CNOTs rather than inside their own conjugation pairs.
+
+## Why three is the lower bound
+
+The CNOT cost of a two-qubit unitary is decided by its canonical coordinates.
+Zero CNOTs reach only the local gates. One reaches the points with two
+coordinates zero. Two reach the points with one coordinate zero. Everything else
+needs three, and three always suffice. Here $a$, $b$ and $c$ are $\pi/3$,
+$\pi/4$ and $\pi/5$, all nonzero and pairwise different, so the point is generic
+and the bound is tight.
+
+## Common wrong answers
+
+Using $A = a$ rather than $A = a/2$ in the angle formulas is the most common
+slip, and it produces a valid canonical gate at the wrong point of the chamber.
+Applied to $\ket{00}$ it gives $0.933013$ and $0.066987$ where the target gives
+$0.982963$ and $0.017037$: the parity structure is intact and the numbers are
+off in the second decimal place, which is the signature of a factor of two in
+the angles rather than a broken circuit.
+
+Reversing the CNOT directions while keeping the angles is the other one. The
+template is not symmetric under that swap, and the result is not the canonical
+gate at any point of the chamber: it is a different unitary that no relabelling
+of $a$, $b$ and $c$ repairs. If your operator is close but not equal, check the
+angles; if it is nowhere near, check the directions.

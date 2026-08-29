@@ -105,6 +105,38 @@
   --rq-shadow-panel: none;
   --rq-shadow-overlay: 0 16px 40px -12px rgba(0, 0, 0, 0.72);
 
+
+  /*
+   * The aliases must be redeclared here, not merely inherited.
+   *
+   * A custom property whose value is `var(...)` is substituted at the element
+   * where it is DECLARED. `:root { --canvas: var(--rq-canvas) }` therefore
+   * resolves against the root's palette, and a descendant that redefines
+   * --rq-canvas inherits the already-resolved --canvas unchanged. Redeclaring
+   * them inside this subtree is what makes the register switch actually take.
+   */
+  --canvas: var(--rq-canvas);
+  --surface-1: var(--rq-surface-1);
+  --surface-2: var(--rq-surface-2);
+  --surface-3: var(--rq-surface-3);
+  --surface-inset: var(--rq-surface-inset);
+  --hairline: var(--rq-hairline);
+  --hairline-strong: var(--rq-hairline-strong);
+  --ink: var(--rq-ink);
+  --ink-muted: var(--rq-ink-muted);
+  --ink-subtle: var(--rq-ink-subtle);
+  --ink-faint: var(--rq-ink-faint);
+  --accent: var(--rq-accent);
+  --accent-strong: var(--rq-accent-strong);
+  --accent-hover: var(--rq-accent-hover);
+  --accent-press: var(--rq-accent-press);
+  --accent-wash: var(--rq-accent-wash);
+  --on-accent: var(--rq-on-accent);
+  --success: var(--rq-success);
+  --warning: var(--rq-warning);
+  --danger: var(--rq-danger);
+  --info: var(--rq-info);
+
   color-scheme: dark;
   background: var(--canvas);
   color: var(--ink);

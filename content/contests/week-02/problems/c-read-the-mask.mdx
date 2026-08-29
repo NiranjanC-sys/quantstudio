@@ -1,0 +1,101 @@
+---
+id: week-02.c
+contest: week-02
+slot: C
+title: Read The Mask
+points: 300
+difficulty: medium-hard
+tags: [bernstein-vazirani, phase-kickback, oracle, single-query]
+---
+
+A classical program that wants to learn a hidden $n$-bit mask $s$ from a black
+box computing $f(x) = s \cdot x \bmod 2$ needs $n$ queries, one per bit: feed it
+$100\ldots$, then $010\ldots$, and read the answers off. One query cannot do it,
+because one query returns one bit. A quantum program needs exactly one query
+regardless of $n$, and the reason is not that it asks a cleverer question. It is
+that it asks all the questions at once and reads the answer out of the phases.
+
+## Task
+
+The hidden mask is $s = 101$, with $s_0$ on qubit 0. Return a four-qubit circuit
+that starts from $\ket{0000}$ and ends with the three query qubits, indices 0, 1
+and 2, holding $\ket{101}$ with probability 1, after **one** call to the oracle
+for $f$.
+
+You build the oracle yourself, and it must be the honest reversible oracle
+$\ket{x}\ket{y} \mapsto \ket{x}\ket{y \oplus f(x)}$ realised on qubit 3 as the
+answer wire. That means one CNOT from query qubit $i$ into qubit 3 for each
+position where $s_i = 1$, and nothing at all where $s_i = 0$. Hard-coding
+$\ket{101}$ with two $X$ gates is not a solution, and the resource bound is set
+to catch it.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. Qubits 0, 1 and 2 are the query register, qubit 3
+is the answer wire. A CNOT is written as an `x` gate carrying one control:
+
+```python
+{"id": "q0", "gate": "x", "targets": [3], "controls": [0]}
+```
+
+The judge simulates from $\ket{0000}$ with no measurement, then sums the
+probability of every basis state whose first three characters read $101$.
+
+Qubit 0 is the most significant bit, so the query register is the top three bits
+of the basis index and the answer wire is the bottom bit.
+
+## Worked example
+
+The reference solution puts an $X$ then an $H$ on the answer wire to prepare
+$\ket{-}$, Hadamards the three query qubits, applies two CNOTs, from qubit 0 and
+from qubit 2, into the answer wire, and Hadamards the query register again.
+Summing the amplitudes into the query marginal gives:
+
+```text
+query register 101 probability 1.0
+```
+
+Nothing is spread across the other seven strings. The full state is
+$\ket{101} \otimes \ket{-}$, so the answer wire comes back in $\ket{-}$ exactly
+as it went in, which is the signature of phase kickback: the oracle wrote its
+answer into the sign of the query register and left its own wire alone. The
+measured metrics are 10 ops, depth 5, two two-qubit gates.
+
+## Constraints
+
+- `qubits` is exactly 4 and `clbits` is exactly 0.
+- At most **two** two-qubit gates in total, which is one per set bit of $s$ and leaves no budget for anything else.
+- The oracle appears exactly once. With a two-CNOT ceiling there is no way to call it twice.
+- Allowed gates: `h`, `x`, `z`, and `x` carrying a single control.
+- No `measure`, no `reset`, no classical conditions.
+
+## Scoring
+
+300 points for the first accepted submission. The judge runs
+`statevector_equals` against $\ket{101} \otimes \ket{-}$ with
+`up_to_global_phase` set to true, `resource_bound` with `max_two_qubit_gates` of
+2 and `max_qubits` of 4, and `gate_set_subset` over the list above. Checking the
+full four-qubit state rather than the query marginal is deliberate: it rejects a
+circuit that gets the right answer by leaving the answer wire entangled with the
+query register. No partial credit, one penalty minute per rejected submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+@@SNIPPET:week-02-c@@
+```
+
+Output:
+
+```text
+@@OUTPUT:week-02-c@@
+```

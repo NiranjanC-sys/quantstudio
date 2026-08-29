@@ -1,0 +1,111 @@
+---
+id: week-03.d
+contest: week-03
+slot: D
+title: Three CNOTs For The Canonical Gate
+points: 400
+difficulty: hard
+tags: [weyl-chamber, kak, canonical-gate, cnot-count, vatan-williams]
+---
+
+Every two-qubit unitary factors as local gates, a purely non-local core, and
+more local gates. The core is always $\exp(-i(a\,XX + b\,YY + c\,ZZ)/2)$ for one
+point $(a, b, c)$ in the Weyl chamber, and the CNOT cost of the whole gate is a
+function of that point alone: zero if it is the origin, one if two coordinates
+vanish, two if one does, and three otherwise. This problem hands you a point with
+all three coordinates nonzero and asks for the matching three-CNOT circuit.
+
+## Task
+
+Return a two-qubit circuit whose unitary equals
+
+$$
+U = \exp\!\left(-\tfrac{i}{2}\left(a\,X \otimes X + b\,Y \otimes Y + c\,Z \otimes Z\right)\right),
+\qquad a = \frac{\pi}{3},\; b = \frac{\pi}{4},\; c = \frac{\pi}{5},
+$$
+
+up to a global phase, using at most three CNOTs.
+
+The three terms commute, so $U$ is also $R_{XX}(a)\,R_{YY}(b)\,R_{ZZ}(c)$ in any
+order, which is the cheapest way to build the reference matrix for checking.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. A CNOT is written as an `x` gate carrying one
+control, and rotations carry their angle in `params` in radians:
+
+```python
+{"id": "zz", "gate": "rz", "targets": [0], "params": [-0.9424777960769379]}
+```
+
+The judge materialises the full $4 \times 4$ operator, divides out the phase of
+the largest entry of the target, and compares.
+
+Qubit 0 is the most significant bit, so $X \otimes X$ means $X$ on qubit 0
+tensored with $X$ on qubit 1, and the tensor factors read left to right in the
+same order as the basis label.
+
+## Worked example
+
+The reference solution is the Vatan and Williams circuit. Writing the target as
+$\exp(i(A\,XX + B\,YY + C\,ZZ))$ with $A = a/2$, $B = b/2$, $C = c/2$, the three
+free rotation angles are
+
+$$
+2C - \tfrac{\pi}{2} = -0.9424777960769379 \; \text{on qubit } 0, \qquad
+\tfrac{\pi}{2} - 2A = 0.5235987755982989 \; \text{on qubit } 1, \qquad
+2B - \tfrac{\pi}{2} = -0.7853981633974483 \; \text{on qubit } 1,
+$$
+
+wrapped in two fixed $R_z(\pm\pi/2)$ frame changes and interleaved with three
+CNOTs whose directions alternate. Materialising the operator gives:
+
+```text
+global phase: (0.707107+0.707107j)
+matches the canonical gate: True
+```
+
+The leftover $e^{i\pi/4}$ is unobservable. Applied to $\ket{00}$ the circuit
+produces amplitude $0.883384 + 0.450107i$ on $\ket{00}$ and
+$0.059258 - 0.116300i$ on $\ket{11}$, probabilities $0.982963$ and $0.017037$,
+with zero weight on $\ket{01}$ and $\ket{10}$: the canonical gate preserves the
+even and odd parity subspaces separately. The circuit has 8 ops, depth 7 and
+three two-qubit gates.
+
+## Constraints
+
+- `qubits` is exactly 2 and `clbits` is exactly 0.
+- At most three two-qubit gates. Three is necessary here, because all three interaction coefficients are nonzero.
+- At most six single-qubit gates.
+- Allowed gates: `rx`, `ry`, `rz`, `h`, `s`, `sdg`, and `x` carrying a single control.
+- No `rxx`, `ryy`, `rzz`, `cz` or `iswap`: writing the answer as three two-qubit rotations is not a decomposition.
+- No `measure`, no `reset`, no classical conditions.
+
+## Scoring
+
+400 points for the first accepted submission. The judge runs `unitary_equals`
+against $U$ with `up_to_global_phase` set to true and a tolerance of $10^{-9}$,
+then `resource_bound` with `max_two_qubit_gates` of 3 and `max_size` of 9, then
+`gate_set_subset` over the list above. No partial credit, one penalty minute per
+rejected submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+@@SNIPPET:week-03-d@@
+```
+
+Output:
+
+```text
+@@OUTPUT:week-03-d@@
+```

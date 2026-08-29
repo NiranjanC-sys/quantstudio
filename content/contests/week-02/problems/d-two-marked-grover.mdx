@@ -1,0 +1,108 @@
+---
+id: week-02.d
+contest: week-02
+slot: D
+title: Two Marked Items
+points: 400
+difficulty: hard
+tags: [grover, amplitude-amplification, exact-search, diffusion]
+---
+
+Grover's algorithm is usually taught as an approximation: run about
+$\tfrac{\pi}{4}\sqrt{N/M}$ iterations, accept a success probability slightly
+below 1, and repeat if unlucky. That is the general case. For a few small
+$(N, M)$ pairs the rotation angle divides $\pi/2$ exactly and the algorithm is
+not approximate at all. This is one of them, and finding it is a matter of
+arithmetic rather than luck.
+
+## Task
+
+There are $N = 8$ basis states on three qubits, and $M = 2$ of them are marked:
+$\ket{010}$ and $\ket{101}$. Return a three-qubit circuit that starts from
+$\ket{000}$ and ends holding all of its probability on the marked pair:
+
+$$
+\ket{\psi} = \tfrac{1}{\sqrt 2}\left(\ket{010} + \ket{101}\right)
+$$
+
+up to a global phase, using **one** Grover iteration.
+
+## Input and output contract
+
+Implement one function, taking no arguments:
+
+```python
+def solve() -> dict:
+    """Return a RedQuant circuit IR, version 1."""
+```
+
+Ops are applied in list order. This problem allows a three-wire diagonal gate,
+written with all three wires in `targets`:
+
+```python
+{"id": "accz", "gate": "ccz", "targets": [0, 1, 2]}
+```
+
+`ccz` applies $(-1)^{x_0 x_1 x_2}$, so it flips the sign of $\ket{111}$ and
+nothing else. To flip the sign of some other basis state, conjugate it with $X$
+gates on the wires that should read 0 in that state.
+
+Qubit 0 is the most significant bit, so the marked string $010$ means qubit 0
+reads 0, qubit 1 reads 1 and qubit 2 reads 0.
+
+## Worked example
+
+The Grover rotation angle is $\theta = 2\arcsin\sqrt{M/N} = 2\arcsin\tfrac12 = \pi/3$,
+and after $k$ iterations the probability on the marked subspace is
+$\sin^2\!\big((2k+1)\theta/2\big)$. Evaluate it rather than quoting the
+asymptotic form:
+
+| $k$ | probability |
+| --- | --- |
+| $0$ | $0.25$ |
+| $1$ | $1.0$ |
+| $2$ | $0.25$ |
+
+One iteration is not a rounding of $\tfrac{\pi}{4}\sqrt{8/2} = 1.5708$. It is
+exact, and a second iteration walks all the way back to where you started.
+Running the reference solution gives:
+
+```text
+|010> -0.707107 probability 0.5
+|101> -0.707107 probability 0.5
+```
+
+Both marked amplitudes come out negative, which is a global phase of $-1$ and is
+accepted.
+
+## Constraints
+
+- `qubits` is exactly 3 and `clbits` is exactly 0. No ancilla.
+- At most **three** gates touching three wires at once, which is two for the oracle and one for the diffusion operator. That budget permits exactly one iteration.
+- Circuit depth at most 12.
+- Allowed gates: `h`, `x`, `z`, `s`, `sdg`, `cz`, `ccz`, and `x` carrying one or two controls.
+- No `measure`, no `reset`, no classical conditions.
+
+## Scoring
+
+400 points for the first accepted submission. The judge runs
+`statevector_equals` against the target above with `up_to_global_phase` set to
+true and a tolerance of $10^{-9}$, so probability 0.9999 is a rejection and only
+an exact landing scores. Then `resource_bound` with `max_depth` of 12, then a
+`custom_python` check asserting `METRICS["multiQubitGates"] <= 3`, then
+`gate_set_subset`. No partial credit, one penalty minute per rejected
+submission.
+
+## Qiskit implementation
+
+Your `solve` is in scope. This is the exact translation the judge uses:
+
+```python
+@@SNIPPET:week-02-d@@
+```
+
+Output:
+
+```text
+@@OUTPUT:week-02-d@@
+```
