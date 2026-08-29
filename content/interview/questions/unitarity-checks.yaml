@@ -1,0 +1,682 @@
+# Benchmark pattern 8: unitarity checks and circuit verification. Every matrix,
+# singular value and error norm below was computed with NumPy.
+
+questions:
+  - id: iq-071
+    title: Write a unitarity check that is actually correct
+    kind: coding
+    prompt: |
+      Write a function that decides whether a given complex matrix is unitary.
+      Then tell me which of these four matrices your function accepts and why:
+      [[1,1],[0,1]], [[1,1],[1,1]]/sqrt(2), 2*[[0,1],[1,0]], and the Hadamard.
+    difficulty: easy
+    pattern: Unitarity and circuit verification
+    topics: [unitarity, linear-algebra, numerical-testing, verification]
+    companies: [IBM, Classiq, Microsoft Azure Quantum, Quantinuum]
+    modelAnswer: |
+      The definition is U^dagger U = I, and for square matrices that is
+      equivalent to U U^dagger = I. Everything else is a shortcut that fails.
+
+      ```python
+      import numpy as np
+
+      def is_unitary(U, tol=1e-9) -> bool:
+          U = np.asarray(U, dtype=complex)
+          if U.ndim != 2 or U.shape[0] != U.shape[1]:
+              return False
+          return np.allclose(U.conj().T @ U, np.eye(U.shape[0]), atol=tol)
+      ```
+
+      Running it on the four matrices:
+
+      * [[1,1],[0,1]] is rejected. Its determinant has modulus exactly 1 and
+        both its eigenvalues are 1, so it passes two popular shortcuts, but
+        U^dagger U = [[1,1],[1,2]], which is not the identity. This is the
+        matrix to keep in your test suite because it defeats the determinant
+        test and the eigenvalue test simultaneously.
+      * [[1,1],[1,1]]/sqrt(2) is rejected. Both rows have norm exactly 1, so it
+        passes a row-normalisation check, but the rows are identical rather than
+        orthogonal and U^dagger U = [[1,1],[1,1]]. Normalised rows are necessary
+        and not sufficient; orthonormal rows are the actual condition.
+      * 2*[[0,1],[1,0]] is rejected. U^dagger U = 4I, so it is unitary up to the
+        scale factor 2. If your code needs to accept scaled unitaries, test
+        U^dagger U = c*I for some positive real c and report c, rather than
+        loosening the tolerance until 4I looks like I.
+      * The Hadamard is accepted, as it must be.
+
+      The equivalent and often better test is the singular value spectrum: a
+      matrix is unitary exactly when all its singular values equal 1. Computed
+      for the same four: Hadamard gives [1, 1], the shear [[1,1],[0,1]] gives
+      [1.618034, 0.618034], and 2X gives [2, 2]. Singular values also tell you
+      how badly a near-unitary misses, in a way that a boolean does not, and
+      they cost one SVD.
+
+      One correctness note: for non-square matrices the two conditions come
+      apart. The 2 by 3 matrix [[1,0,0],[0,1,0]] satisfies M M^dagger = I but
+      M^dagger M is a rank-2 projector, not the 3 by 3 identity. Check the shape
+      first, which is why the function above does.
+    followUps:
+      - How would you report how far from unitary a matrix is, rather than a boolean?
+      - What tolerance would you use for a 1024 by 1024 matrix and why?
+      - What is the analogous check for a quantum channel rather than a gate?
+    commonMistakes:
+      - Using |det U| = 1 as the test. The shear [[1,1],[0,1]] has determinant 1 and is not unitary.
+      - Checking that eigenvalues have modulus 1. That is necessary, not sufficient, and the same shear matrix defeats it.
+      - Checking only that rows or columns are normalised, without checking they are mutually orthogonal.
+    references:
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+      - label: Microsoft Quantum Katas
+        url: https://github.com/microsoft/QuantumKatas
+
+  - id: iq-072
+    title: Choose the tolerance for a unitarity check at scale
+    kind: coding
+    prompt: |
+      Your check uses a fixed tolerance of 1e-12 and starts failing on
+      ten-qubit circuits that are mathematically exact. Explain what is
+      happening and give me a tolerance rule that survives to 2^10 by 2^10 and
+      beyond.
+    difficulty: easy
+    pattern: Unitarity and circuit verification
+    topics: [floating-point, tolerance, numerical-analysis, verification]
+    companies: [IBM, Classiq, AWS Braket, Q-CTRL]
+    modelAnswer: |
+      Floating point error accumulates with dimension. Measured on random
+      unitaries built by QR decomposition in complex128:
+
+          d = 2     ||U^dag U - I||_F = 3.340e-16
+          d = 4     4.105e-16
+          d = 8     1.502e-15
+          d = 16    2.118e-15
+          d = 64    6.739e-15
+          d = 256   1.725e-14
+          d = 1024  3.835e-14
+
+      The Frobenius norm grows roughly as sqrt(d) because it sums d^2 entries
+      each with error near machine epsilon, while the per-entry error stays flat
+      at about 1e-16. A ten-qubit unitary is d = 1024, and its Frobenius
+      deviation is 3.8e-14, comfortably above a 1e-12 threshold only if you also
+      accumulate gate error, which a deep circuit does. The fix depends on which
+      norm you use:
+
+      * If you compare elementwise with np.allclose, the natural tolerance is
+        independent of d and set by precision and depth: about 1e-9 for
+        complex128 with thousands of gates, and about 1e-5 for complex64.
+      * If you use the Frobenius norm, scale it: tol = c * d * eps, or normalise
+        by dividing the norm by sqrt(d) so the quantity you compare is a
+        per-entry error again.
+
+      The rule I would ship:
+
+      ```python
+      def unitarity_error(U):
+          U = np.asarray(U, dtype=complex)
+          d = U.shape[0]
+          return np.linalg.norm(U.conj().T @ U - np.eye(d)) / np.sqrt(d)
+      ```
+
+      This returns a per-entry error that stays near 1e-16 in complex128
+      regardless of dimension, so a single fixed threshold works from d = 2 to
+      d = 1024 and beyond. Report the number rather than a boolean, so a caller
+      can see whether they are at 1e-16 or 1e-7.
+
+      The failure to avoid is tightening the tolerance until nothing passes, or
+      loosening it until everything does. A per-entry metric plus a threshold
+      derived from the declared precision is the only version that stays honest
+      as circuits grow.
+    followUps:
+      - What tolerance would you use in complex64, and how did you derive it?
+      - Why does the Frobenius norm grow as sqrt(d) rather than as d?
+      - How would you separate accumulated rounding error from a real bug?
+    commonMistakes:
+      - Using a dimension-independent threshold on a dimension-dependent norm, which fails on large matrices that are exactly correct.
+      - Loosening the tolerance until tests pass, which lets real errors through at small dimension.
+      - Returning a boolean rather than the numerical deviation, discarding the information needed to diagnose the failure.
+    references:
+      - label: Qiskit Aer documentation
+        url: https://qiskit.github.io/qiskit-aer/
+      - label: Cirq documentation
+        url: https://quantumai.google/cirq
+
+  - id: iq-073
+    title: Verify a claimed gate decomposition
+    kind: coding
+    prompt: |
+      Someone hands you a fifteen-gate circuit and claims it implements a
+      Toffoli. How do you check it, what do you do about global phase, and what
+      is the cheapest check that would still catch a realistic bug?
+    difficulty: medium
+    pattern: Unitarity and circuit verification
+    topics: [decomposition, verification, global-phase, testing]
+    companies: [IBM, Classiq, Quantinuum, Microsoft Azure Quantum]
+    modelAnswer: |
+      Build the 8 by 8 unitary of the circuit and compare it against the Toffoli
+      matrix up to global phase. Comparing up to phase means computing
+      the inner product of the two flattened matrices, dividing by its modulus,
+      and checking the rotated candidate agrees elementwise. A decomposition
+      that is correct except for an overall factor exp(i alpha) is a correct
+      decomposition of the gate, and rejecting it is a bug in the test.
+
+      I ran exactly this check on the standard seven-T, six-CNOT Toffoli:
+
+          H(2)
+          CX(1,2) Tdg(2) CX(0,2) T(2) CX(1,2) Tdg(2) CX(0,2) T(1) T(2)
+          H(2) CX(0,1) T(0) Tdg(1) CX(0,1)
+
+      Its unitary matches CCX to machine precision, with T-count 7 and CNOT
+      count 6. That is the reference answer to check a candidate against.
+
+      The cheapest check that still catches realistic bugs is applying the
+      circuit to all eight computational basis states and checking the
+      permutation, since Toffoli is a permutation matrix. That is eight
+      statevector simulations instead of one 8 by 8 unitary construction, and it
+      catches any error that moves amplitude between basis states. What it
+      misses is phase errors: a circuit that computes the right permutation but
+      stamps a relative phase on |110> passes the permutation test and is wrong.
+      Since almost every realistic bug in a Clifford+T decomposition is a T
+      versus T-dagger sign, which is exactly a relative phase, the permutation
+      test is the wrong cheap check here.
+
+      The right cheap check is to apply the circuit to the uniform superposition
+      H^3|000> and compare the resulting statevector up to global phase. One
+      simulation, and it is sensitive to every relative phase because every
+      basis state carries amplitude. Add a second run from a state with unequal
+      amplitudes if you want sensitivity to permutation errors that happen to be
+      phase-symmetric.
+
+      Also check unitarity of the whole circuit, which costs nothing extra once
+      you have the matrix, because it catches an accidental measurement or reset
+      hidden in the middle of the sequence. A circuit containing a measurement
+      is not a gate and no amount of comparing statevectors from |000> will tell
+      you.
+    followUps:
+      - Design a randomised test that certifies the decomposition with high confidence without building the full unitary.
+      - How would you localise which gate in the fifteen is wrong?
+      - What changes if the claim is about a parameterised gate rather than a fixed one?
+    commonMistakes:
+      - Rejecting a correct decomposition because it differs by a global phase.
+      - Testing only on computational basis states, which cannot see the relative phase errors that T versus T-dagger sign bugs produce.
+      - Forgetting to check that the circuit is unitary at all, which misses a stray measurement or reset.
+    references:
+      - label: Barenco et al, Elementary gates for quantum computation
+        url: https://arxiv.org/abs/quant-ph/9503016
+      - label: Shende, Bullock and Markov, Synthesis of Quantum Logic Circuits
+        url: https://arxiv.org/abs/quant-ph/0406176
+
+  - id: iq-074
+    title: Explain what a unitarity check cannot catch
+    kind: coding
+    prompt: |
+      Your CI asserts that every synthesised circuit is unitary to 1e-12, and
+      it passes. A physicist reports the results are still wrong. Explain what
+      class of bug your check is structurally unable to detect, with a concrete
+      example and numbers.
+    difficulty: medium
+    pattern: Unitarity and circuit verification
+    topics: [verification, limitations, rotation-angles, testing]
+    companies: [IBM, Q-CTRL, Classiq, Quantinuum]
+    modelAnswer: |
+      A unitarity check tests a property of the matrix, not its identity. Every
+      wrong gate that happens to be unitary passes, and that is almost all of
+      them.
+
+      The sharpest example is a rotation angle error. Take Rz(0.7) and
+      Rz(0.7001), a relative error of about 1.4e-4:
+
+          both are exactly unitary, to machine precision
+          ||Rz(0.7) - Rz(0.7001)||_F = 7.0710678e-05
+          process fidelity |Tr(U^dag V)|^2 / d^2 = 0.9999999975
+
+      A unitarity check on either returns true. There is no tolerance you could
+      set that would catch this, because the property being tested is satisfied
+      exactly by both. Yet in a variational circuit with a thousand such gates
+      the accumulated angle error is real and shows up as a systematically
+      wrong energy.
+
+      The general class: any bug that replaces one unitary with a different
+      unitary. That includes swapped qubit indices, a CX with control and target
+      exchanged, S in place of S-dagger, a gate applied in the wrong order,
+      degrees used where radians were intended, and a sign convention difference
+      between Rz and P. Every one of these produces a perfectly unitary matrix.
+
+      What the check does catch, and it is worth keeping for exactly this: a
+      matrix that is not unitary at all. Dropping the 1/sqrt(2) from the
+      Hadamard gives U^dagger U = 2I with Frobenius deviation 1.414213562, an
+      unmissable failure. A stray measurement, reset or projection in the middle
+      of a supposedly unitary block. A truncated or non-normalised
+      user-supplied matrix. Those are real bugs and the check finds them
+      immediately.
+
+      So the correct role for a unitarity check is as a cheap invariant, not as
+      a correctness test. Correctness needs a reference: compare against the
+      known unitary up to global phase, or against an independently implemented
+      version, or assert specific matrix elements and expectation values whose
+      values you derived analytically. In a test suite, unitarity is the
+      assertion you make in addition to the real one, never instead of it.
+    followUps:
+      - How would you catch a systematic degrees-versus-radians error in a large codebase?
+      - What test would catch a swapped control and target on a CX?
+      - How small an angle error do you actually need to catch for a VQE workload?
+    commonMistakes:
+      - Treating a passing unitarity check as evidence of correctness. It rules out one narrow failure class and nothing else.
+      - Assuming a tighter tolerance would catch angle errors. Both matrices are exactly unitary at any tolerance.
+      - Removing the unitarity assertion because it never fails, losing the one cheap check that catches stray measurements and unnormalised matrices.
+    references:
+      - label: Merkel et al, Self-Consistent Quantum Process Tomography
+        url: https://arxiv.org/abs/1211.0322
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+
+  - id: iq-075
+    title: Certify unitarity without building the full matrix
+    kind: coding
+    prompt: |
+      For a 20-qubit circuit you cannot form the 2^20 by 2^20 unitary. Design a
+      randomised certification that a circuit is unitary, say what confidence
+      it gives, and compare it against checking basis states.
+    difficulty: medium
+    pattern: Unitarity and circuit verification
+    topics: [randomised-testing, norm-preservation, verification, scaling]
+    companies: [IBM, Google Quantum AI, Classiq, AWS Braket]
+    modelAnswer: |
+      A linear map is unitary exactly when it preserves the norm of every
+      vector, and by polarisation, preserving norms implies preserving inner
+      products. So sample random unit vectors, apply the circuit, and check the
+      output norm is 1. Each trial costs one statevector simulation, 16 MiB at
+      n = 20, instead of 2^20 of them.
+
+      ```python
+      def certify_unitary(apply, n, trials=32, tol=1e-9, seed=0):
+          rng = np.random.default_rng(seed)
+          worst = 0.0
+          for _ in range(trials):
+              v = rng.normal(size=1 << n) + 1j * rng.normal(size=1 << n)
+              v /= np.linalg.norm(v)
+              worst = max(worst, abs(np.linalg.norm(apply(v)) - 1.0))
+          return worst <= tol, worst
+      ```
+
+      How sensitive is it? I took an 8 by 8 unitary and perturbed a single
+      entry by a relative 1e-6, giving ||B^dag B - I||_F = 9.85e-07. Over 2000
+      random unit vectors the maximum deviation of the output norm from 1 was
+      3.21e-07, the same order as the true deviation. So random vectors detect
+      the perturbation at essentially full strength: a Haar random vector has
+      overlap with every direction, so it excites the bad subspace with high
+      probability. That is the key argument, and it is why a handful of trials
+      suffices in practice rather than needing many.
+
+      Compare against basis states. Feeding e_0 to the same perturbed matrix
+      gave 3.57e-07, which also detects it, but only because the perturbation
+      happened to be in the first column. A perturbation confined to a single
+      column j is invisible to every basis state except e_j, so certifying with
+      basis states requires all 2^n of them, which is exactly what you cannot
+      afford. Random vectors have no such blind spot.
+
+      Two caveats to state. First, this certifies norm preservation on the
+      sampled vectors and is therefore probabilistic; it is a strong test, not a
+      proof, and a maliciously constructed near-unitary could hide in a
+      measure-zero subspace. For a test suite that is fine; for a security
+      argument it is not. Second, it cannot distinguish a unitary from a
+      different unitary, exactly as in the general case, so it belongs alongside
+      a reference comparison rather than instead of one.
+    followUps:
+      - How many trials do you need for a stated confidence, and how would you derive that?
+      - How would you extend this to certify that a circuit implements a specific unitary, not just some unitary?
+      - What changes if the circuit contains mid-circuit measurement?
+    commonMistakes:
+      - Certifying with computational basis states only, which is blind to perturbations outside the sampled columns.
+      - Using real random vectors rather than complex ones, which misses errors that act only on the imaginary part.
+      - Presenting the result as a proof rather than a high-confidence probabilistic test.
+    references:
+      - label: Magesan, Gambetta and Emerson, Robust randomized benchmarking of quantum processes
+        url: https://arxiv.org/abs/1009.3639
+      - label: Cirq documentation
+        url: https://quantumai.google/cirq
+
+  - id: iq-076
+    title: Check a quantum channel rather than a gate
+    kind: coding
+    prompt: |
+      You are given a set of Kraus operators claimed to describe a physical
+      noise channel. What do you check, and what does each check rule out?
+      Work it on amplitude damping and on the depolarising channel.
+    difficulty: medium
+    pattern: Unitarity and circuit verification
+    topics: [kraus-operators, channels, complete-positivity, trace-preservation]
+    companies: [IBM, Q-CTRL, Google Quantum AI, Alice and Bob]
+    modelAnswer: |
+      For a channel given in Kraus form, the conditions are different from
+      unitarity and there are exactly two to check.
+
+      1. Trace preservation: sum_k K_k^dagger K_k = I. This says probability is
+         conserved. It is the channel analogue of unitarity and it is the one
+         people forget.
+      2. Complete positivity: automatic if the map is presented in Kraus form,
+         because any sum of K rho K^dagger is completely positive by
+         construction. If instead you are given a superoperator or a Choi
+         matrix, complete positivity is the non-trivial condition and it is
+         checked by requiring the Choi matrix to be positive semidefinite.
+
+      Amplitude damping with parameter gamma has
+      K0 = [[1, 0], [0, sqrt(1-gamma)]] and K1 = [[0, sqrt(gamma)], [0, 0]]. I
+      evaluated sum K^dagger K at gamma = 0, 0.1, 0.5 and 1.0 and it is the
+      identity exactly in every case. Note that neither Kraus operator is
+      unitary on its own, and that is correct: a channel is not a gate, and
+      demanding unitary Kraus operators would restrict you to mixtures of
+      unitaries, which amplitude damping is not.
+
+      Depolarising with parameter p has
+      K0 = sqrt(1 - 3p/4) I and K_i = sqrt(p/4) times X, Y, Z. At p = 0.1 the
+      sum is exactly the identity. Here the Kraus operators are proportional to
+      unitaries, which is what makes depolarising a mixture of unitaries and
+      therefore much friendlier to error mitigation methods that assume that
+      structure.
+
+      Two further checks worth running in a test suite. First, that the channel
+      maps the maximally mixed state to a valid state, which catches sign errors
+      in the coefficients. Second, that the Kraus set has at most d^2 elements
+      for a d-dimensional system, since more than that is redundant and usually
+      indicates a bug in a derivation.
+
+      The framing to give an interviewer: for a gate you check U^dagger U = I,
+      for a channel you check sum K^dagger K = I, and for a Choi matrix you
+      check positive semidefiniteness plus a partial trace condition. Three
+      different objects, three different checks, and confusing them is the
+      actual error being tested.
+    followUps:
+      - Write down the Choi matrix conditions explicitly.
+      - How would you verify a channel estimated from experimental data rather than given analytically?
+      - Why does the Kraus representation guarantee complete positivity?
+    commonMistakes:
+      - Checking that each Kraus operator is unitary. Only mixtures of unitaries have that property, and amplitude damping does not.
+      - Checking sum K K^dagger instead of sum K^dagger K. The first is unitality, a different and optional property.
+      - Assuming a superoperator that preserves trace is a valid channel. Complete positivity is a separate condition and must be checked.
+    references:
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+      - label: MIT 8.371x Quantum Information Science II
+        url: https://ocw.mit.edu/courses/8-371x-quantum-information-science-ii-spring-2018/
+
+  - id: iq-077
+    title: Localise which gate in a long circuit is wrong
+    kind: coding
+    prompt: |
+      A 200-gate circuit produces the wrong final state. The unitarity check
+      passes. You have a reference implementation that is correct but slow.
+      Find the bug efficiently and tell me the complexity of your procedure.
+    difficulty: hard
+    pattern: Unitarity and circuit verification
+    topics: [debugging, bisection, verification, differential-testing]
+    companies: [IBM, Classiq, Quantinuum, Google Quantum AI]
+    modelAnswer: |
+      Binary search on circuit prefixes. Simulate both implementations up to
+      gate k and compare the states up to global phase. If they agree, the bug
+      is after k; if not, it is at or before k. Each comparison costs one
+      simulation of each implementation, and the search takes log2(200) which is
+      8 comparisons rather than 200. Total cost is 8 simulations of the slow
+      reference, which is what makes it affordable.
+
+      ```python
+      def find_divergence(fast, slow, n_gates, agree):
+          lo, hi = 0, n_gates          # agree(0) is True, agree(n_gates) is False
+          while hi - lo > 1:
+              mid = (lo + hi) // 2
+              if agree(mid): lo = mid
+              else:          hi = mid
+          return hi                    # 1-based index of the first bad gate
+      ```
+
+      Three details that make this work in practice rather than in theory.
+
+      First, compare up to global phase at every step, otherwise a
+      phase-convention difference between the two implementations reports
+      divergence at gate 1 and the search returns immediately with a useless
+      answer.
+
+      Second, the input state matters. Starting from |0...0> makes many gates
+      act trivially, so the divergence appears later than the actual bug: a
+      wrong Z on a qubit in state |0> is invisible until something puts that
+      qubit in superposition. Start from a Haar random state, or at minimum from
+      H^n|0...0>, so every gate acts non-trivially and the reported index is the
+      real one.
+
+      Third, the monotonicity assumption. Bisection needs "agrees" to be a
+      prefix-closed property, which it is: once the states diverge they stay
+      diverged, unless a later gate coincidentally undoes the error. That does
+      happen, for example if the bug is a swapped pair of gates that commute
+      with everything in between. If bisection returns a gate that looks
+      innocent, run a linear scan over a window around it rather than trusting
+      the result.
+
+      The complexity is O(log G) comparisons, each costing one simulation, so
+      O(2^n log G) time for statevector comparison. Compare that to the naive
+      linear scan at O(2^n G). At G = 200 that is a 25-fold saving, and at
+      G = 10,000 it is 750-fold.
+    followUps:
+      - How would you adapt this when the reference is a hardware run rather than a simulator?
+      - What if there are two bugs rather than one?
+      - How would you make the comparison robust to a transpiler that reorders commuting gates?
+    commonMistakes:
+      - Bisecting from the all-zero state, which reports the divergence later than the true bug because many gates act trivially on |0>.
+      - Comparing without fixing global phase, which reports divergence at the first gate.
+      - Assuming the first divergence is the only bug. Verify by fixing it and re-running the search.
+    references:
+      - label: Cirq documentation
+        url: https://quantumai.google/cirq
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+
+  - id: iq-078
+    title: Verify a transpiled circuit against its source
+    kind: coding
+    prompt: |
+      Your compiler rewrote a 30-qubit circuit into the device basis with
+      routing SWAPs. You cannot build the unitary. Design the equivalence check
+      that you would actually ship, and say what it can and cannot guarantee.
+    difficulty: hard
+    pattern: Unitarity and circuit verification
+    topics: [compiler-verification, equivalence-checking, routing, permutations]
+    companies: [IBM, Classiq, Quantinuum, Rigetti]
+    modelAnswer: |
+      Full unitary equivalence is out of reach at 30 qubits, so the shipping
+      answer is a layered set of checks, each cheap, that together make a
+      miscompilation very unlikely.
+
+      Layer 1, structural invariants. Assert the output uses only device-native
+      gates, that every two-qubit gate acts on an edge of the coupling map, and
+      that the final qubit permutation recorded by the router composed with the
+      initial layout is consistent. Routing bugs overwhelmingly show up here,
+      because a router that loses track of the permutation produces a circuit
+      that is legal but permuted. Recording the permutation and applying it when
+      interpreting measurement results is mandatory, and forgetting it is the
+      single most common compiler bug in this area.
+
+      Layer 2, randomised state equivalence. Pick a random product state, or
+      better a random low-depth Clifford state, run both circuits, and compare
+      up to global phase. Repeat with a handful of seeds. This costs two
+      simulations per trial. At 30 qubits a statevector is 16 GiB, so this is
+      expensive but possible; if it is not, restrict to Clifford inputs and use
+      a stabilizer simulator, where the comparison is polynomial in n.
+
+      Layer 3, Clifford-restricted exact equivalence. Replace every
+      non-Clifford rotation angle with a nearby Clifford angle in both circuits
+      and check exact equivalence with a stabilizer simulator. This is
+      polynomial time, catches all routing and basis-translation bugs, and
+      misses only bugs that depend on the specific rotation angles. In practice
+      compiler bugs are structural, not angle-dependent, so this catches most of
+      them at negligible cost. It is the highest value check in the list.
+
+      Layer 4, subcircuit unitary equivalence. Decompose the circuit into blocks
+      of at most 5 qubits and verify each block's unitary exactly against its
+      source block. This catches basis translation errors precisely and is
+      cheap, since 5 qubits is a 32 by 32 matrix.
+
+      What this cannot guarantee: it is not a proof. A miscompilation that
+      manifests only for particular angles and particular entangled inputs can
+      pass every layer. If you need a proof, the tool is a ZX-calculus or
+      decision-diagram based equivalence checker, which can handle non-trivial
+      circuit sizes exactly by exploiting structure, and which is what formal
+      verification groups use for exactly this reason.
+
+      What it does guarantee, practically: any bug that is structural, that is
+      routing, layout, permutation tracking, or basis translation, is caught.
+      Those are the bugs compilers actually have.
+    followUps:
+      - How does ZX-calculus based equivalence checking scale, and when would you reach for it?
+      - How would you test that the permutation returned by the router is applied correctly to measurement results?
+      - What would you add to the check if the compiler also does approximate synthesis?
+    commonMistakes:
+      - Ignoring the qubit permutation introduced by routing, so a correct circuit is judged wrong or, worse, a permuted circuit is judged correct.
+      - Testing equivalence only on |0...0>, which is invariant under many miscompilations.
+      - Claiming a randomised check proves equivalence. It raises confidence and does not prove anything.
+    references:
+      - label: Li, Ding and Xie, Tackling the Qubit Mapping Problem for NISQ-Era Quantum Devices
+        url: https://arxiv.org/abs/1809.02573
+      - label: Oxford Quantum Processes and Computation
+        url: https://www.cs.ox.ac.uk/teaching/courses/quantum/
+
+  - id: iq-079
+    title: Distinguish two unitaries with the fewest queries
+    kind: coding
+    prompt: |
+      You are given black-box access to a single-qubit unitary that is either
+      Z or S. Design a circuit that tells them apart with certainty, say how
+      many queries it needs, and generalise to distinguishing Rz(theta) from
+      Rz(theta + delta).
+    difficulty: hard
+    pattern: Unitarity and circuit verification
+    topics: [unitary-discrimination, interference, hadamard-test, phase-estimation]
+    companies: [IBM, Microsoft Azure Quantum, Google Quantum AI, Quantinuum]
+    modelAnswer: |
+      Z and S are both diagonal, so on a computational basis state they are
+      indistinguishable: both leave |0> alone and both map |1> to a phase times
+      |1>. You must create interference.
+
+      One query suffices, with certainty. Note that S^2 = Z, so apply the oracle
+      twice and you are distinguishing Z^2 = I from S^2 = Z, which is easier,
+      but that costs two queries. With one query, use the fact that Z and S
+      differ by the relative phase they impart between |0> and |1>: Z gives -1
+      and S gives i.
+
+      Prepare |+>, apply the oracle, and measure in a suitable basis. After Z,
+      |+> becomes |->. After S, |+> becomes (|0> + i|1>)/sqrt(2) = |+i>. Those
+      two states are orthogonal? Their inner product is
+      <-|+i> = (1*1 + (-1)*i)/2 = (1 - i)/2, whose modulus is 1/sqrt(2), so they
+      are not orthogonal and one query cannot distinguish them with certainty by
+      this route.
+
+      The construction that does work with one query uses a controlled oracle.
+      Put a control qubit in |+>, the target in |1>, and apply controlled-U.
+      The control picks up the eigenphase: for Z the state becomes
+      (|0> - |1>)|1>/sqrt(2) and for S it becomes (|0> + i|1>)|1>/sqrt(2). Those
+      control states are |-> and |+i>, still not orthogonal. Two queries of
+      controlled-U give phases (-1)^2 = 1 and i^2 = -1, so the control is |+>
+      for Z and |-> for S, which are orthogonal and distinguished with certainty
+      by a Hadamard and a measurement.
+
+      So: two queries with certainty, using controlled-U and a Hadamard test.
+      One query cannot do it, because the two candidate output states have
+      overlap 1/sqrt(2) and the Helstrom bound caps the success probability at
+      (1 + sqrt(1 - |overlap|^2))/2 = 0.853553.
+
+      Generalising to Rz(theta) versus Rz(theta + delta): the accumulated phase
+      difference after k controlled queries is k*delta, and the two control
+      states become orthogonal when k*delta = pi, so k = ceil(pi/delta) queries
+      give certainty. For small delta that is O(1/delta), which is the
+      Heisenberg-limited scaling and exactly what iterative phase estimation
+      achieves. A sampling approach that just measures the output distribution
+      needs O(1/delta^2) shots, so the interferometric construction is
+      quadratically better. That contrast is the point of the question.
+    followUps:
+      - Derive the Helstrom bound for two pure states and apply it here.
+      - How does iterative phase estimation achieve the 1/delta scaling in practice?
+      - What changes if the oracle is noisy?
+    commonMistakes:
+      - Applying the oracle to a computational basis state, where diagonal gates are indistinguishable.
+      - Claiming one query suffices without checking the overlap of the two output states.
+      - Quoting O(1/delta^2) scaling from a sampling argument when the interferometric construction gives O(1/delta).
+    references:
+      - label: Microsoft Quantum Katas
+        url: https://github.com/microsoft/QuantumKatas
+      - label: Kitaev, Quantum measurements and the Abelian Stabilizer Problem
+        url: https://arxiv.org/abs/quant-ph/9511026
+
+  - id: iq-080
+    title: Design the verification layer for a circuit synthesis library
+    kind: coding
+    prompt: |
+      You own a library that synthesises circuits from unitaries. Specify the
+      verification layer: what runs in the fast test suite, what runs nightly,
+      what runs on release, and what property-based tests you write.
+    difficulty: hard
+    pattern: Unitarity and circuit verification
+    topics: [testing-strategy, property-based-testing, synthesis, ci]
+    companies: [IBM, Classiq, Quantinuum, Microsoft Azure Quantum]
+    modelAnswer: |
+      Organise by cost, and make sure each tier catches a class the cheaper tier
+      cannot.
+
+      Fast suite, seconds, runs on every commit:
+
+      * Exact unitary equivalence up to global phase for every synthesis target
+        of at most 4 qubits, which is a 16 by 16 matrix. This covers single
+        qubit decomposition, two-qubit KAK, Toffoli, controlled rotations and
+        every gate in the standard library.
+      * Unitarity of the synthesised circuit, as a cheap invariant that catches
+        stray measurements and unnormalised matrices.
+      * Gate set conformance: the output uses only gates the target basis
+        declares.
+      * Resource regressions: assert exact two-qubit gate counts for known
+        targets, so an optimisation change that quietly makes output worse fails
+        the build. For example, Toffoli must synthesise to 6 CNOTs and 7 T
+        gates, and a two-qubit unitary must reach at most 3 CNOTs.
+
+      Property-based tests, also fast, and the highest value part:
+
+      * For a random unitary U on k qubits with k in 1..4, synthesise and assert
+        equivalence up to global phase. Run hundreds of seeds. This finds edge
+        cases that hand-written tests never do, particularly unitaries near
+        degeneracies where a KAK decomposition branches.
+      * Idempotence: synthesising an already-native circuit does not change its
+        gate count.
+      * Inverse consistency: synthesise U and U^dagger and assert the composition
+        is the identity up to global phase.
+      * Special angles: sweep rotation angles through 0, pi/2, pi, 3pi/2 and
+        2pi, where implementations commonly special-case and get the boundary
+        wrong.
+
+      Nightly, minutes to hours:
+
+      * Randomised state equivalence at 10 to 20 qubits, comparing synthesised
+        against reference on random inputs.
+      * Clifford-restricted exact equivalence at large qubit counts using a
+        stabilizer simulator, which is polynomial and catches structural bugs.
+      * Full transpile-and-verify over a corpus of real circuits.
+
+      Release only, hours:
+
+      * Formal equivalence checking with a decision diagram or ZX based tool on
+        the corpus, which gives proof rather than confidence.
+      * Cross-framework differential testing against an independent
+        implementation.
+
+      Two things to insist on. Angle tolerance must be tighter than the smallest
+      error that matters: I checked that Rz(0.7) and Rz(0.7001) differ in
+      Frobenius norm by 7.07e-05 with process fidelity 0.9999999975, so a
+      tolerance of 1e-3 lets a real angle bug through. And every failure message
+      must name the offending matrix entry or gate index, because a synthesis
+      failure that says only "not equivalent" costs an hour to reproduce.
+    followUps:
+      - How would you generate random unitaries that stress the degenerate cases of a KAK decomposition?
+      - What resource regression thresholds would you set, and how would you avoid false alarms?
+      - Where would you put approximate synthesis, where the output is deliberately not exactly equal?
+    commonMistakes:
+      - Testing only hand-picked unitaries, which never hit the degenerate branches where decomposition algorithms fail.
+      - Omitting resource regression tests, so an optimisation change silently doubles the two-qubit gate count.
+      - Setting a loose equivalence tolerance to reduce flakiness, which allows genuine angle errors to pass.
+    references:
+      - label: Shende, Bullock and Markov, Synthesis of Quantum Logic Circuits
+        url: https://arxiv.org/abs/quant-ph/0406176
+      - label: Dawson and Nielsen, The Solovay-Kitaev algorithm
+        url: https://arxiv.org/abs/quant-ph/0505030

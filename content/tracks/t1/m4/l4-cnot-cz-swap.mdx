@@ -1,0 +1,201 @@
+---
+id: t1.m4.l4
+title: CNOT, CZ, SWAP
+type: concept
+track: t1
+module: t1.m4
+level: L1
+minutes: 14
+objectives:
+  - Write the 4x4 matrices of CX, CZ and SWAP with qubit 0 as the most significant bit
+  - Show that CZ is symmetric in its two qubits while CX is not
+  - Build SWAP from three CX gates and verify it on all four basis states
+prerequisites: [t1.m4.l3]
+sources:
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+tags: [multi-qubit, gates]
+---
+
+Single-qubit gates keep product states product, so they can never create the
+correlations of the previous lesson. Entanglement needs a gate that acts on two
+qubits at once and does not factor as $A \otimes B$. Three such gates cover
+almost every circuit you will write.
+
+## CNOT
+
+The controlled-NOT flips the target when the control is $\ket{1}$ and does
+nothing when it is $\ket{0}$. With control on qubit 0 and target on qubit 1, and
+qubit 0 as the most significant bit, the basis states map as
+$\ket{00}\mapsto\ket{00}$, $\ket{01}\mapsto\ket{01}$, $\ket{10}\mapsto\ket{11}$,
+$\ket{11}\mapsto\ket{10}$, so
+
+$$
+\mathrm{CX}_{0 \to 1} = \begin{pmatrix}
+1 & 0 & 0 & 0 \\
+0 & 1 & 0 & 0 \\
+0 & 0 & 0 & 1 \\
+0 & 0 & 1 & 0
+\end{pmatrix} .
+$$
+
+The block structure is the whole story: an identity block on the top left, where
+the control is 0, and an $X$ block on the bottom right, where it is 1. Every
+controlled gate has this shape, and T1.M4.L5 exploits it.
+
+<Margin label="In the IR">
+The registry writes a controlled gate as the base gate plus a `controls` list,
+so a CNOT is an `x` gate with `targets` of `[1]` and `controls` of `[0]`. There
+is a `cx` alias for convenience, but the canonical form is base-plus-controls,
+and it is what lets one code path handle CNOT, Toffoli and any number of
+controls.
+</Margin>
+
+Reversing the roles gives a different matrix. With control on qubit 1 and target
+on qubit 0, the pairs that swap are $\ket{01}$ and $\ket{11}$, that is indices 1
+and 3:
+
+$$
+\mathrm{CX}_{1 \to 0} = \begin{pmatrix}
+1 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1 \\
+0 & 0 & 1 & 0 \\
+0 & 1 & 0 & 0
+\end{pmatrix} .
+$$
+
+So CNOT is **not** symmetric in its two qubits, and drawing the control on the
+wrong wire produces a different circuit rather than an equivalent one.
+
+## CZ, which is symmetric
+
+The controlled-$Z$ applies $Z$ to the target when the control is $\ket{1}$. Since
+$Z$ is diagonal, so is the result:
+
+$$
+\mathrm{CZ} = \mathrm{diag}(1, 1, 1, -1) .
+$$
+
+Only the $\ket{11}$ amplitude changes, and it is negated. That description does
+not mention which qubit is the control, and indeed the matrix is unchanged if
+you swap the roles: $\mathrm{CZ}$ is symmetric. Circuit diagrams reflect this by
+drawing a dot at both ends rather than a dot and a target.
+
+This is a general fact about controlled diagonal gates, and it is the reason CZ
+is the native two-qubit gate on much superconducting hardware while CNOT is
+compiled from it.
+
+## SWAP, and the three-CNOT identity
+
+The SWAP gate exchanges the two qubits, so it exchanges $\ket{01}$ and
+$\ket{10}$, that is indices 1 and 2:
+
+$$
+\mathrm{SWAP} = \begin{pmatrix}
+1 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 \\
+0 & 1 & 0 & 0 \\
+0 & 0 & 0 & 1
+\end{pmatrix} .
+$$
+
+It is not native anywhere. The standard construction is three CNOTs with
+alternating direction: $\mathrm{CX}_{0\to1}$, then $\mathrm{CX}_{1\to0}$, then
+$\mathrm{CX}_{0\to1}$. Track $\ket{ab}$ through the three steps, using $\oplus$
+for exclusive or:
+
+$$
+\ket{a, b} \to \ket{a, a \oplus b} \to \ket{a \oplus (a \oplus b),\ a \oplus b}
+= \ket{b,\ a \oplus b} \to \ket{b,\ b \oplus (a \oplus b)} = \ket{b, a} .
+$$
+
+Check all four inputs by hand: $00 \to 00 \to 00 \to 00$;
+$01 \to 01 \to 11 \to 10$; $10 \to 11 \to 01 \to 01$; $11 \to 10 \to 10 \to 11$.
+Inputs $00$ and $11$ are fixed and the other two exchange, which is SWAP.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="X on qubit 0 to prepare |10>, then three alternating CNOTs. The result is |01>: the qubits have been exchanged."
+  ir={{
+    version: 1,
+    name: "swap-from-three-cnots",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "x0", gate: "x", targets: [0] },
+      { id: "c1", gate: "x", targets: [1], controls: [0] },
+      { id: "c2", gate: "x", targets: [0], controls: [1] },
+      { id: "c3", gate: "x", targets: [1], controls: [0] }
+    ]
+  }}
+/>
+
+<Callout tone="warning" title="Three two-qubit gates is why routing is expensive">
+Hardware connectivity is a graph, and two qubits that are not neighbours cannot
+interact directly. The compiler inserts SWAPs to move states along the graph,
+and each SWAP costs three CNOTs, which are the noisiest operations on the
+device. A circuit that looks short in the abstract can triple in two-qubit depth
+after routing. T3 measures this; T1.M11 shows what it costs in fidelity.
+</Callout>
+
+## Converting between them
+
+CZ and CNOT differ by a change of basis on the target, because $HZH = X$ from
+T1.M3.L1:
+
+$$
+\mathrm{CX}_{0\to1} = (I \otimes H)\, \mathrm{CZ}\, (I \otimes H) .
+$$
+
+Read as a circuit: a Hadamard on the target, then CZ, then another Hadamard on
+the target, is a CNOT. Running the identity in the other direction turns a CNOT
+into a CZ, which is what compilers do on hardware whose native gate is CZ.
+
+Verify it on $\ket{+}\otimes\ket{+}$, where the effect is visible in a single
+sign. CZ negates only the $\ket{11}$ amplitude, so the output should be
+$\tfrac12(\ket{00} + \ket{01} + \ket{10} - \ket{11})$.
+
+<Simulate
+  show="amplitudes"
+  caption="H on both qubits, then H on the target, CNOT, H on the target. The single minus sign on |11> shows this is CZ."
+  ir={{
+    version: 1,
+    name: "cz-from-cnot",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "ha", gate: "h", targets: [1] },
+      { id: "cx", gate: "x", targets: [1], controls: [0] },
+      { id: "hb", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+The amplitudes are $0.5, 0.5, 0.5, -0.5$, exactly as CZ applied to
+$\ket{+}\otimes\ket{+}$ would give. Note that the same state can be read as
+$\ket{+}\otimes\ket{+}$ with a phase kickback onto qubit 0, which is the reading
+T1.M9 develops.
+
+<Check question="Apply $\mathrm{CX}_{0\to1}$ to $\ket{-}\otimes\ket{-}$. What comes out, and why is the answer surprising?">
+$\ket{-}\otimes\ket{-} = \tfrac12(\ket{00} - \ket{01} - \ket{10} + \ket{11})$.
+CNOT swaps the amplitudes of $\ket{10}$ and $\ket{11}$, giving
+$\tfrac12(\ket{00} - \ket{01} + \ket{10} - \ket{11})$, which factors as
+$\ket{+}\otimes\ket{-}$. So the control qubit changed and the target did not,
+the opposite of the name. This is phase kickback: in the $X$ basis a CNOT acts
+as a CNOT with the roles reversed. It is the mechanism behind every algorithm in
+T1.M10, and the reason "control" and "target" are labels of convenience rather
+than of physics.
+</Check>
+
+## Where this comes from
+
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses),
+  Basics of quantum information, for the controlled-gate block form and the
+  three-CNOT SWAP identity.
+- [PennyLane Codebook](https://pennylane.ai/codebook), whose many-qubit module
+  drills the CZ and CNOT conversion because it is the identity that hardware
+  compilation turns on.

@@ -1,0 +1,181 @@
+---
+id: t1.m11.l2
+title: Relaxation and Dephasing, Observed
+type: concept
+track: t1
+module: t1.m11
+level: L1
+minutes: 14
+objectives:
+  - Define T1 and T2 operationally in terms of a decay experiment
+  - Compute the survival probability of the excited state after a wait of t given T1
+  - Explain why T2 is at most twice T1 and what saturates the bound
+prerequisites:
+  - t1.m11.l1
+sources:
+  - label: QuTech Academy / QuTube (TU Delft)
+    url: https://www.qutube.nl/
+  - label: CS269Q Elements of Quantum Computer Programming (Stanford)
+    url: https://cs269q.stanford.edu/
+tags: [noise, coherence]
+---
+
+$T_1$ and $T_2$ are the two numbers every device datasheet leads with, and they
+are not theoretical parameters. Each is defined by an experiment you can describe
+in three sentences, and each answers a different question: how long the qubit
+keeps its energy, and how long it keeps its phase. This lesson defines both
+operationally and derives the one inequality that ties them together.
+
+## $T_1$: the relaxation experiment
+
+Prepare $\ket{1}$ with an $X$ gate. Wait a time $t$, doing nothing. Measure. Plot
+the fraction of shots that still return 1 as a function of $t$.
+
+The curve is an exponential decay:
+
+$$
+P_1(t) = e^{-t/T_1},
+$$
+
+and $T_1$ is defined as the time constant of that fit. It is not the time until
+the qubit is dead; it is the time at which the excited-state population has fallen
+to $1/e$.
+
+<Margin label="Why exponential">
+The decay is memoryless: an excited qubit that has survived to time $t$ is
+statistically identical to one just prepared. A memoryless waiting time is
+exponentially distributed, which is the same argument that gives radioactive
+half-lives.
+</Margin>
+
+Concrete numbers for $T_1 = 100\,\mu\mathrm{s}$:
+
+| wait $t$ | $t/T_1$ | $P_1(t)$ |
+| --- | --- | --- |
+| $10\,\mu\mathrm{s}$ | $0.1$ | $0.904837$ |
+| $50\,\mu\mathrm{s}$ | $0.5$ | $0.606531$ |
+| $100\,\mu\mathrm{s}$ | $1.0$ | $0.367879$ |
+| $200\,\mu\mathrm{s}$ | $2.0$ | $0.135335$ |
+
+The half-life is $T_1 \ln 2 = 0.693\,T_1$, so about $69\,\mu\mathrm{s}$ here. Put
+that beside a two-qubit gate time of a few hundred nanoseconds and you get the
+number that governs everything in the next three lessons: a few hundred two-qubit
+gates fit inside one $T_1$, and that is the whole budget.
+
+## $T_2$: the Ramsey experiment
+
+Relaxation is about population. Coherence is about phase, and to see phase you
+need an interference experiment.
+
+Prepare $\ket{+}$ with a Hadamard. Wait a time $t$, during which the qubit
+accumulates a phase $\varphi$ that you can control by detuning the drive. Apply a
+second Hadamard and measure. The outcome probability is
+
+$$
+P_1 = \sin^2\frac{\varphi}{2},
+$$
+
+so sweeping $\varphi$ traces out a fringe running from 0 to 1 and back.
+
+<Circuit
+  caption="One point of a Ramsey fringe: H, a phase of pi/3, H. Without noise the probability of reading 1 is exactly 0.25."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "ramsey-point",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "a", gate: "h", targets: [0] },
+      { id: "b", gate: "rz", targets: [0], params: [1.0471975511965976] },
+      { id: "c", gate: "h", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+With $\varphi = \pi/3$ the noiseless answer is $\sin^2(\pi/6) = 0.25$, which is
+what the panel reports. Set $\varphi = \pi/2$ and it is $0.5$; set $\varphi = \pi$
+and it is $1$. Full contrast, from 0 to 1, at every wait time.
+
+On hardware the contrast shrinks as $t$ grows. The measured probability becomes
+
+$$
+P_1(t) = \half - \half e^{-t/T_2}\cos\varphi,
+$$
+
+a fringe of amplitude $e^{-t/T_2}$ around $\tfrac12$. At $t = 0$ the amplitude is
+$1$ and the fringe runs the full range. At $t = T_2$ it is $0.367879$, so the
+fringe runs only from $0.316$ to $0.684$. At $t \gg T_2$ the fringe is flat at
+$\tfrac12$ and the qubit has become a fair coin: no phase information remains.
+$T_2$ is defined as the time constant of that envelope.
+
+<Callout tone="note" title="T2 and T2 star">
+The raw Ramsey decay is usually called $T_2^*$, because it includes slow drifts in
+the qubit frequency that are not truly random. A spin-echo sequence, which inserts
+an $X$ halfway through the wait, refocuses those drifts and yields a longer time
+constant conventionally called $T_2$. Datasheets differ about which one they
+quote; check.
+</Callout>
+
+## Why $T_2 \le 2T_1$
+
+The bound comes from noticing that relaxation destroys phase as a side effect.
+
+Take the qubit in $\ket{+}$, so the off-diagonal element of its density matrix,
+the coherence, has magnitude $\tfrac12$. Coherence is a statement about a
+superposition of $\ket{0}$ and $\ket{1}$, so it survives only in the branch where
+the qubit has not relaxed. The probability of not having relaxed is $e^{-t/T_1}$,
+and the coherence, which is a product of amplitudes rather than probabilities,
+carries the square root of that:
+
+$$
+|\rho_{01}(t)| \le \half \, e^{-t/(2T_1)}.
+$$
+
+Write the general decay as $e^{-t/T_2}$ and combine the two channels:
+
+$$
+\frac{1}{T_2} = \frac{1}{2T_1} + \frac{1}{T_\varphi},
+$$
+
+where $T_\varphi$ is the pure-dephasing time, describing frequency noise that
+scrambles the phase without moving any population. Since $T_\varphi > 0$, the
+first term alone gives
+
+$$
+T_2 \le 2 T_1 .
+$$
+
+Equality holds exactly when $T_\varphi \to \infty$, that is when there is no pure
+dephasing at all and the only thing spoiling coherence is relaxation. Real devices
+are usually well below the bound, with $T_2$ nearer $T_1$ than $2T_1$, because
+low-frequency flux and charge noise supply plenty of pure dephasing.
+
+<Check question="A device reports $T_1 = 120\,\mu\mathrm{s}$ and $T_2 = 260\,\mu\mathrm{s}$. What should you conclude?">
+That one of the numbers is wrong, or that they were measured on different qubits,
+or at different times, or that $T_2$ was extracted from a fit whose model does not
+match the data. $T_2 \le 2T_1 = 240\,\mu\mathrm{s}$ is not a rule of thumb, it is a
+consequence of relaxation destroying coherence at half the population rate, so
+$260\,\mu\mathrm{s}$ is not physically available. The productive response is to
+re-run both experiments on the same qubit in the same calibration window rather
+than to reason about what a $T_2$ of $260\,\mu\mathrm{s}$ would imply.
+</Check>
+
+## What this buys you
+
+Two operational definitions and one inequality is enough to make a depth estimate
+before you run anything. Given a gate time $t_g$ and a coherence time $T$, a
+circuit of depth $d$ occupies $d \, t_g$ of wall clock, and the fraction of
+coherence you have consumed is $d\,t_g/T$. When that ratio approaches 1 the result
+is noise. The next three lessons turn this back-of-the-envelope into an actual
+fidelity number.
+
+## Where this comes from
+
+- [QuTech Academy / QuTube](https://www.qutube.nl/), whose coherence and control
+  material defines $T_1$, $T_2$ and $T_2^*$ by their experiments and derives the
+  factor of two in the same way.
+- [CS269Q, Stanford](https://cs269q.stanford.edu/), for the practice of reading a
+  device datasheet as a set of measured decay constants before writing a circuit
+  for it.

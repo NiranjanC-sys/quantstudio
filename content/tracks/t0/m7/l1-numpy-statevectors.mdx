@@ -1,0 +1,196 @@
+---
+id: t0.m7.l1
+title: NumPy for Statevectors and Operators
+type: concept
+track: t0
+module: t0.m7
+level: L0
+minutes: 13
+objectives:
+  - Represent a statevector and an operator as NumPy arrays with the correct dtype
+  - Apply a single-qubit gate to one qubit of an n-qubit state by reshaping
+  - Explain why np.kron order encodes the qubit ordering convention
+prerequisites: [t0.m5.l3]
+sources:
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+  - label: CS269Q Elements of Quantum Computer Programming (Stanford)
+    url: https://cs269q.stanford.edu/
+tags: [python, numpy]
+---
+
+Writing your own simulator in thirty lines of NumPy is the fastest way to stop
+believing quantum mechanics is mysterious, because every claim in T0 becomes
+something you can print. The catch is that the obvious implementation, building
+the full $2^n \times 2^n$ gate matrix and multiplying, is unusable past about
+eight qubits. The good implementation is barely longer and rests on one idea:
+reshape.
+
+## Types and shapes
+
+A statevector for $n$ qubits is a one-dimensional array of $2^n$ complex
+numbers. The dtype matters:
+
+```python
+import numpy as np
+
+n = 3
+psi = np.zeros(2**n, dtype=complex)   # complex128, the default complex type
+psi[0] = 1.0                          # the state |000>
+```
+
+If you forget `dtype=complex`, NumPy makes a float array and every subsequent
+assignment of a complex amplitude is silently truncated to its real part, with
+no warning. That single omission is the most common bug in hand-written
+simulators.
+
+Operators are $2 \times 2$ arrays of the same dtype:
+
+```python
+H = np.array([[1, 1], [1, -1]], dtype=complex) / np.sqrt(2)
+X = np.array([[0, 1], [1, 0]], dtype=complex)
+Z = np.array([[1, 0], [0, -1]], dtype=complex)
+```
+
+<Margin label="complex64 is a trap">
+Halving the memory looks attractive at 20 qubits, but `complex64` carries about
+7 decimal digits, so a circuit of a few thousand gates can drift visibly. Use
+`complex128` unless you have measured that you cannot afford it.
+</Margin>
+
+## np.kron order is the ordering convention
+
+RedQuant puts qubit 0 at the most significant bit, which by T0.M5.L1 means the
+statevector is built as the Kronecker product in qubit order. In NumPy that is
+
+```python
+psi = np.kron(np.kron(q0, q1), q2)     # qubit 0 is the slowest index
+```
+
+and an operator acting on qubit 1 of three is
+
+```python
+full = np.kron(np.kron(np.eye(2), H), np.eye(2))
+```
+
+Reverse the arguments and you have implemented Qiskit's convention instead. The
+argument order of `np.kron` *is* the endianness decision; there is no separate
+flag to set. Whichever you choose, write it in a comment at the top of the file,
+because six months later the code will not tell you.
+
+## Applying a gate without building the big matrix
+
+The full-matrix route costs $O(4^n)$ memory and $O(8^n)$ time per gate, which is
+hopeless. Instead, view the length-$2^n$ vector as an $n$-dimensional array with
+one axis of size 2 per qubit, contract the gate against the axis you want, and
+move that axis back:
+
+```python
+def apply_1q(state, U, q, n):
+    """Apply the 2x2 matrix U to qubit q of an n-qubit state."""
+    st = state.reshape([2] * n)          # axis k is qubit k
+    st = np.tensordot(U, st, axes=([1], [q]))
+    st = np.moveaxis(st, 0, q)           # tensordot puts the new axis first
+    return st.reshape(-1)
+```
+
+Axis $k$ of the reshaped array is qubit $k$ precisely because qubit 0 is the
+most significant bit: `reshape` fills the last axis fastest, matching the index
+formula $\operatorname{idx} = \sum_q q_q 2^{\,n-1-q}$. If your convention were
+little-endian you would reshape and then index axis $n-1-q$.
+
+Cost: the contraction touches each amplitude a constant number of times, so it
+is $O(2^n)$ per gate rather than $O(8^n)$. At $n = 20$ that is a million
+operations instead of an intractable number.
+
+Check it against the explicit Kronecker product, which is the only honest test:
+
+```python
+psi = np.zeros(8, dtype=complex); psi[0] = 1.0
+big = np.kron(np.kron(np.eye(2), H), np.eye(2))
+assert np.allclose(big @ psi, apply_1q(psi, H, 1, 3))
+```
+
+The assertion passes, and it also passes on random normalised states and for
+$q = 0$ and $q = 2$, which is what you should actually test rather than the
+single easy case.
+
+## Reading the same answer off the platform
+
+The state produced by that call is a Hadamard on qubit 1 of $\ket{000}$, giving
+$\isqrt(\ket{000} + \ket{010})$.
+
+<Simulate
+  show={['amplitudes', 'qasm']}
+  caption="A Hadamard on qubit 1 of three. Amplitude 0.7071 on basis index 0 and on basis index 2, which is 010."
+  ir={{
+    version: 1,
+    name: "h-on-middle-qubit",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "h1", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+Two amplitudes of $0.707107$, on $\ket{000}$ and $\ket{010}$, exactly what the
+NumPy snippet prints. The `qasm` tab shows the same circuit as OpenQASM 3, which
+is the interchange format for taking this circuit to another toolchain.
+
+## Two-qubit gates and measurement
+
+The same trick extends. A two-qubit gate is a $4\times4$ matrix reshaped to
+`(2,2,2,2)` and contracted against two axes:
+
+```python
+def apply_2q(state, U, q1, q2, n):
+    st = state.reshape([2] * n)
+    U4 = U.reshape(2, 2, 2, 2)
+    st = np.tensordot(U4, st, axes=([2, 3], [q1, q2]))
+    return np.moveaxis(st, [0, 1], [q1, q2]).reshape(-1)
+```
+
+Probabilities and marginals are then one-liners:
+
+```python
+probs = np.abs(state)**2                      # length 2**n, sums to 1
+p_qubit0_is_1 = probs.reshape(2, -1)[1].sum() # marginal over the rest
+```
+
+The reshape in the last line splits off qubit 0 as the leading axis, which is
+the marginalisation of T0.M1.L4 written as an array operation.
+
+<Callout tone="gotcha" title="Normalisation drifts">
+Floating-point error accumulates, so after a few thousand gates
+`np.sum(np.abs(state)**2)` will not be exactly 1. Assert it to a tolerance
+rather than for equality, and never renormalise silently in the middle of a
+circuit: a norm that has drifted by more than the tolerance is a bug report, not
+something to paper over.
+</Callout>
+
+<Check question="Why does `np.kron(A, B)` acting on `np.kron(u, v)` give `np.kron(A @ u, B @ v)`, and which lesson proved it?">
+This is the mixed-product identity from T0.M5.L1, which says that
+
+$$
+(A \otimes B)(C \otimes D) = (AC)\otimes(BD),
+$$
+
+specialised to the case where $C$ and $D$ are column vectors. It is the reason
+the reshape implementation is correct: applying a gate to one axis of the
+reshaped array is exactly applying the operator
+
+$$
+I \otimes \cdots \otimes U \otimes \cdots \otimes I
+$$
+
+to the flat vector, without ever forming that matrix.
+</Check>
+
+## Where this comes from
+
+- [PennyLane Codebook](https://pennylane.ai/codebook), whose codercise format is
+  the model for making every concept executable in a few lines.
+- [CS269Q, Stanford](https://cs269q.stanford.edu/), for the programming-first
+  treatment of statevector representation and the cost model that rules out the
+  full-matrix approach.

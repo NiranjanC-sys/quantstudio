@@ -1,0 +1,188 @@
+---
+id: t1.m5.l4
+title: No-Cloning
+type: concept
+track: t1
+module: t1.m5
+level: L1
+minutes: 13
+objectives:
+  - Prove the no-cloning theorem from linearity in three lines
+  - Explain why cloning is possible for a known basis but not for an unknown state
+  - Identify the step in a proposed cloning circuit that violates linearity
+prerequisites: [t1.m5.l3]
+sources:
+  - label: Cleve, QIC 710 Quantum Information Processing (Waterloo IQC)
+    url: https://cleve.iqc.uwaterloo.ca/qic710/
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [entanglement, no-cloning]
+---
+
+Copying is so cheap classically that no one counts it as an operation. Every
+assignment statement is a copy, every network packet is a copy, and error
+correction by majority vote is nothing but copying. None of that is available
+here, and the proof that it is not takes three lines.
+
+## The statement
+
+A cloning machine would be a unitary $U$ acting on two qubits, a data qubit and
+a blank, such that
+
+$$
+U \left( \ket{\psi} \otimes \ket{0} \right) = \ket{\psi} \otimes \ket{\psi}
+\qquad \text{for every one-qubit state } \ket{\psi} .
+$$
+
+The quantifier is the whole content. A machine that copies one known state is
+trivial, and a machine that copies every state, including states nobody has told
+it about, does not exist.
+
+## The proof, from linearity
+
+Suppose $U$ works on $\ket{0}$ and on $\ket{1}$:
+
+$$
+U\ket{00} = \ket{00}, \qquad U\ket{10} = \ket{11} .
+$$
+
+Now feed it $\ket{+} = \tfrac{1}{\sqrt2}(\ket{0} + \ket{1})$. Because $U$ is
+linear, its action is forced:
+
+$$
+U \left( \ket{+} \otimes \ket{0} \right)
+= \tfrac{1}{\sqrt2}\left( U\ket{00} + U\ket{10} \right)
+= \tfrac{1}{\sqrt2}\left( \ket{00} + \ket{11} \right)
+= \ket{\Phi^+} .
+$$
+
+But cloning demands the output be
+
+$$
+\ket{+} \otimes \ket{+} = \tfrac12 \left( \ket{00} + \ket{01} + \ket{10} + \ket{11} \right) ,
+$$
+
+and $\ket{\Phi^+} \ne \ket{+}\otimes\ket{+}$: the first has no amplitude on
+$\ket{01}$ or $\ket{10}$ and the second has $0.5$ on each. So no linear $U$ does
+both jobs. That is the whole theorem, and the only physics used was linearity.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="What linearity forces: H then CNOT gives the Bell state, with amplitudes only on |00> and |11>."
+  ir={{
+    version: 1,
+    name: "linearity-output",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "cx", gate: "x", targets: [1], controls: [0] }
+    ]
+  }}
+/>
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="What cloning would require: two copies of |+>, with amplitude 0.5 on all four basis states."
+  ir={{
+    version: 1,
+    name: "cloning-target",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+The two figures are the theorem. Same input, same requirement on basis states,
+and the outputs disagree on half the amplitudes.
+
+<Margin label="The inner-product proof">
+A second route: suppose $U$ clones both $\ket{\psi}$ and $\ket{\phi}$. Unitaries
+preserve inner products, so
+$\braket{\psi}{\phi} = \braket{\psi}{\phi}^2$, forcing
+$\braket{\psi}{\phi} \in \{0, 1\}$. A cloner can therefore handle only sets of
+states that are mutually orthogonal or identical, which is exactly a known
+basis.
+</Margin>
+
+## Where the CNOT fools you
+
+The CNOT looks like a copier, and on the computational basis it is one:
+$\mathrm{CX}\ket{x0} = \ket{xx}$ for $x \in \{0, 1\}$. Many first circuits are
+written on that basis and work. The failure is invisible until the input is a
+superposition, at which point the CNOT produces entanglement instead of a copy.
+
+That is the general pattern. Cloning is possible for states drawn from a known
+orthonormal basis, because then "copy" means "measure and re-prepare", and
+measurement in a basis you already know does not disturb the states. It is
+impossible for an unknown state precisely because you do not know which basis to
+measure in, and any guess destroys the information in the other bases.
+
+<Callout tone="gotcha" title="Reading the Bell state as a copy">
+It is tempting to say the Bell state is "both qubits copied, in superposition".
+It is not. In $\ket{\Phi^+}$ neither qubit has a state of its own at all: the
+reduced state of each is $I/2$ by T1.M5.L3, which is a fair coin in every basis.
+A copy of $\ket{+}$ would be a qubit that reads $+$ with certainty in the $X$
+basis, and neither half of a Bell pair does that.
+</Callout>
+
+## Auditing a proposed cloner
+
+Proposals to beat the theorem recur, and they always break at one of three
+places. Use this checklist on any circuit claiming to copy.
+
+**Is the map linear?** If the circuit measures and then branches on the outcome,
+the overall map is not linear, and it also is not a cloner: the measurement
+collapses the input, so the "original" is destroyed and what is copied is a
+classical bit, not the state.
+
+**Is the map unitary on the full register?** A construction that produces the
+right answer while leaving junk in an ancilla has cloned nothing, because the
+ancilla is entangled with the output and the reduced state of each supposed copy
+is mixed rather than equal to $\ket{\psi}$.
+
+**Does it work for all inputs, or only for the ones tested?** Testing on
+$\ket{0}$, $\ket{1}$ and maybe $\ket{+}$ proves nothing. By linearity a map is
+determined by its action on a basis, so if it copies $\ket{0}$ and $\ket{1}$ it
+*cannot* copy $\ket{+}$, and the test to run is exactly the one it will fail.
+
+Approximate and probabilistic cloning are genuinely possible and are not
+loopholes. The optimal universal cloner achieves fidelity $5/6$ per copy for
+one-to-two cloning of an arbitrary qubit, which is well short of 1 and is
+enough to keep the consequences below intact.
+
+## What the theorem buys
+
+No-cloning is not only an obstacle. It is the security assumption of quantum
+key distribution: an eavesdropper who cannot copy the transmitted qubits must
+measure them, and measuring in the wrong basis introduces detectable errors.
+T1.M7.L5 builds BB84 on exactly this.
+
+It also constrains error correction. The classical repetition code copies a bit
+three times; the quantum version of T4 cannot copy, and instead spreads one
+logical qubit across three physical ones without ever duplicating the state. And
+it closes the loophole that would otherwise let entanglement signal: if Bob
+could clone his half of a Bell pair many times, he could estimate its basis and
+learn Alice's measurement choice, contradicting T1.M5.L2.
+
+<Check question="A circuit takes $\ket{\psi}\otimes\ket{0}$, measures the first qubit in the computational basis, and prepares the second qubit in the same basis state as the outcome. For which inputs does it produce two correct copies?">
+Only for $\ket{0}$ and $\ket{1}$, and any state equal to one of them up to global
+phase. For those the measurement is deterministic and non-disturbing, so the
+first qubit survives and the second matches. For any other input, say $\ket{+}$,
+the measurement collapses the first qubit to $\ket{0}$ or $\ket{1}$ at random,
+so the output is $\ket{00}$ or $\ket{11}$, each half the time. Neither qubit is
+$\ket{+}$, and the original has been destroyed as well: the circuit produces two
+copies of a classical bit rather than one copy of a quantum state.
+</Check>
+
+## Where this comes from
+
+- [Cleve, QIC 710](https://cleve.iqc.uwaterloo.ca/qic710/), which presents both
+  the linearity and the inner-product proofs and then uses no-cloning directly
+  in the security argument for key distribution.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  box 12.1, for the theorem, and section 12.1 for the optimal approximate cloner
+  and the fidelity bound quoted above.

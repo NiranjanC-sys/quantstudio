@@ -1,0 +1,50 @@
+module: t0.m3
+cards:
+  - id: t0.m3.d1
+    front: "Give the definition of the inner product of two complex column vectors u and v."
+    back: "<u, v> = sum over i of the conjugate of u_i times v_i. It is conjugate-linear in the first argument and linear in the second."
+    lesson: t0.m3.l1
+  - id: t0.m3.d2
+    front: "How is the Euclidean norm of a vector defined in terms of the inner product?"
+    back: "||v|| = sqrt(<v, v>). For a quantum state this equals 1."
+    lesson: t0.m3.l1
+  - id: t0.m3.d3
+    front: "What does it mean for two vectors to be orthogonal, and what does it mean physically for two quantum states?"
+    back: "Their inner product is zero. Orthogonal quantum states are perfectly distinguishable by a single measurement."
+    lesson: t0.m3.l1
+  - id: t0.m3.d4
+    front: "What two conditions define an orthonormal basis?"
+    back: "Every pair of distinct basis vectors has inner product 0, and every basis vector has norm 1."
+    lesson: t0.m3.l2
+  - id: t0.m3.d5
+    front: "How do you expand a vector v in an orthonormal basis {e_k}?"
+    back: "v = sum over k of <e_k, v> e_k. Each coefficient is the inner product of that basis vector with v."
+    lesson: t0.m3.l2
+  - id: t0.m3.d6
+    front: "What kind of matrix implements a change between two orthonormal bases?"
+    back: "A unitary matrix. Its columns are the new basis vectors expressed in the old basis."
+    lesson: t0.m3.l2
+  - id: t0.m3.d7
+    front: "In Dirac notation, what is a ket and what is a bra?"
+    back: "A ket |psi> is a column vector. A bra <psi| is its conjugate transpose, a row vector."
+    lesson: t0.m3.l3
+  - id: t0.m3.d8
+    front: "What object is <phi|psi> and what object is |psi><phi|?"
+    back: "<phi|psi> is a scalar, the inner product. |psi><phi| is a matrix, the outer product."
+    lesson: t0.m3.l3
+  - id: t0.m3.d9
+    front: "Write the two states |+> and |-> in the computational basis."
+    back: "|+> = (|0> + |1>) / sqrt(2) and |-> = (|0> - |1>) / sqrt(2). Both have amplitudes of magnitude 0.7071."
+    lesson: t0.m3.l3
+  - id: t0.m3.d10
+    front: "What is <+|-> ?"
+    back: "Zero. The two states are orthogonal, so {|+>, |->} is an orthonormal basis of a single qubit."
+    lesson: t0.m3.l3
+  - id: t0.m3.d11
+    front: "What is <0|+> ?"
+    back: "1 / sqrt(2) = 0.7071. Non-zero overlap means |0> and |+> cannot be distinguished with certainty."
+    lesson: t0.m3.l3
+  - id: t0.m3.d12
+    front: "State the completeness relation for an orthonormal basis {e_k}."
+    back: "The sum over k of |e_k><e_k| equals the identity. Inserting it is the standard way to expand in a basis."
+    lesson: t0.m3.l2

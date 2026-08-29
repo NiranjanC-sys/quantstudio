@@ -1,0 +1,189 @@
+---
+id: t0.m7.l3
+title: Plotting Distributions with Error Bars
+type: concept
+track: t0
+module: t0.m7
+level: L0
+minutes: 12
+objectives:
+  - Compute the standard error of a sampled probability from N shots
+  - Choose a shot count that resolves a stated difference between two probabilities
+  - Explain why a bar chart of counts without error bars is not evidence
+prerequisites: [t0.m7.l1, t0.m1.l5]
+sources:
+  - label: CS269Q Elements of Quantum Computer Programming (Stanford)
+    url: https://cs269q.stanford.edu/
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+tags: [python, statistics]
+---
+
+A quantum computer never hands you a probability. It hands you counts, and you
+divide. Every bar in every histogram in this field is an estimate with an error
+that nobody drew, and the difference between two bars is routinely smaller than
+the error on either of them. Knowing how big that error is turns a picture into
+a measurement.
+
+## Where the error comes from
+
+Fix a circuit and an outcome $x$ with true probability $p$. Running $N$ shots
+and counting how many land on $x$ is $N$ independent Bernoulli trials, so the
+count $k$ is binomial with mean $Np$ and variance $Np(1-p)$. The estimator
+$\hat p = k/N$ therefore has
+
+$$
+\expect{\hat p} = p,
+\qquad
+\operatorname{Var}(\hat p) = \frac{p(1-p)}{N},
+\qquad
+\mathrm{SE} = \sqrt{\frac{p(1-p)}{N}} .
+$$
+
+The estimate is unbiased and its error shrinks like $1/\sqrt{N}$. That square
+root is brutal: a tenfold improvement in precision costs a hundredfold more
+shots.
+
+Since $p$ is unknown, plug in $\hat p$:
+
+```python
+import numpy as np
+
+def std_error(counts, N):
+    p = np.asarray(counts) / N
+    return np.sqrt(p * (1 - p) / N)
+```
+
+Some concrete values, with the interval that covers the truth 95 percent of the
+time being roughly $\hat p \pm 1.96\,\mathrm{SE}$:
+
+| $p$ | $N$ | SE | 95 percent half-width |
+| --- | --- | --- | --- |
+| $0.5$ | $1{,}000$ | $0.015811$ | $0.030990$ |
+| $0.5$ | $8{,}192$ | $0.005524$ | $0.010828$ |
+| $0.75$ | $1{,}000$ | $0.013693$ | $0.026838$ |
+
+<Margin label="Worst case is a fair coin">
+$p(1-p)$ is maximised at $p = 0.5$, so an unbiased outcome is the hardest to
+pin down and $\mathrm{SE} \le 1/(2\sqrt N)$ always. At $N = 8192$, the default
+shot count on much IBM hardware, no probability estimate is better than about
+$0.0055$.
+</Margin>
+
+## Sizing the shot budget
+
+Turn the formula around. To resolve a difference $\Delta$ between your estimate
+and a reference value at $z$ standard errors, you need
+
+$$
+N \ge \frac{z^2\,p(1-p)}{\Delta^2}.
+$$
+
+Suppose you want to distinguish $p = 0.50$ from $p = 0.52$ at two standard
+errors. With $\Delta = 0.02$, $z = 2$ and the worst-case $p(1-p) = 0.25$,
+
+$$
+N \ge \frac{4 \times 0.25}{0.0004} = 2500 .
+$$
+
+Comparing two *measured* probabilities rather than one against a constant costs
+more, because both carry error: the standard error of the difference is
+$\sqrt{\mathrm{SE}_1^2 + \mathrm{SE}_2^2}$, which for equal $N$ is $\sqrt2$
+times one of them, so the shot count doubles.
+
+## A source with a known answer
+
+The circuit below has an exactly known distribution, $0.75$ and $0.25$, so it is
+the right thing to test a sampling harness against.
+
+<Simulate
+  show="probabilities"
+  caption="Ry(pi/3) then measure. The exact probabilities are 0.75 and 0.25; a 1000-shot run should land within about 0.027 of those."
+  ir={{
+    version: 1,
+    name: "known-source",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "r0", gate: "ry", targets: [0], params: [1.0471975511965976] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+>
+
+| outcome | exact probability |
+| --- | --- |
+| $0$ | $0.750000$ |
+| $1$ | $0.250000$ |
+
+</Simulate>
+
+At $N = 1000$ the standard error on the first bar is
+$\sqrt{0.75 \times 0.25 / 1000} = 0.013693$, so a run reporting $0.738$ is
+entirely consistent with the exact value and a run reporting $0.68$ is not. Only
+the second is a bug report.
+
+## Drawing it
+
+```python
+import matplotlib.pyplot as plt
+
+labels = list(counts)
+p = np.array([counts[k] for k in labels]) / N
+err = np.sqrt(p * (1 - p) / N)
+
+fig, ax = plt.subplots()
+ax.bar(labels, p, yerr=1.96 * err, capsize=4)
+ax.set_ylabel("probability")
+ax.set_xlabel("outcome")
+```
+
+Two rules for these plots. Always label the error bars with what they mean, one
+standard error or a 95 percent interval, because readers cannot tell them apart
+by looking. And never start the $y$ axis anywhere but zero: a truncated axis can
+make a difference of one standard error look decisive.
+
+<Callout tone="gotcha" title="The formula breaks at the edges">
+If an outcome never occurs, $\hat p = 0$ and the formula returns
+$\mathrm{SE} = 0$, claiming certainty from no evidence at all. The rule of
+three is the fix: seeing 0 occurrences in $N$ shots means the true probability
+is below roughly $3/N$ with 95 percent confidence, so $N = 1000$ gives an upper
+bound of $0.003$, not a proof of impossibility. For serious work near 0 or 1,
+use a Wilson interval instead of the normal approximation.
+</Callout>
+
+## Why the picture without bars is not evidence
+
+A histogram of raw counts invites the reader to compare bar heights, and the eye
+is very good at seeing differences of a few pixels that are well inside the
+noise. Take a four-outcome distribution near uniform on 1024 shots. Each bar has
+$\mathrm{SE} = 0.013532$, so the difference of two bars has standard error
+$\sqrt2 \times 0.013532 = 0.019137$. Two outcomes separated by 30 counts differ
+by $0.029297$ in probability, which is $1.53$ standard errors: below the usual
+two-sigma threshold, and therefore not a result. You would need a gap of about
+39 counts before that plot said anything.
+This matters most in exactly the places quantum results are reported: comparing
+a noisy device against a simulator, or a mitigated result against an unmitigated
+one, where the effect sizes are genuinely small.
+
+<Check question="You measure an outcome 412 times in 1024 shots. Report the probability with a 95 percent interval, and say how many shots you would need to halve the interval.">
+$\hat p = 412/1024 = 0.402344$. The standard error is
+
+$$
+\sqrt{\frac{0.402344 \times 0.597656}{1024}} = 0.015324,
+$$
+
+so the 95 percent interval is $0.402344 \pm 1.96 \times 0.015324$, that is
+$0.402344 \pm 0.030035$, or roughly $0.372$ to $0.432$.
+
+Halving the interval means halving the standard error, and since it scales as
+$1/\sqrt N$ that costs four times the shots: $4096$ instead of $1024$.
+</Check>
+
+## Where this comes from
+
+- [CS269Q, Stanford](https://cs269q.stanford.edu/), whose benchmarking
+  assignments require error bars on every reported quantity.
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses),
+  for the shot-count conventions and the sampling-error discussion in the
+  utility-scale and error-mitigation courses.

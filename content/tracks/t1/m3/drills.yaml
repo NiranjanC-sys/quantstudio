@@ -1,0 +1,62 @@
+module: t1.m3
+cards:
+  - id: t1.m3.d1
+    front: "Write the three Pauli matrices X, Y and Z."
+    back: "X = [[0, 1], [1, 0]], Y = [[0, -i], [i, 0]], Z = [[1, 0], [0, -1]]."
+    lesson: t1.m3.l1
+  - id: t1.m3.d2
+    front: "What is X squared, Y squared or Z squared?"
+    back: "The identity in all three cases. Every Pauli is its own inverse."
+    lesson: t1.m3.l1
+  - id: t1.m3.d3
+    front: "Do X and Z commute?"
+    back: "No, they anticommute: XZ = -ZX. All three distinct Paulis anticommute pairwise."
+    lesson: t1.m3.l1
+  - id: t1.m3.d4
+    front: "What is the product XY?"
+    back: "iZ. Cyclically, YZ = iX and ZX = iY."
+    lesson: t1.m3.l1
+  - id: t1.m3.d5
+    front: "What does Z do to |0> and to |1>?"
+    back: "It leaves |0> alone and multiplies |1> by -1."
+    lesson: t1.m3.l1
+  - id: t1.m3.d6
+    front: "What are S and T in terms of the phase gate?"
+    back: "S = P(pi / 2) puts a factor of i on |1>, and T = P(pi / 4) puts a factor of exp(i pi / 4) on |1>."
+    lesson: t1.m3.l2
+  - id: t1.m3.d7
+    front: "What is S squared, and what is T squared?"
+    back: "S squared = Z and T squared = S. Hence T to the fourth is Z and T to the eighth is the identity."
+    lesson: t1.m3.l2
+  - id: t1.m3.d8
+    front: "Give the matrix of Rz(theta)."
+    back: "diag(exp(-i theta / 2), exp(i theta / 2)). It equals the phase gate P(theta) up to the global phase exp(-i theta / 2)."
+    lesson: t1.m3.l3
+  - id: t1.m3.d9
+    front: "Starting from |0>, what is the probability of measuring 1 after Ry(theta)?"
+    back: "sin squared of theta / 2. At theta = pi / 3 that is 0.25 and at theta = pi / 2 it is 0.5."
+    lesson: t1.m3.l3
+  - id: t1.m3.d10
+    front: "Give the closed form of exp(-i theta P / 2) for a Pauli P."
+    back: "cos(theta / 2) I - i sin(theta / 2) P, because P squared is the identity."
+    lesson: t1.m3.l3
+  - id: t1.m3.d11
+    front: "What does unitarity mean geometrically, and what is the defining equation?"
+    back: "It preserves the length of every vector. The equation is U dagger U = I."
+    lesson: t1.m3.l4
+  - id: t1.m3.d12
+    front: "How do you invert a circuit made of unitary gates?"
+    back: "Reverse the gate order and replace each gate by its dagger, since (AB) dagger = B dagger A dagger."
+    lesson: t1.m3.l4
+  - id: t1.m3.d13
+    front: "State the ZYZ Euler decomposition of a single-qubit unitary."
+    back: "Every single-qubit unitary equals exp(i alpha) Rz(beta) Ry(gamma) Rz(delta) for four real angles."
+    lesson: t1.m3.l5
+  - id: t1.m3.d14
+    front: "Simplify H X H and H Z H."
+    back: "H X H = Z and H Z H = X. Also H Y H = -Y."
+    lesson: t1.m3.l6
+  - id: t1.m3.d15
+    front: "What is the square root of X, and which gate implements it?"
+    back: "The SX gate, [[0.5 + 0.5i, 0.5 - 0.5i], [0.5 - 0.5i, 0.5 + 0.5i]], whose square is X. It is a native basis gate on IBM superconducting hardware."
+    lesson: t1.m3.l6

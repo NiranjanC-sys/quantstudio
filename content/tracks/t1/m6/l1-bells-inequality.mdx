@@ -1,0 +1,216 @@
+---
+id: t1.m6.l1
+title: Bell's Inequality
+type: concept
+track: t1
+module: t1.m6
+level: L1
+minutes: 15
+objectives:
+  - Derive the CHSH bound of 2 for any local hidden-variable model
+  - Compute the quantum value 2 sqrt 2 for the optimal measurement angles
+  - Explain which assumption of the derivation quantum mechanics violates
+prerequisites: [t1.m5.l2]
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: Preskill, Ph219/CS219 Quantum Computation lecture notes (Caltech)
+    url: http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html
+tags: [nonlocality, bell]
+---
+
+Correlations are cheap. Two people who agreed on a plan in advance can produce
+almost any pattern of agreement you ask for. So the interesting question is not
+whether entangled qubits are correlated, but whether their correlations exceed
+what any advance plan could produce. Bell's answer is a number, and quantum
+mechanics beats it.
+
+## The setup
+
+Alice and Bob each hold one qubit. A referee sends Alice a bit $x$ and Bob a bit
+$y$, chosen independently and uniformly. Alice measures her qubit in a way that
+may depend on $x$ and reports $a \in \{+1, -1\}$; Bob does the same with $y$ and
+reports $b$. They may not communicate after receiving their bits.
+
+The quantity of interest is the CHSH correlator
+
+$$
+S = \expect{a b}_{00} + \expect{a b}_{01} + \expect{a b}_{10} - \expect{a b}_{11} ,
+$$
+
+where $\expect{ab}_{xy}$ is the average product of their answers on question pair
+$(x, y)$. Three plus signs and one minus.
+
+<Margin label="Reading the correlator">
+$\expect{ab} = \Pr[a = b] - \Pr[a \ne b]$, so it runs from $+1$ for perfect
+agreement to $-1$ for perfect disagreement, with 0 for no correlation. The
+minus sign on the last term asks for the *opposite* behaviour there, and the
+whole question is whether all four demands can be satisfied at once.
+</Margin>
+
+## The classical bound
+
+Assume a **local hidden-variable** model: there is some variable $\lambda$,
+distributed however you like, fixed before the questions arrive, and Alice's
+answer is a function $A(x, \lambda)$ while Bob's is $B(y, \lambda)$. Locality is
+the statement that $A$ does not depend on $y$ and $B$ does not depend on $x$.
+This covers every conspiracy, every shared random seed, every prearranged
+lookup table.
+
+Fix $\lambda$ and write $A_0 = A(0, \lambda)$, $A_1 = A(1, \lambda)$,
+$B_0 = B(0, \lambda)$, $B_1 = B(1, \lambda)$, each in $\{+1, -1\}$. Then
+
+$$
+A_0 B_0 + A_0 B_1 + A_1 B_0 - A_1 B_1
+= A_0 (B_0 + B_1) + A_1 (B_0 - B_1) .
+$$
+
+Now the key observation: $B_0$ and $B_1$ are each $\pm 1$, so either
+$B_0 + B_1 = \pm 2$ and $B_0 - B_1 = 0$, or $B_0 + B_1 = 0$ and
+$B_0 - B_1 = \pm 2$. Exactly one of the two brackets vanishes. The surviving
+term is $\pm 1$ times $\pm 2$, so the whole expression is $+2$ or $-2$ for every
+$\lambda$.
+
+Averaging over $\lambda$ can only shrink the magnitude:
+
+$$
+|S| \le 2 .
+$$
+
+That is Bell's inequality in the CHSH form. It assumed nothing about physics
+beyond the existence of the four values $A_0, A_1, B_0, B_1$ at the same time
+and their independence from the other side's question.
+
+## The quantum value
+
+Now do it with a Bell pair. Alice and Bob share
+$\ket{\Phi^+} = \tfrac{1}{\sqrt2}(\ket{00} + \ket{11})$. Each measures an
+observable in the $xz$ plane of the Bloch sphere, at an angle $\phi$ from the
+$z$ axis:
+
+$$
+M(\phi) = \cos\phi \, Z + \sin\phi \, X ,
+$$
+
+implemented by applying $R_y(-\phi)$ and then measuring in the computational
+basis, since $R_y(-\phi)^{\dagger} Z R_y(-\phi) = M(\phi)$.
+
+On $\ket{\Phi^+}$ the two-qubit expectations are $\expect{Z \otimes Z} = 1$,
+$\expect{X \otimes X} = 1$ and $\expect{Z \otimes X} = \expect{X \otimes Z} = 0$,
+so
+
+$$
+\expect{M(\phi_A) \otimes M(\phi_B)}
+= \cos\phi_A \cos\phi_B + \sin\phi_A \sin\phi_B
+= \cos(\phi_A - \phi_B) .
+$$
+
+The correlation depends only on the angle between the two measurement axes.
+Choose
+
+$$
+\phi_{A_0} = 0, \quad \phi_{A_1} = \frac{\pi}{2},
+\qquad
+\phi_{B_0} = \frac{\pi}{4}, \quad \phi_{B_1} = -\frac{\pi}{4} .
+$$
+
+Every one of the first three pairs is $\pi/4$ apart, and the fourth is $3\pi/4$
+apart:
+
+$$
+S = \cos\frac{\pi}{4} + \cos\frac{\pi}{4} + \cos\frac{\pi}{4} - \cos\frac{3\pi}{4}
+= 3 \times 0.707107 + 0.707107 = 2.828427 = 2\sqrt2 .
+$$
+
+<Simulate
+  show="probabilities"
+  caption="Setting (A0, B0): a Bell pair with Ry(0) on qubit 0 and Ry(-pi/4) on qubit 1. Agreement probability 0.426777 + 0.426777 = 0.853553, so the correlation is 0.707107."
+  ir={{
+    version: 1,
+    name: "chsh-a0-b0",
+    qubits: 2,
+    clbits: 2,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "cx", gate: "x", targets: [1], controls: [0] },
+      { id: "rb", gate: "ry", targets: [1], params: [-0.7853981633974483] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] }
+    ]
+  }}
+/>
+
+<Simulate
+  show="probabilities"
+  caption="Setting (A1, B1): Ry(-pi/2) on qubit 0 and Ry(pi/4) on qubit 1. Now the outcomes disagree 0.853553 of the time, so the correlation is -0.707107, which the minus sign in S turns into a fourth positive contribution."
+  ir={{
+    version: 1,
+    name: "chsh-a1-b1",
+    qubits: 2,
+    clbits: 2,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "cx", gate: "x", targets: [1], controls: [0] },
+      { id: "ra", gate: "ry", targets: [0], params: [-1.5707963267948966] },
+      { id: "rb", gate: "ry", targets: [1], params: [0.7853981633974483] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] }
+    ]
+  }}
+/>
+
+Each of the four settings contributes $0.707107$ in magnitude, and
+$2\sqrt2 \approx 2.828427$ exceeds the classical bound of 2 by a factor of
+$\sqrt2$. Tsirelson's bound says $2\sqrt2$ is the maximum any quantum strategy
+can reach, so the gap is exactly this large and no larger.
+
+## Which assumption failed
+
+The derivation used three ingredients, and it is worth being precise about which
+one quantum mechanics rejects.
+
+**Realism**, the assumption that $A_0$ and $A_1$ both have values simultaneously.
+Quantum mechanics denies this: $M(0) = Z$ and $M(\pi/2) = X$ anticommute, so by
+the argument of T1.M3.L1 they share no eigenvector and no state assigns both a
+definite value. Alice measures one of them, and the other never had an answer to
+report.
+
+**Locality**, the assumption that $A$ is independent of $y$. Quantum mechanics
+respects this: T1.M5.L2 proved that Bob's marginal is untouched by anything
+Alice does, so no signal passes.
+
+**Freedom of choice**, the assumption that $x$ and $y$ are independent of
+$\lambda$. Quantum mechanics respects this too, and experiments enforce it with
+distant random-number sources.
+
+So the violation is a failure of realism, not of locality. The phrase "quantum
+mechanics is nonlocal" is standard and slightly misleading: what fails is the
+joint assumption, and the component that quantum theory abandons is the
+pre-existing answer.
+
+<Callout tone="warning" title="This is an experimental result, not an interpretation">
+Aspect in the 1980s and the loophole-free experiments of 2015 measured $S$ and
+found it above 2 by many standard errors. Any future theory must reproduce that.
+The inequality is a theorem about a class of models, the measurement is a fact,
+and together they rule the class out. T1.M6.L2 turns the same numbers into a
+game you can run yourself.
+</Callout>
+
+<Check question="Alice and Bob both ignore the questions and always answer $+1$. What is $S$, and does any deterministic strategy do better?">
+All four correlators are $\expect{ab} = 1$, so
+$S = 1 + 1 + 1 - 1 = 2$, exactly at the bound. Many deterministic strategies
+achieve 2, and by the derivation none exceeds it: the bracket argument gives
+$\pm 2$ for every assignment. Randomising helps not at all, since a random
+strategy is an average of deterministic ones and the average of numbers bounded
+by 2 is bounded by 2. That is why beating 2 rules out the entire class rather
+than one clever plan.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), whose
+  lecture on nonlocality gives the bracket argument for the classical bound in
+  exactly the form above and then computes the quantum value from the angle.
+- [Preskill, Ph219](http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html),
+  chapter 4, for the correlator $\cos(\phi_A - \phi_B)$, Tsirelson's bound, and
+  the careful separation of realism from locality.

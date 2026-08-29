@@ -1,0 +1,194 @@
+---
+id: t1.m11.l5
+title: Why Depth Costs You
+type: concept
+track: t1
+module: t1.m11
+level: L1
+minutes: 13
+objectives:
+  - Estimate circuit success probability as the product of per-gate fidelities
+  - Compute the depth at which a stated two-qubit error rate drives success below one half
+  - Explain why reducing two-qubit gate count usually beats reducing single-qubit gate count
+prerequisites:
+  - t1.m11.l4
+sources:
+  - label: CS269Q Elements of Quantum Computer Programming (Stanford)
+    url: https://cs269q.stanford.edu/
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+tags: [noise, depth]
+---
+
+T1.M8 told you to count depth. T1.M11 has now told you what a gate error is. This
+lesson multiplies the two together and produces the single most useful estimate in
+practical quantum computing: given a device's error rates, how big a circuit can
+you run before the answer is noise? The arithmetic is one line, and it explains
+almost every design decision in the rest of the curriculum.
+
+## The product rule
+
+Model each gate as succeeding with probability $1 - e$ and failing independently.
+Then a circuit of $N$ gates produces the right state with probability
+
+$$
+P_{\text{success}} \approx \prod_{i=1}^{N} (1 - e_i).
+$$
+
+The approximation is crude in two directions. It assumes independence, which
+coherent errors violate, and it treats "failed" as "gave a useless answer", which
+is pessimistic because some errors cancel. It is nonetheless the estimate every
+practitioner does in their head, and it is accurate enough to be the deciding
+factor in whether to attempt a circuit at all.
+
+<Margin label="Two rates, not one">
+Device datasheets list single-qubit and two-qubit error rates separately, and the
+two-qubit rate is typically about ten times the single-qubit rate. Any estimate
+that uses one average rate for both will be wrong by an order of magnitude on
+circuits dominated by entangling gates.
+</Margin>
+
+## The depth at which you lose
+
+Take a circuit that is a chain of two-qubit gates, so depth and two-qubit gate
+count are the same number $d$, and ask for the $d$ at which success falls to
+one half:
+
+$$
+(1 - e)^d = \half \quad \Longrightarrow \quad
+d = \frac{\ln \half}{\ln(1-e)} \approx \frac{0.693}{e}.
+$$
+
+| two-qubit error $e$ | depth for 50% success |
+| --- | --- |
+| $0.02$ | $34.31$ |
+| $0.01$ | $68.97$ |
+| $0.005$ | $138.28$ |
+| $0.001$ | $692.80$ |
+
+Read the third row as the practical statement it is. A device with a half-percent
+two-qubit error rate gives you roughly 138 sequential entangling gates before the
+result is a coin flip. Not 138 per qubit, not 138 per layer: 138 in a chain.
+
+Push past it and the decay is unforgiving, because it is exponential:
+
+| two-qubit gates at $e = 0.005$ | success |
+| --- | --- |
+| $100$ | $0.605770$ |
+| $500$ | $0.081572$ |
+| $1000$ | $0.006654$ |
+
+At a thousand gates you would need to repeat the experiment about 150 times to see
+one clean shot, and you would have no way to know which one it was.
+
+## Which gates to cut
+
+Now the practical question. You have a circuit with 200 single-qubit gates at
+$e_1 = 0.0005$ and 100 two-qubit gates at $e_2 = 0.005$. Its success estimate is
+
+$$
+(1 - 0.0005)^{200} \times (1 - 0.005)^{100}
+= 0.904815 \times 0.605770 = 0.548110 .
+$$
+
+An optimisation pass can remove 50 gates. Which 50?
+
+| version | success |
+| --- | --- |
+| baseline: 200 single, 100 two-qubit | $0.548110$ |
+| remove 50 single-qubit gates | $0.561989$ |
+| remove 50 two-qubit gates | $0.704229$ |
+
+Removing 50 single-qubit gates gains $0.0139$. Removing 50 two-qubit gates gains
+$0.1561$, eleven times as much. The ratio is just $e_2 / e_1$, and it is why every
+transpiler optimisation level is scored on two-qubit gate count first and
+everything else second.
+
+The same arithmetic explains the cost of connectivity. A SWAP is three CNOTs, so
+every SWAP the router inserts to bring two logical qubits together costs
+$1 - (1 - 0.005)^3 = 1.5\%$ of your success probability. On a device where the
+qubits you want to entangle are five hops apart, routing can easily cost more than
+the algorithm.
+
+<Callout tone="note" title="Depth and count are different resources">
+Gate count sets the error you accumulate from gates. Depth sets the wall-clock
+duration, and therefore the decoherence you accumulate while *idle*. A circuit can
+be short in gates and long in time, and its idle qubits are still relaxing.
+</Callout>
+
+## Idle time is not free
+
+Take the two GHZ circuits from T1.M8.L1. Both have one Hadamard and seven CNOTs,
+so both accumulate the same gate error: $1 - (1-0.005)^7 = 0.034479$.
+
+<Circuit
+  caption="GHZ on eight qubits as a ladder: 7 CNOTs, depth 8."
+  show={['probabilities']}
+  ir={{
+    version: 1,
+    name: "ghz8-ladder",
+    qubits: 8,
+    clbits: 0,
+    ops: [
+      { id: "h", gate: "h", targets: [0] },
+      { id: "c0", gate: "x", targets: [1], controls: [0] },
+      { id: "c1", gate: "x", targets: [2], controls: [1] },
+      { id: "c2", gate: "x", targets: [3], controls: [2] },
+      { id: "c3", gate: "x", targets: [4], controls: [3] },
+      { id: "c4", gate: "x", targets: [5], controls: [4] },
+      { id: "c5", gate: "x", targets: [6], controls: [5] },
+      { id: "c6", gate: "x", targets: [7], controls: [6] }
+    ]
+  }}
+/>
+
+<Circuit
+  caption="The same state as a tree: 7 CNOTs, depth 4. Identical gate error, half the wall clock."
+  show={['probabilities']}
+  ir={{
+    version: 1,
+    name: "ghz8-tree",
+    qubits: 8,
+    clbits: 0,
+    ops: [
+      { id: "h", gate: "h", targets: [0] },
+      { id: "a", gate: "x", targets: [1], controls: [0] },
+      { id: "b", gate: "x", targets: [2], controls: [0] },
+      { id: "c", gate: "x", targets: [3], controls: [1] },
+      { id: "d", gate: "x", targets: [4], controls: [0] },
+      { id: "e", gate: "x", targets: [5], controls: [1] },
+      { id: "f", gate: "x", targets: [6], controls: [2] },
+      { id: "g", gate: "x", targets: [7], controls: [3] }
+    ]
+  }}
+/>
+
+Both panels show $\ket{00000000}$ and $\ket{11111111}$ at $0.5$ each, and both
+footers report 7 two-qubit gates. The footers differ on depth: 8 against 4.
+
+Put a clock on it. With a two-qubit gate time of $300\,\mathrm{ns}$, the ladder
+runs for $2.4\,\mu\mathrm{s}$ and the tree for $1.2\,\mu\mathrm{s}$. With
+$T_2 = 100\,\mu\mathrm{s}$, each qubit accumulates a dephasing error of roughly
+$t/T_2$, which is $0.024$ for the ladder and $0.012$ for the tree, per qubit.
+Across eight qubits that is a difference of about $0.096$ in accumulated idle
+error, three times larger than the entire gate-error budget of either circuit.
+Same gates, same state, twice the damage.
+
+<Check question="Your circuit has depth 400 in two-qubit gates and the device quotes $e_2 = 0.008$. Is it worth running?">
+No. The depth for 50% success is $0.693/0.008 \approx 87$, and at depth 400 the
+estimate is $(1 - 0.008)^{400} = 0.0402$, so about one shot in twenty-five carries
+the signal and the rest are noise you cannot label. Three responses are worth
+considering, in order of effect: cut the two-qubit gate count, which is where all
+the error is; reduce depth by parallelising, which cuts idle decoherence; or
+restructure the algorithm to need a shallower circuit. Repeating the experiment
+more times does not help, because the error is bias rather than variance and more
+shots estimate the wrong distribution more precisely.
+</Check>
+
+## Where this comes from
+
+- [CS269Q, Stanford](https://cs269q.stanford.edu/), whose first project is
+  benchmarking a real device and discovering exactly this exponential wall.
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses), for
+  the transpiler optimisation levels that are scored on two-qubit gate count, and
+  for the utility-scale framing of depth as the binding constraint.

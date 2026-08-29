@@ -1,0 +1,229 @@
+---
+id: t0.m8.l1
+title: Placement Diagnostic
+type: checkpoint
+track: t0
+module: t0.m8
+level: L0
+minutes: 45
+objectives:
+  - Demonstrate mastery of each T0 module in a single timed diagnostic
+  - Locate the exact prerequisite node behind every question you miss
+  - Write a per-node mastery estimate into the learner DAG so unmastered nodes are scheduled first
+prerequisites: []
+sources:
+  - label: QWorld QBook101
+    url: https://qworld.net/qbook101/
+  - label: Matuschak & Nielsen, Quantum Computing for the Very Curious
+    url: https://quantum.country/qcvc
+tags: [assessment, placement]
+---
+
+T0 is skippable, and this is where you skip it. Eight probes, one per module,
+each chosen because failing it predicts failing something specific later. The
+diagnostic is not scored as a single number: each probe writes a mastery
+estimate to one node of your prerequisite graph, and the scheduler then puts the
+unmastered nodes in front of you and hides the rest.
+
+Work them on paper before opening the answers. A probe you answer by
+recognising the answer rather than deriving it should be counted wrong, because
+the graph is trying to model what you can do, not what looks familiar.
+
+## Probe 1: probabilistic dynamics and entropy
+
+Node: **t0.m1**. Failing this predicts trouble with the Born rule in T1.M2 and
+with sampling error in T4.
+
+<Check question="A bit flips 0 to 1 with probability $0.2$ and 1 to 0 with probability $0.5$. Write the operator, apply it twice to the certain state $\ket{0}$, give the stationary distribution, and give its entropy in bits.">
+Columns are conditional distributions, so
+
+$$
+M = \begin{pmatrix} 0.8 & 0.5 \\ 0.2 & 0.5 \end{pmatrix}.
+$$
+
+One step: $(0.8, 0.2)$. Two steps: $(0.64 + 0.10,\; 0.16 + 0.10) = (0.74, 0.26)$.
+
+With $a = 0.2$ and $b = 0.5$, the stationary distribution is
+$\pi = (b, a)/(a+b) = (0.5, 0.2)/0.7 = (0.714286,\; 0.285714)$. Check it:
+$0.8 \times 0.714286 + 0.5 \times 0.285714 = 0.714286$.
+
+Its entropy is $H(\pi) = 0.863121$ bits, below the maximum of 1 because the
+distribution is biased.
+</Check>
+
+## Probe 2: complex numbers in polar form
+
+Node: **t0.m2**. Failing this predicts trouble with phase kickback in T1.M9 and
+with the Fourier transform in T2.
+
+<Check question="Write $z = 1 - i\sqrt3$ in the form $re^{i\theta}$ with the principal argument, then compute $z^3$.">
+$|z| = \sqrt{1 + 3} = 2$, and the point is in the fourth quadrant with
+$\tan\theta = -\sqrt3$, so $\theta = -\pi/3$ and $z = 2e^{-i\pi/3}$.
+
+By de Moivre, $z^3 = 8 e^{-i\pi} = -8$. The answer is a real number, which is
+the check: cubing an angle of $-60$ degrees lands on $-180$ degrees, on the
+negative real axis.
+</Check>
+
+## Probe 3: inner products in the complex case
+
+Node: **t0.m3**. Failing this predicts trouble with measurement in a rotated
+basis, which is all of T1.M2.
+
+<Check question="For $a = (2i,\; 1)^{T}$ and $b = (1,\; -i)^{T}$ in $\mathbb{C}^2$, compute $\langle a, b\rangle$, $\lVert a \rVert$ and $\lVert b\rVert$, and check Cauchy-Schwarz.">
+Conjugate the left vector: $\bar a = (-2i,\; 1)$. Then
+
+$$
+\langle a, b\rangle = (-2i)(1) + (1)(-i) = -2i - i = -3i .
+$$
+
+Norms: $\lVert a\rVert = \sqrt{4 + 1} = \sqrt5 = 2.236068$ and
+$\lVert b \rVert = \sqrt{1+1} = \sqrt2 = 1.414214$.
+
+Cauchy-Schwarz: $|-3i| = 3$ against $\sqrt5\sqrt2 = \sqrt{10} = 3.162278$. The
+inequality holds and is nearly tight, so the two vectors are close to parallel.
+</Check>
+
+## Probe 4: spectra and exponentials
+
+Node: **t0.m4**. Failing this predicts trouble with rotation gates in T1.M3 and
+with Hamiltonian simulation in T4.
+
+<Check question="Find the eigenvalues of $A = \big(\begin{smallmatrix} 3 & -i \\ i & 3\end{smallmatrix}\big)$, and state $e^{-i\theta Y}$ in closed form.">
+$A = 3I + Y$, and $Y$ has eigenvalues $\pm 1$, so $A$ has eigenvalues $4$ and
+$2$. Both are real, as Hermiticity requires. By characteristic polynomial:
+$(3-\lambda)^2 - (-i)(i) = (3-\lambda)^2 - 1$, with roots $\lambda = 4, 2$.
+
+Since $Y^2 = I$, the Pauli exponential formula applies:
+
+$$
+e^{-i\theta Y} = \cos\theta\, I - i \sin\theta\, Y .
+$$
+
+The rotation gate is the half-angle version, $R_y(\varphi) = e^{-i\varphi Y/2}$.
+</Check>
+
+## Probe 5: tensor products and ordering
+
+Node: **t0.m5**. Failing this is the single best predictor of a wrong answer
+that looks right, because endianness bugs are silent.
+
+<Check question="A four-qubit basis state has only qubit 2 set. Give the RedQuant label and index, and the Qiskit label and index.">
+The assignment is $(q_0,q_1,q_2,q_3) = (0,0,1,0)$.
+
+RedQuant: qubit 0 is the most significant bit, so the label is $0010$ and the
+index is $2$.
+
+Qiskit: qubit $q$ carries weight $2^{q}$, so the index is $4$, and the printed
+label puts qubit 3 leftmost, giving $0100$.
+
+The two indices are $2$ and $4$, which are 4-bit reversals of each other.
+</Check>
+
+## Probe 6: reading a figure
+
+Node: **t0.m5** again, this time on the amplitudes rather than the labels.
+
+<Simulate
+  show="amplitudes"
+  caption="Predict the two non-zero amplitudes and their labels before reading the table."
+  ir={{
+    version: 1,
+    name: "diagnostic-figure",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "x0", gate: "x", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+<Check question="Which basis states carry amplitude, and what is the state as a tensor product?">
+The state is $\ket{1} \otimes \ket{+}$, since $X$ acts on qubit 0 and $H$ on
+qubit 1 with nothing linking them. Expanding,
+
+$$
+\ket{1}\otimes\ket{+} = \isqrt\left(\ket{10} + \ket{11}\right),
+$$
+
+so the amplitudes are $0.707107$ on $\ket{10}$ and $\ket{11}$, and zero on
+$\ket{00}$ and $\ket{01}$. Both probabilities are $0.5$. This is a product
+state: the test $ad = bc$ on the amplitudes gives $0 \times 0.707107 = 0$ and
+$0 \times 0.707107 = 0$, which agree.
+</Check>
+
+## Probe 7: reversible computation and complexity
+
+Node: **t0.m6**. Failing this predicts trouble building oracles in T2, where
+every one is a reversible circuit with ancillas to clear.
+
+<Check question="How do you get NAND out of a Toffoli gate, why must the ancilla be uncomputed, and which classical class is the honest baseline for a quantum speedup claim?">
+Toffoli sends $(a,b,c)$ to $(a, b, c \oplus ab)$. Setting $c = 1$ gives
+$1 \oplus ab = \lnot(ab)$, which is NAND, and NAND is universal.
+
+The ancilla must be returned to its initial value because an ancilla still
+holding a function of the input is entangled with the computation, and that
+entanglement destroys the interference the algorithm relies on. The pattern is
+compute, copy the answer out, then run the computation backwards.
+
+The baseline is BPP, not P. Classical computers have always had randomness, so
+beating the best deterministic algorithm while tying the best randomised one
+demonstrates nothing.
+</Check>
+
+## Probe 8: sampling error
+
+Node: **t0.m7**. Failing this predicts reporting a difference between two bars
+that the shot count cannot support.
+
+<Check question="How many shots are needed to distinguish a probability of $0.50$ from $0.51$ at two standard errors, and what does an observed count of zero tell you?">
+Use $N \ge z^2 p(1-p)/\Delta^2$ with $z = 2$, worst-case $p(1-p) = 0.25$ and
+$\Delta = 0.01$:
+
+$$
+N \ge \frac{4 \times 0.25}{0.0001} = 10{,}000 .
+$$
+
+Comparing two measured probabilities rather than one against a constant doubles
+that, because both carry error.
+
+An observed count of zero does not mean the outcome is impossible. The plug-in
+formula returns a standard error of zero, which is wrong. Use the rule of three:
+zero occurrences in $N$ shots puts the true probability below about $3/N$ with
+95 percent confidence, so $0$ in $1000$ shots means below $0.003$.
+</Check>
+
+## How the result is written to your graph
+
+Each probe maps to one module node. A correct answer sets that node's mastery
+high enough for the scheduler to skip its lessons; an incorrect one leaves the
+node unmastered, and every lesson that node gates stays in your path.
+
+| Probes correct | What the scheduler does |
+| --- | --- |
+| 8 of 8 | All of T0 is skipped; you start at T1.M1 |
+| 5 to 7 | Only the modules behind your missed probes are scheduled |
+| Below 5 | T0 is scheduled in full, ordered by the prerequisite graph |
+
+<Callout tone="note" title="Skipping is reversible">
+Mastery estimates decay, and any T1 lesson that leans on a skipped T0 node can
+push it back into your queue when you stumble on it. Nothing here is a one-time
+verdict; the graph is a model of you that keeps being updated.
+</Callout>
+
+<Callout tone="warning" title="Probe 5 is the one to take seriously">
+Every other probe fails loudly: you get an answer you cannot derive and you know
+it. Endianness fails quietly. A circuit built under the wrong convention runs,
+returns plausible numbers, and is wrong, and the Bell states everyone tests with
+are palindromes that look identical either way.
+</Callout>
+
+## Where this comes from
+
+- [QWorld QBook101](https://qworld.net/qbook101/), whose exercise difficulty
+  across the probabilistic and complex-number chapters calibrates probes 1
+  through 3.
+- [Matuschak & Nielsen, Quantum Computing for the Very Curious](https://quantum.country/qcvc),
+  for the principle that assessment should test retrieval rather than
+  recognition, and that a missed item should name the material it came from.

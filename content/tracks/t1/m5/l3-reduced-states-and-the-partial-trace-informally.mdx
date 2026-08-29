@@ -1,0 +1,192 @@
+---
+id: t1.m5.l3
+title: Reduced States and the Partial Trace, Informally
+type: concept
+track: t1
+module: t1.m5
+level: L1
+minutes: 14
+objectives:
+  - Compute the reduced state of one qubit of a Bell pair and identify it as maximally mixed
+  - Apply the partial trace to a two-qubit product state and recover the original factors
+  - Explain why the reduced state, not the global state, determines local statistics
+prerequisites: [t1.m5.l2]
+sources:
+  - label: Preskill, Ph219/CS219 Quantum Computation lecture notes (Caltech)
+    url: http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [entanglement, partial-trace]
+---
+
+The previous lesson proved that nothing Alice does changes Bob's statistics.
+That proof needed a sum over Alice's outcomes at every step, which is clumsy.
+There is an object that packages the sum once and for all: the **reduced state**
+of Bob's qubit. It is not a vector, and learning to accept that is the price of
+being able to talk about half of an entangled pair at all.
+
+## Half of a Bell pair is not a vector
+
+Ask the obvious question: what state is qubit 1 of $\ket{\Phi^+}$ in? Every
+candidate fails. It is not $\ket{0}$, since it reads 1 half the time. It is not
+$\tfrac{1}{\sqrt2}(\ket{0} + \ket{1})$, since measuring it in the $X$ basis is a
+coin flip too, while $\ket{+}$ would give $+$ with certainty. It is not any
+vector at all, because every one-qubit vector is certain about some measurement
+and this qubit is certain about none.
+
+The Bloch picture makes the failure visible. Every state vector maps to an arrow
+of length 1 on the surface of the sphere. This qubit's arrow has length 0.
+
+<Simulate
+  show={['bloch', 'amplitudes']}
+  caption="A Bell pair. The joint amplitudes are perfectly definite, and both individual Bloch arrows have length 0: each qubit sits at the centre of the ball."
+  ir={{
+    version: 1,
+    name: "bell-reduced",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "cx", gate: "x", targets: [1], controls: [0] }
+    ]
+  }}
+/>
+
+Compare a product state, where each qubit does have a vector and each arrow does
+reach the surface.
+
+<Simulate
+  show={['bloch', 'amplitudes']}
+  caption="H on qubit 0 only. Qubit 0's arrow points along +x, qubit 1's along +z, and both have length 1."
+  ir={{
+    version: 1,
+    name: "product-reduced",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+## Density matrices in one page
+
+Replace the vector $\ket{\psi}$ by the matrix
+
+$$
+\rho = \ketbra{\psi}{\psi} ,
+$$
+
+which contains the same information: it is unchanged by a global phase, and the
+Born rule becomes $\Pr[m] = \bra{m}\rho\ket{m}$. For $\ket{0}$ it is
+$\mathrm{diag}(1, 0)$, and for $\ket{+}$ it is
+$\tfrac12\begin{pmatrix}1 & 1 \\ 1 & 1\end{pmatrix}$.
+
+The gain is that matrices can be averaged and vectors cannot. A source emitting
+$\ket{0}$ or $\ket{1}$ with equal probability is described by
+$\tfrac12\ketbra{0}{0} + \tfrac12\ketbra{1}{1} = \tfrac{I}{2}$, and no vector
+does that job. Such a $\rho$ is called **mixed**; a $\rho$ of the form
+$\ketbra{\psi}{\psi}$ is **pure**.
+
+<Margin label="Bloch, extended">
+Every one-qubit density matrix is
+$\rho = \tfrac12\left( I + r_x X + r_y Y + r_z Z \right)$ with
+$\lVert \vec{r} \rVert \le 1$. Length 1 is pure and on the surface; length 0 is
+$I/2$, the maximally mixed state at the centre. The figures above report that
+length, which is why T1.M2.L4 could estimate a state from three counts.
+</Margin>
+
+## The partial trace
+
+To get the state of qubit $B$ from a joint $\rho$, sum out $A$:
+
+$$
+\left( \rho_B \right)_{jk} = \sum_{a \in \{0, 1\}} \bra{a j} \rho \ket{a k} .
+$$
+
+That is the partial trace, written $\rho_B = \tr_A(\rho)$. It is exactly the sum
+over Alice's unrecorded outcomes from the previous lesson, done once instead of
+per measurement.
+
+Run it on the Bell state. With
+$\rho = \tfrac12\left( \ketbra{00}{00} + \ketbra{00}{11} + \ketbra{11}{00} + \ketbra{11}{11} \right)$,
+
+$$
+(\rho_B)_{00} = \bra{00}\rho\ket{00} + \bra{10}\rho\ket{10} = \tfrac12 + 0 = \tfrac12 ,
+$$
+
+$$
+(\rho_B)_{01} = \bra{00}\rho\ket{01} + \bra{10}\rho\ket{11} = 0 + 0 = 0 ,
+$$
+
+and symmetrically $(\rho_B)_{11} = \tfrac12$, $(\rho_B)_{10} = 0$. So
+
+$$
+\rho_B = \frac{I}{2} .
+$$
+
+Maximally mixed. Its Bloch vector is $(0,0,0)$, which is the length-0 arrow in
+the figure, and it says every measurement on Bob's qubit in every basis is a
+fair coin. The off-diagonal terms $\ketbra{00}{11}$ contributed nothing because
+they connect states that differ in Bob's index as well as Alice's, and the
+partial trace only pairs terms that agree on Alice's index.
+
+Now run it on the product state $\ket{+}\otimes\ket{0}$, where
+$\rho = \ketbra{+}{+} \otimes \ketbra{0}{0}$. The sum factors and gives
+$\rho_A = \ketbra{+}{+}$ and $\rho_B = \ketbra{0}{0}$: the original factors come
+back exactly, with Bloch vectors $(1,0,0)$ and $(0,0,1)$. That is the general
+rule, $\tr_B(\rho_A \otimes \rho_B) = \rho_A$, and it confirms that the partial
+trace is the right generalisation of "just look at one part".
+
+## Mixedness measures entanglement
+
+For a pure joint state, the reduced state is pure exactly when the joint state
+is a product. So how mixed the halves are is a measure of how entangled the
+whole is, and it runs from arrow length 1 for a product state down to arrow
+length 0 for a Bell pair. T1.M5.L5 turns that observation into a number.
+
+<Callout tone="gotcha" title="Mixed is not the same as merely unknown">
+The reduced state of a Bell half is $I/2$, and so is the state of a qubit that
+was secretly prepared as $\ket{0}$ or $\ket{1}$ by a coin flip. The two
+situations are locally identical and globally different: in the first case the
+correlation with the partner qubit is stronger than any classical variable
+allows, and in the second there is a fact about which state was prepared. A
+density matrix records everything local and deliberately forgets the rest.
+</Callout>
+
+## Why the reduced state is the right object
+
+Three properties, and together they justify the definition.
+
+It reproduces all local statistics: $\Pr[b] = \bra{b}\rho_B\ket{b}$ and, more
+generally, $\expect{I \otimes A} = \tr(\rho_B A)$ for any observable $A$ on
+Bob's side.
+
+It is invariant under anything Alice does. Applying $U \otimes I$ to the joint
+state leaves $\rho_B$ unchanged, which is the no-signalling theorem of T1.M5.L2
+compressed into one line, since the $U$ and $U^{\dagger}$ meet under the trace.
+
+It is the *only* object with those properties. Any two joint states with the
+same $\rho_B$ are indistinguishable to Bob, and any two with different $\rho_B$
+are distinguishable given enough copies. So $\rho_B$ is precisely Bob's
+information, no more and no less.
+
+<Check question="Compute the reduced state of qubit 1 for $\ket{\chi} = 0.6\ket{00} + 0.8\ket{11}$, and give its Bloch vector.">
+The joint density matrix has entries $0.36$ on $\ketbra{00}{00}$, $0.64$ on
+$\ketbra{11}{11}$, and $0.48$ on each of $\ketbra{00}{11}$ and
+$\ketbra{11}{00}$. Tracing out qubit 0 gives
+$(\rho_B)_{00} = 0.36$, $(\rho_B)_{11} = 0.64$ and off-diagonals 0, so
+$\rho_B = \mathrm{diag}(0.36, 0.64)$. Its Bloch vector is
+$(0,\ 0,\ 0.36 - 0.64) = (0, 0, -0.28)$, of length $0.28$: mixed but not
+maximally so, matching the concurrence of $0.96$ from T1.M4.L3, which said this
+state is entangled but not maximally entangled.
+</Check>
+
+## Where this comes from
+
+- [Preskill, Ph219](http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html),
+  chapter 2, which introduces density operators precisely because a subsystem of
+  an entangled pure state has no vector description, the motivation used here.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  sections 2.4.1 and 2.4.3, for the density-operator formalism and for the
+  uniqueness argument that makes the partial trace the correct definition.

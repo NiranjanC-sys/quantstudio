@@ -1,0 +1,217 @@
+---
+id: t1.m12.l1
+title: "Project: Build, Run and Benchmark a Bell-State Experiment"
+type: project
+track: t1
+module: t1.m12
+level: L1
+minutes: 240
+objectives:
+  - Prepare all four Bell states and verify each against its reference amplitude vector
+  - Estimate state fidelity from measured counts with a stated shot budget and error bars
+  - Report a CHSH value with uncertainty and state whether it exceeds the classical bound
+prerequisites:
+  - t1.m6.l2
+  - t1.m7.l2
+  - t1.m11.l5
+  - t1.m2.l5
+sources:
+  - label: CS269Q Elements of Quantum Computer Programming (Stanford)
+    url: https://cs269q.stanford.edu/
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+tags: [project, capstone]
+---
+
+You have spent eleven modules taking other people's word for what a Bell state is.
+This project is the one where you produce the numbers yourself: prepare all four
+Bell states, measure them in three bases, turn the counts into a fidelity with an
+honest error bar, run CHSH, and write down what your data does and does not
+establish. It is the experiment every hardware team runs on a new device, and it
+is deliberately the same shape as the benchmarking work in T3.M7.
+
+## Deliverables
+
+1. A module that builds each of the four Bell states as a circuit in the platform
+   IR and asserts its statevector against the reference below.
+2. A measurement routine that estimates $\expect{ZZ}$, $\expect{XX}$ and
+   $\expect{YY}$ from counts at a stated shot budget.
+3. A fidelity estimate for $\ket{\Phi^+}$ with a $1\sigma$ error bar derived from
+   shot noise.
+4. A CHSH value with an error bar, and a one-sentence statement of whether it
+   exceeds 2 by more than your uncertainty.
+5. A short report, at most two pages, including one plot with error bars and a
+   paragraph on what your result does not prove.
+
+## Part 1: the four states
+
+Qubit 0 is the most significant bit. Each circuit is the Hadamard and CNOT pair
+plus at most two extra single-qubit gates.
+
+| state | circuit after H on q0 and CNOT q0 to q1 | amplitudes |
+| --- | --- | --- |
+| $\ket{\Phi^+}$ | nothing | $\ket{00}: +0.7071$, $\ket{11}: +0.7071$ |
+| $\ket{\Phi^-}$ | $Z$ on q0 | $\ket{00}: +0.7071$, $\ket{11}: -0.7071$ |
+| $\ket{\Psi^+}$ | $X$ on q1 | $\ket{01}: +0.7071$, $\ket{10}: +0.7071$ |
+| $\ket{\Psi^-}$ | $Z$ on q0 and $X$ on q1 | $\ket{01}: +0.7071$, $\ket{10}: -0.7071$ |
+
+<Circuit
+  caption="The reference state. Every other Bell state is this circuit plus one or two Pauli gates."
+  show={['amplitudes', 'qasm']}
+  ir={{
+    version: 1,
+    name: "phi-plus",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h", gate: "h", targets: [0] },
+      { id: "c", gate: "x", targets: [1], controls: [0] }
+    ]
+  }}
+/>
+
+Assert against the amplitude vector up to global phase, and assert the resource
+bound too: two gates, depth 2, exactly one two-qubit gate. A submission that
+prepares the right state with five gates should score lower than one that uses
+two, for the reasons T1.M11.L5 made quantitative.
+
+## Part 2: three bases
+
+A computational-basis measurement gives you $\expect{ZZ}$ and nothing else, which
+is not enough to identify a Bell state: $\ket{\Phi^+}$ and the classically
+correlated mixture of $\ket{00}$ and $\ket{11}$ have identical $Z$-basis counts.
+Rotate before measuring.
+
+| observable | gates before measurement | expected value on $\ket{\Phi^+}$ |
+| --- | --- | --- |
+| $\expect{ZZ}$ | none | $+1$ |
+| $\expect{XX}$ | $H$ on both qubits | $+1$ |
+| $\expect{YY}$ | $S\dg$ then $H$ on both qubits | $-1$ |
+
+Each correlator is computed from the counts as
+
+$$
+\expect{AB} = \frac{n_{00} - n_{01} - n_{10} + n_{11}}{N},
+$$
+
+the probability of agreement minus the probability of disagreement.
+
+<Margin label="Sanity check">
+On the noiseless simulator the $XX$ circuit returns $\ket{00}$ and $\ket{11}$ at
+$0.5$ each, and the $YY$ circuit returns $\ket{01}$ and $\ket{10}$ at $0.5$ each.
+If your $YY$ correlator comes out $+1$ you have the sign of the $S\dg$ wrong.
+</Margin>
+
+## Part 3: fidelity with an error bar
+
+For $\ket{\Phi^+}$ the density matrix decomposes as
+$\ketbra{\Phi^+}{\Phi^+} = \tfrac14(II + XX - YY + ZZ)$, so the fidelity of a
+measured state $\rho$ with the target is
+
+$$
+F = \frac{1 + \expect{XX} - \expect{YY} + \expect{ZZ}}{4}.
+$$
+
+Three correlators, three circuits, one number. On the ideal state that is
+$(1 + 1 + 1 + 1)/4 = 1$.
+
+The error bar comes from shot noise, which you met in T1.M2.L5. A correlator
+estimated from $N$ shots has standard error
+$\sqrt{(1 - \expect{AB}^2)/N}$, and the three are measured on independent circuits,
+so
+
+$$
+\sigma_F = \frac{1}{4}\sqrt{\sigma_{XX}^2 + \sigma_{YY}^2 + \sigma_{ZZ}^2}.
+$$
+
+Choose $N$ deliberately and say why. For a correlator near $0.7071$, a shot budget
+of $4096$ gives a standard error of $0.011049$ per correlator; $1024$ shots gives
+$0.022097$ and $8192$ gives $0.007812$. Quadrupling the shots halves the error
+bar, which is the only lever shot noise responds to.
+
+<Callout tone="warning" title="Do not report a fidelity without a bar">
+A fidelity quoted to four decimals from 1000 shots is four decimals of which two
+are noise. The grading rubric weights the error bar as heavily as the estimate,
+and a correct estimate with no uncertainty scores below a slightly worse estimate
+with a defensible one.
+</Callout>
+
+## Part 4: CHSH
+
+Measure each qubit along a direction in the $x$-$z$ plane at angle $\theta$,
+implemented as $R_y(-\theta)$ followed by a computational measurement. On
+$\ket{\Phi^+}$ the correlator is $E(\theta_A, \theta_B) = \cos(\theta_A - \theta_B)$.
+
+Use the standard settings $\theta_a = 0$, $\theta_{a'} = \pi/2$,
+$\theta_b = \pi/4$, $\theta_{b'} = -\pi/4$, and form
+
+$$
+S = E(a,b) + E(a,b') + E(a',b) - E(a',b').
+$$
+
+Each of the four correlators is $\pm 0.707107$, and the combination gives
+$S = 2.828427$, which is $2\sqrt2$. The classical bound is $2$, so the ideal
+violation is $0.828427$.
+
+The error bar on $S$ follows from the four independent correlators. With
+$E \approx 0.7071$ each has standard error $\sqrt{0.5/N}$, so
+
+$$
+\sigma_S = 2\sqrt{\frac{0.5}{N}},
+$$
+
+which is $0.044194$ at $N = 1024$, $0.022097$ at $N = 4096$ and $0.015625$ at
+$N = 8192$. Report $S$ as an estimate plus or minus $\sigma_S$ and state how many
+standard errors it sits above 2.
+
+## Part 5: the honest paragraph
+
+The report must include a paragraph on what your numbers do not show. Three
+things belong in it, and the rubric checks for them.
+
+**Simulation is not evidence about hardware.** If you ran on the browser
+simulator you measured your own arithmetic. Say so.
+
+**A CHSH violation on a single device with a shared control system is not a
+loophole-free Bell test.** The detection loophole and the locality loophole both
+require experimental arrangements a gate-model quantum computer does not provide.
+Your measurement demonstrates that the correlations exceed the classical bound in
+your data; it does not close the loopholes.
+
+**Fidelity is one number and it hides structure.** A fidelity of $0.92$ is
+consistent with many different error mechanisms. T1.M11.L4 gives the local
+depolarising reading, $p = 0.054837$ for that value, but coherent over-rotation
+would produce the same fidelity with a completely different Bloch-sphere picture,
+and only a depth sweep or full tomography separates them.
+
+## Rubric
+
+| criterion | weight |
+| --- | --- |
+| All four Bell states correct, verified up to global phase | 20 |
+| Resource bounds met: 2 gates, depth 2, one two-qubit gate | 10 |
+| Three correlators measured with correct basis-change circuits | 20 |
+| Fidelity estimate with a correctly derived shot-noise error bar | 20 |
+| CHSH value, error bar, and a statement of significance | 20 |
+| The honest paragraph, with all three points addressed | 10 |
+
+<Check question="Your CHSH result comes out at $S = 2.79 \pm 0.02$. A reviewer says this disproves local realism. What do you say?">
+That the number is $39.5$ standard errors above the classical bound of 2 and is
+strong evidence that your data cannot be reproduced by the local hidden-variable
+model CHSH assumes, and that this is not the same claim. A gate-model device
+measures both qubits with one control system, in one cryostat, without spacelike
+separation and without closing the detection loophole, so a local hidden-variable
+model that exploits either loophole reproduces your data comfortably. The correct
+sentence is that the observed correlations violate the CHSH bound by
+$0.79 \pm 0.02$ under the assumption that the device behaves as modelled, which is a
+statement about the device rather than about nature.
+</Check>
+
+## Where this comes from
+
+- [CS269Q, Stanford](https://cs269q.stanford.edu/), whose first project is
+  "benchmark a QPU" and which sets the pattern of measuring, quantifying and then
+  stating the limits of what was measured.
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses), for
+  the expectation-value estimation workflow and the basis-change circuits used in
+  part 2.

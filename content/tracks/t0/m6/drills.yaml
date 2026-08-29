@@ -1,0 +1,54 @@
+module: t0.m6
+cards:
+  - id: t0.m6.d1
+    front: "Name a single two-input Boolean gate that is universal for classical computation on its own."
+    back: "NAND. NOR is the other one. Either can build AND, OR and NOT."
+    lesson: t0.m6.l1
+  - id: t0.m6.d2
+    front: "Define the depth of a classical or quantum circuit."
+    back: "The length of the longest chain of gates that must run one after another, equivalently the number of layers under as-soon-as-possible scheduling."
+    lesson: t0.m6.l2
+  - id: t0.m6.d3
+    front: "Define the width of a circuit."
+    back: "The number of wires, that is the number of bits or qubits it acts on."
+    lesson: t0.m6.l2
+  - id: t0.m6.d4
+    front: "Can the depth of a circuit exceed its gate count?"
+    back: "No. Each layer holds at least one gate, so depth is at most the number of gates, with equality when every gate shares a wire with the previous one."
+    lesson: t0.m6.l2
+  - id: t0.m6.d5
+    front: "Why is fan-out free classically but not quantumly?"
+    back: "Copying a bit is legal; copying an unknown quantum state is forbidden by the no-cloning theorem."
+    lesson: t0.m6.l2
+  - id: t0.m6.d6
+    front: "What does the Toffoli gate do?"
+    back: "It flips its target exactly when both controls are 1. It is universal for classical reversible computation."
+    lesson: t0.m6.l3
+  - id: t0.m6.d7
+    front: "Why must every quantum gate be reversible?"
+    back: "Because unitary matrices are invertible. Any irreversible classical function must be embedded reversibly, usually by writing the answer with an XOR into a fresh register."
+    lesson: t0.m6.l3
+  - id: t0.m6.d8
+    front: "What is uncomputation and why is it necessary?"
+    back: "Running a subroutine backwards to reset its ancillas. Leftover garbage stays entangled with the answer and destroys the interference the algorithm depends on."
+    lesson: t0.m6.l3
+  - id: t0.m6.d9
+    front: "State Landauer's principle."
+    back: "Erasing one bit of information dissipates at least kT ln 2 of energy as heat, about 2.87e-21 J at 300 K."
+    lesson: t0.m6.l3
+  - id: t0.m6.d10
+    front: "Define the complexity class BPP."
+    back: "Problems solvable by a randomised classical algorithm in polynomial time with error probability at most one third on every input."
+    lesson: t0.m6.l4
+  - id: t0.m6.d11
+    front: "What is the difference between NP and the class of problems a computer can solve quickly?"
+    back: "NP is the class whose yes-instances have a certificate verifiable in polynomial time. It is a statement about checking, not about finding."
+    lesson: t0.m6.l4
+  - id: t0.m6.d12
+    front: "Give the standard containment chain relating P, BPP, NP and PSPACE."
+    back: "P is contained in BPP and in NP, and both BPP and NP are contained in PSPACE. None of these containments is known to be strict."
+    lesson: t0.m6.l4
+  - id: t0.m6.d13
+    front: "Is a reversible circuit allowed to have more outputs than the function it computes?"
+    back: "Yes, and it usually must. Reversibility forces the number of inputs and outputs to be equal, so ancilla wires carry the extra bits."
+    lesson: t0.m6.l3

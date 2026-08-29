@@ -409,10 +409,28 @@ class JobStore:
     def __init__(self, workers: int = JOB_WORKERS, ttl: float = JOB_TTL_SECONDS) -> None:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
-        self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="job")
+        self._workers = workers
+        self._pool: ThreadPoolExecutor | None = None
         self._ttl = ttl
 
+    def _ensure_pool(self) -> ThreadPoolExecutor:
+        """Create the pool on first use, and again after a shutdown.
+
+        A ``ThreadPoolExecutor`` cannot be restarted, and this store is a
+        module-level singleton that the lifespan shuts down. Building it lazily
+        is what lets the app be started more than once in one process -- which
+        the test suite does on every test, and which ``uvicorn --reload`` does
+        on every save.
+        """
+        with self._lock:
+            if self._pool is None:
+                self._pool = ThreadPoolExecutor(
+                    max_workers=self._workers, thread_name_prefix="job"
+                )
+            return self._pool
+
     def submit(self, fn: Any, request_id: str) -> Job:
+        pool = self._ensure_pool()
         job = Job(
             id=uuid.uuid4().hex,
             state="queued",
@@ -422,7 +440,7 @@ class JobStore:
         with self._lock:
             self._jobs[job.id] = job
         QUEUE_DEPTH.inc()
-        self._pool.submit(self._run, job, fn)
+        pool.submit(self._run, job, fn)
         return job
 
     def _run(self, job: Job, fn: Any) -> None:
@@ -461,7 +479,10 @@ class JobStore:
                 del self._jobs[jid]
 
     def shutdown(self) -> None:
-        self._pool.shutdown(wait=False, cancel_futures=True)
+        with self._lock:
+            pool, self._pool = self._pool, None
+        if pool is not None:
+            pool.shutdown(wait=False, cancel_futures=True)
 
 
 JOBS = JobStore()

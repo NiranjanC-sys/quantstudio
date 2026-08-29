@@ -1,0 +1,237 @@
+---
+id: t1.m11.l1
+title: Where Noise Comes From
+type: concept
+track: t1
+module: t1.m11
+level: L1
+minutes: 13
+objectives:
+  - Name the four dominant error sources on a gate-model device and the timescale of each
+  - Distinguish coherent control error from incoherent decoherence by their scaling with depth
+  - Explain why readout error is separable from gate error in an error budget
+prerequisites:
+  - t1.m8.l1
+sources:
+  - label: CS269Q Elements of Quantum Computer Programming (Stanford)
+    url: https://cs269q.stanford.edu/
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+tags: [noise]
+---
+
+Every circuit in this track so far has been exact. Run any of them on hardware and
+the numbers come out wrong, and the interesting question is not "how wrong" but
+"wrong in which of several distinguishable ways". A practitioner who can name the
+mechanism from the shape of the deviation can fix it. One who cannot is left
+adding a fudge factor. This lesson is the taxonomy, four modules before T4
+formalises any of it.
+
+## Four sources, four timescales
+
+**Relaxation.** A qubit in $\ket{1}$ is an excited state, and excited states decay
+by emitting energy into whatever they are coupled to. The rate is characterised by
+$T_1$, and on current superconducting devices $T_1$ is on the order of a hundred
+microseconds. Relaxation has a preferred direction: it pushes states towards
+$\ket{0}$ and never the other way.
+
+**Dephasing.** Even a qubit that never decays loses the *phase* relationship
+between $\ket{0}$ and $\ket{1}$, because its transition frequency wanders as the
+local field fluctuates. The rate is $T_2$, generally shorter than $T_1$ and always
+at most $2T_1$. Dephasing has no preferred direction on the $z$ axis; it shrinks
+the equator of the Bloch sphere.
+
+**Control error.** A gate is a shaped pulse. If the amplitude is a fraction of a
+percent high, every gate over-rotates by the same small angle. If the drive is
+slightly off resonance, every gate rotates about a slightly tilted axis. Crosstalk
+belongs here too: a pulse aimed at one qubit reaches its neighbours.
+
+**Readout error.** Measurement discriminates two distributions that overlap. A
+qubit in $\ket{0}$ is sometimes reported as 1 and a qubit in $\ket{1}$ sometimes as
+0, at rates that are typically different from each other. Readout takes on the
+order of a microsecond, an order of magnitude longer than a gate, and its error
+rate is usually the largest single number on a device calibration page.
+
+<Margin label="Orders of magnitude">
+On a typical current superconducting device: single-qubit gate tens of
+nanoseconds, two-qubit gate a few hundred nanoseconds, readout around a
+microsecond, $T_1$ and $T_2$ around a hundred microseconds. The ratio that matters
+is gate time to coherence time, and it is roughly one to a thousand.
+</Margin>
+
+## Coherent and incoherent errors scale differently
+
+This is the distinction that changes how you debug, and it is visible without any
+noise model at all. A coherent error is a small unitary you did not ask for. It
+is deterministic and it *repeats*, so the errors add as amplitudes.
+
+Suppose every gate over-rotates by $\varepsilon = 0.05$ radians about $x$. After
+$d$ gates the total unwanted rotation is $d\varepsilon$, and the probability of
+finding the qubit in the wrong state is $\sin^2(d\varepsilon/2)$. One gate:
+
+<Circuit
+  caption="A single 0.05 radian over-rotation. The error probability is 0.000625."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "coherent-1",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "r0", gate: "rx", targets: [0], params: [0.05] }
+    ]
+  }}
+/>
+
+Ten gates:
+
+<Simulate
+  show="probabilities"
+  ir={{
+    version: 1,
+    name: "coherent-10",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "r0", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r1", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r2", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r3", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r4", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r5", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r6", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r7", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r8", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r9", gate: "rx", targets: [0], params: [0.05] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $0$ | $0.938791$ |
+| $1$ | $0.061209$ |
+
+</Simulate>
+
+Forty gates:
+
+<Simulate
+  show="probabilities"
+  ir={{
+    version: 1,
+    name: "coherent-40",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "r0", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r1", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r2", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r3", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r4", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r5", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r6", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r7", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r8", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r9", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r10", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r11", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r12", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r13", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r14", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r15", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r16", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r17", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r18", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r19", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r20", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r21", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r22", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r23", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r24", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r25", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r26", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r27", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r28", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r29", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r30", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r31", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r32", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r33", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r34", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r35", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r36", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r37", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r38", gate: "rx", targets: [0], params: [0.05] },
+      { id: "r39", gate: "rx", targets: [0], params: [0.05] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $1$ | $0.708073$ |
+| $0$ | $0.291927$ |
+
+</Simulate>
+
+Read the three numbers: $0.000625$, $0.061209$, $0.708073$. Ten gates gave
+roughly a hundred times the error of one, and forty gates gave over a thousand
+times. That is quadratic growth, $\sin^2(d\varepsilon/2) \approx d^2\varepsilon^2/4$
+for small angles, and it is what "errors add as amplitudes" means numerically.
+
+An incoherent error behaves differently. Each gate independently damages the state
+with probability $p$, the damage is random rather than systematic, and the
+survival probability is $(1-p)^d$, which decays linearly at first:
+$1 - dp$ for small $dp$. Same per-gate error rate, very different behaviour at
+depth.
+
+<Callout tone="gotcha" title="Why this matters for debugging">
+A coherent error is a calibration bug and it is fixable: recalibrate, or echo it
+away with a pulse sequence that inverts it halfway through. An incoherent error is
+physics and it is not fixable, only mitigated or corrected. If your fidelity falls
+quadratically with depth, go and look at the calibration before you blame the
+environment.
+</Callout>
+
+## Why readout sits outside the gate budget
+
+Gate errors and readout errors enter a result in structurally different ways, and
+that is why every error budget lists them separately.
+
+Gate error corrupts the *state*. It happens once per gate, it compounds with
+depth, and by the time you measure, the thing you are measuring is already the
+wrong state. There is nothing about the outcome that tells you the state was
+wrong.
+
+Readout error corrupts the *classical bit*, once, at the end. It does not compound
+with depth, it does not depend on what the circuit did, and crucially it is
+described by a small classical matrix: the probability of reporting $j$ when the
+state was $i$. On one qubit that is a two by two confusion matrix with two
+parameters, $e_0$ and $e_1$, and you can measure it directly by preparing
+$\ket{0}$ and $\ket{1}$ and counting mistakes.
+
+Because it is a classical linear map applied after everything else, it can be
+inverted. Measure the confusion matrix, apply its inverse to your observed
+distribution, and recover an unbiased estimate of what the state distribution was.
+That is measurement-error mitigation, you will implement it in the next lesson but
+one, and it works precisely because readout error factors out of the rest of the
+circuit.
+
+<Check question="You run the same circuit at depth 20 and depth 40 and find the error probability goes from 4% to 15%. Coherent or incoherent?">
+Coherent, most likely. Doubling the depth roughly quadrupled the error, which is
+the quadratic signature $d^2\varepsilon^2/4$. An incoherent error at 4% for depth
+20 corresponds to about $p = 0.002$ per gate, and at depth 40 that would give
+$1 - 0.998^{40} \approx 7.7\%$, not 15%. The test is worth running deliberately:
+sweep depth, plot the error, and look at whether the curve starts out linear or
+quadratic before it saturates.
+</Check>
+
+## Where this comes from
+
+- [CS269Q, Stanford](https://cs269q.stanford.edu/), whose noise and benchmarking
+  material treats the error budget as an engineering document with separable
+  line items, which is the framing of this lesson.
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses), for
+  the device calibration data model in which $T_1$, $T_2$, gate error and readout
+  error are reported per qubit as four independent numbers.

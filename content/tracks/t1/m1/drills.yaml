@@ -1,0 +1,62 @@
+module: t1.m1
+cards:
+  - id: t1.m1.d1
+    front: "What constraint replaces 'the entries sum to 1' when you move from a probabilistic bit to a qubit?"
+    back: "The squared magnitudes of the entries sum to 1. The l1 constraint becomes an l2 constraint."
+    lesson: t1.m1.l1
+  - id: t1.m1.d2
+    front: "Write the Hadamard matrix."
+    back: "H = (1 / sqrt(2)) times [[1, 1], [1, -1]]. Equivalently H = (X + Z) / sqrt(2)."
+    lesson: t1.m1.l2
+  - id: t1.m1.d3
+    front: "What are H|0> and H|1>?"
+    back: "H|0> = |+> = (|0> + |1>) / sqrt(2), and H|1> = |-> = (|0> - |1>) / sqrt(2)."
+    lesson: t1.m1.l2
+  - id: t1.m1.d4
+    front: "What is H applied twice?"
+    back: "The identity. H is its own inverse, which is why the rotate-compute-rotate pattern uses the same layer at both ends."
+    lesson: t1.m1.l2
+  - id: t1.m1.d5
+    front: "Give the amplitude of each basis state in |+>, to four decimal places."
+    back: "0.7071 on |0> and 0.7071 on |1>, each giving probability 0.5."
+    lesson: t1.m1.l3
+  - id: t1.m1.d6
+    front: "State the normalisation constraint for a single-qubit state alpha|0> + beta|1>."
+    back: "|alpha| squared plus |beta| squared equals 1."
+    lesson: t1.m1.l4
+  - id: t1.m1.d7
+    front: "For real amplitudes, what shape is the set of normalised single-qubit states?"
+    back: "The unit circle in R^2. With complex amplitudes and global phase removed it becomes the Bloch sphere."
+    lesson: t1.m1.l4
+  - id: t1.m1.d8
+    front: "Why is |0> not the zero vector?"
+    back: "|0> = (1, 0) has norm 1 and is a perfectly good state. The zero vector has norm 0 and describes nothing."
+    lesson: t1.m1.l5
+  - id: t1.m1.d9
+    front: "Define a global phase and say whether it is observable."
+    back: "A factor exp(i theta) multiplying every amplitude. It is never observable, since it cancels in every probability."
+    lesson: t1.m1.l7
+  - id: t1.m1.d10
+    front: "Define a relative phase and say whether it is observable."
+    back: "A phase difference between basis-state amplitudes. It is observable, but only after a basis change such as a Hadamard."
+    lesson: t1.m1.l7
+  - id: t1.m1.d11
+    front: "Do |+> and |-> have different computational-basis measurement statistics?"
+    back: "No. Both give 0 and 1 with probability 0.5. They differ by a relative phase, which a Hadamard converts into a certain outcome."
+    lesson: t1.m1.l7
+  - id: t1.m1.d12
+    front: "Give the Bloch-sphere parameterisation of a pure qubit state."
+    back: "cos(theta / 2)|0> + exp(i phi) sin(theta / 2)|1>, with theta in [0, pi] and phi in [0, 2 pi)."
+    lesson: t1.m1.l8
+  - id: t1.m1.d13
+    front: "Where do |0>, |1>, |+> and |-> sit on the Bloch sphere?"
+    back: "|0> at the north pole (+z), |1> at the south pole (-z), |+> at +x and |-> at -x."
+    lesson: t1.m1.l8
+  - id: t1.m1.d14
+    front: "What is the angle on the Bloch sphere between two orthogonal quantum states?"
+    back: "180 degrees. Orthogonal states are antipodal, which is why the half-angle theta / 2 appears in the parameterisation."
+    lesson: t1.m1.l8
+  - id: t1.m1.d15
+    front: "How many real parameters does a pure single-qubit state have after normalisation and global phase are removed?"
+    back: "Two, namely theta and phi, which is exactly why the state space is a two-dimensional sphere."
+    lesson: t1.m1.l8

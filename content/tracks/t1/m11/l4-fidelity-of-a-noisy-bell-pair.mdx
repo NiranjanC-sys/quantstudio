@@ -1,0 +1,206 @@
+---
+id: t1.m11.l4
+title: Fidelity of a Noisy Bell Pair
+type: concept
+track: t1
+module: t1.m11
+level: L1
+minutes: 14
+objectives:
+  - Derive the Bell-state fidelity under local depolarising noise of strength p
+  - Compute the fidelity at p equal to 0.01, 0.05 and 0.1 and check the numbers against a simulation
+  - Explain why fidelity falls roughly linearly in p in the small-error regime
+prerequisites:
+  - t1.m11.l3
+  - t1.m5.l1
+sources:
+  - label: CS269Q Elements of Quantum Computer Programming (Stanford)
+    url: https://cs269q.stanford.edu/
+  - label: Chuang, 8.370x / 8.371x Quantum Information Science I & II (MIT)
+    url: https://ocw.mit.edu/courses/8-371x-quantum-information-science-ii-spring-2018/
+tags: [noise, fidelity]
+---
+
+Every protocol in T1.M7 assumed a perfect Bell pair. Real ones are not perfect,
+and the single number that says how imperfect is the fidelity with the intended
+state. This lesson derives that number in closed form for the standard noise
+model, checks it against a simulation, and finds the exact point at which a noisy
+Bell pair stops being entangled at all.
+
+## Setup
+
+Prepare $\ket{\Phi^+}$ the usual way and then hit each qubit independently with
+the depolarising channel from the previous lesson,
+
+$$
+\mathcal{D}_p(\rho) = (1-p)\rho + p\frac{I}{2},
+$$
+
+modelling everything that went wrong during preparation and distribution. The
+noiseless circuit is the two-gate one you have run a dozen times:
+
+<Circuit
+  caption="The Bell pair before any noise: two equal amplitudes of 0.7071, fidelity 1 with the intended state."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "bell-noiseless",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h", gate: "h", targets: [0] },
+      { id: "c", gate: "x", targets: [1], controls: [0] }
+    ]
+  }}
+/>
+
+The quantity we want is
+
+$$
+F(p) = \bra{\Phi^+} \big(\mathcal{D}_p \otimes \mathcal{D}_p\big)
+\big(\ketbra{\Phi^+}{\Phi^+}\big) \ket{\Phi^+} .
+$$
+
+## Rewriting the channel as random Paulis
+
+Direct matrix multiplication would work and would teach nothing. Instead rewrite
+the channel in Pauli form. The identity
+
+$$
+\frac{1}{4}\big(\rho + X\rho X + Y \rho Y + Z \rho Z\big) = \frac{I}{2}
+$$
+
+holds for every single-qubit $\rho$ with unit trace. Substituting it,
+
+$$
+\mathcal{D}_p(\rho) = \left(1 - \frac{3p}{4}\right)\rho
++ \frac{p}{4}\big(X\rho X + Y\rho Y + Z\rho Z\big).
+$$
+
+Read that as a random process: with probability $q = 3p/4$ some non-identity Pauli
+is applied, uniformly chosen among $X$, $Y$ and $Z$, and with probability $1-q$
+nothing happens. Depolarising noise *is* a random Pauli error, which is why
+Pauli errors are the only ones T4 will bother to correct.
+
+<Margin label="Two parameters, one channel">
+$p$ is the depolarising probability and $q = 3p/4$ is the probability of an actual
+Pauli error. Papers use both and rarely say which. Check whether the fully
+depolarising case is $p = 1$ or $q = 3/4$.
+</Margin>
+
+## The overlap table
+
+Apply an independent random Pauli to each qubit. The resulting state is
+$(P_A \otimes P_B)\ket{\Phi^+}$, and its overlap with $\ket{\Phi^+}$ takes only
+two values:
+
+| | $P_B = I$ | $X$ | $Y$ | $Z$ |
+| --- | --- | --- | --- | --- |
+| $P_A = I$ | $1$ | $0$ | $0$ | $0$ |
+| $X$ | $0$ | $1$ | $0$ | $0$ |
+| $Y$ | $0$ | $0$ | $1$ | $0$ |
+| $Z$ | $0$ | $0$ | $0$ | $1$ |
+
+The diagonal is the whole story: the state survives exactly when the *same* Pauli
+hit both qubits, and any mismatched pair sends $\ket{\Phi^+}$ to one of the other
+three Bell states, which are orthogonal to it. The reason is the transpose
+identity $(M \otimes I)\ket{\Phi^+} = (I \otimes M^{\mathsf T})\ket{\Phi^+}$: a
+Pauli on the left can be moved to the right, where it cancels against an identical
+Pauli.
+
+## The formula
+
+Sum the diagonal:
+
+$$
+F = \underbrace{(1-q)^2}_{\text{no error at all}}
++ \underbrace{3\left(\frac{q}{3}\right)^2}_{\text{same Pauli twice}}
+= (1-q)^2 + \frac{q^2}{3}.
+$$
+
+Substitute $q = 3p/4$:
+
+$$
+F(p) = \left(1 - \frac{3p}{4}\right)^2 + \frac{1}{3}\left(\frac{3p}{4}\right)^2
+= 1 - \frac{3p}{2} + \frac{9p^2}{16} + \frac{3p^2}{16}
+= 1 - \frac{3p}{2} + \frac{3p^2}{4}.
+$$
+
+Evaluate it:
+
+| $p$ | $1 - 3p/2$ | $3p^2/4$ | $F(p)$ |
+| --- | --- | --- | --- |
+| $0.01$ | $0.985000$ | $0.000075$ | $0.985075$ |
+| $0.05$ | $0.925000$ | $0.001875$ | $0.926875$ |
+| $0.10$ | $0.850000$ | $0.007500$ | $0.857500$ |
+| $0.50$ | $0.250000$ | $0.187500$ | $0.437500$ |
+| $1.00$ | $-0.500000$ | $0.750000$ | $0.250000$ |
+
+Two sanity checks. At $p = 0$ the formula gives $F = 1$, as the noiseless figure
+above shows. At $p = 1$ it gives $F = 0.25$, which is right: both qubits have been
+replaced by maximally mixed states, the two-qubit state is $I/4$, and the overlap
+of $I/4$ with any pure state is $1/4$. The formula never goes below its floor even
+though the linear term alone would go negative.
+
+## Why the linear term dominates
+
+Look at the third column. At $p = 0.01$ the quadratic correction is $0.000075$,
+which is $0.0076\%$ of the fidelity: entirely negligible. At $p = 0.05$ it is
+$0.001875$, still under a fifth of a percent. Only around $p = 0.5$ does it become
+comparable to the linear term.
+
+So in the regime any real device operates in, the working rule is
+
+$$
+F \approx 1 - \frac{3p}{2},
+$$
+
+a fidelity loss of one and a half times the depolarising parameter, per Bell pair.
+The factor of $3/2$ is $2 \times 3/4$: two qubits, each with an error probability
+$q = 3p/4$, and to first order the errors are independent so the losses add.
+
+<Callout tone="gotcha" title="Fidelity 0.5 is not half-good">
+On two qubits the floor is $0.25$, so a fidelity of $0.5$ is halfway between
+useless and perfect on a scale that starts at a quarter, not at zero. Always ask
+what the fidelity of a random state would be before deciding whether a number is
+impressive.
+</Callout>
+
+## Where the entanglement actually dies
+
+Because the noise is symmetric, the damaged state is a Werner state: weight $F$ on
+$\ket{\Phi^+}$ and weight $(1-F)/3$ on each of the other three Bell states. Such a
+state is entangled if and only if $F > 1/2$. Solve $F(p) = 1/2$:
+
+$$
+\frac{3p^2}{4} - \frac{3p}{2} + \half = 0
+\;\Longrightarrow\;
+p^2 - 2p + \frac{2}{3} = 0
+\;\Longrightarrow\;
+p = 1 - \frac{1}{\sqrt3} = 0.422650 .
+$$
+
+Above $p = 0.422650$ the pair is separable: it still has correlations, but they
+are the kind a classical shared random variable could produce, and no protocol in
+T1.M7 works with it. Below that threshold it remains entangled, though a
+teleportation fidelity of $0.5$ is nothing to celebrate.
+
+<Check question="You measure a Bell-pair fidelity of $0.92$. What depolarising parameter does that correspond to, and what does the same noise do to a three-qubit GHZ state?">
+Solving $1 - 1.5p + 0.75p^2 = 0.92$ gives $p = 0.054837$, since
+$p = 1 - \sqrt{1 - 0.08/0.75}$. For GHZ the counting changes: a single Pauli error
+on any one of three qubits sends the GHZ state to something orthogonal, so to
+first order the fidelity is $1 - 3q$ with $q = 3p/4 = 0.041128$, which gives
+$1 - 0.123383 = 0.876617$. The exact value at that $p$ is $0.882173$, a little
+higher because two-error terms can cancel. The shape to remember is that fidelity
+decays roughly like $(1-q)^n$ in the number of qubits, which is the same
+exponential in circuit size that the next lesson develops for depth.
+</Check>
+
+## Where this comes from
+
+- [CS269Q, Stanford](https://cs269q.stanford.edu/), for benchmarking a device by
+  preparing a known entangled state and reporting its fidelity, which is what the
+  T1 capstone asks you to do.
+- [Chuang, 8.370x / 8.371x](https://ocw.mit.edu/courses/8-371x-quantum-information-science-ii-spring-2018/),
+  for the Pauli decomposition of the depolarising channel and the Werner-state
+  separability criterion used at the end.

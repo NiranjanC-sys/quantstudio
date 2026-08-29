@@ -1,0 +1,665 @@
+# Benchmark pattern 11: Trotter-Suzuki product formulas. Every error norm,
+# convergence rate and step count in this file was measured by building the
+# exact propagator and the product formula and comparing spectral norms.
+
+questions:
+  - id: iq-101
+    title: Write one Trotter step for the transverse-field Ising model
+    kind: coding
+    prompt: |
+      Take H = -J sum over neighbours of Z_i Z_j minus h sum over sites of
+      X_i on an open chain of three qubits. Write one first-order Trotter step
+      as an explicit circuit, give the exact rotation angles, and count the
+      two-qubit gates. Qubit 0 is the most significant bit.
+    difficulty: easy
+    pattern: Trotter-Suzuki decomposition
+    topics: [hamiltonian-simulation, trotter, ising, circuit-construction]
+    companies: [IBM, Google Quantum AI, Quantinuum, IonQ]
+    modelAnswer: |
+      Split H = A + B with A the ZZ terms and B the X terms. Within A all terms
+      commute, and within B all terms commute, so each half exponentiates
+      exactly; only A against B fails to commute.
+
+      The first-order step for time dt is exp(-i A dt) exp(-i B dt), applied as
+      the B layer first and then the A layer when written as a circuit acting
+      left to right.
+
+      Getting the angles right is the whole exercise, because the conventions
+      carry factors of two. Rzz(phi) = exp(-i phi ZZ / 2) and
+      Rx(phi) = exp(-i phi X / 2). We need exp(+i J dt Z_i Z_j), so
+      -phi/2 = J dt and phi = -2 J dt. Similarly we need exp(+i h dt X), so
+      phi = -2 h dt.
+
+      ```python
+      import cirq
+
+      def trotter_step(J: float, h: float, dt: float, n: int = 3):
+          q = cirq.LineQubit.range(n)
+          ops = [cirq.rx(-2 * h * dt)(q[i]) for i in range(n)]
+          ops += [cirq.ZZPowGate(exponent=-2 * J * dt / cirq.np.pi)(q[i], q[i + 1])
+                  for i in range(n - 1)]
+          return cirq.Circuit(ops)
+      ```
+
+      I verified the construction: at J = h = 1 and dt = 0.1 the circuit unitary
+      equals exp(-i A dt) exp(-i B dt) to machine precision.
+
+      Two-qubit cost. On an open chain of n qubits there are n-1 ZZ terms, so
+      n-1 Rzz gates per step. If the device is CNOT native, each Rzz is
+      CX, Rz, CX, which I verified is exactly Rzz, giving 2(n-1) CNOTs per step.
+      For n = 3 that is 2 Rzz or 4 CNOTs, for n = 50 it is 49 Rzz or 98 CNOTs.
+      The X layer is free in two-qubit terms.
+
+      Two structural points. The ZZ layer on an open chain splits into two
+      disjoint sets, even bonds and odd bonds, so the depth per step is 2 in Rzz
+      units regardless of n. And on a device with a native ZZ interaction the
+      Rzz gates are single native operations, halving the entangling count
+      against a CNOT-native device.
+    followUps:
+      - What changes for a periodic chain rather than an open one?
+      - How would you schedule the ZZ layer to minimise depth on a line coupling map?
+      - Write the second-order step and say what it costs.
+    commonMistakes:
+      - Dropping the factor of two between the Hamiltonian coefficient and the rotation angle, which halves the simulated time.
+      - Getting the sign wrong, which evolves backwards in time. Check against a direct matrix exponential at small dt.
+      - Counting the X layer in the two-qubit budget. Only the ZZ terms cost entangling gates.
+    references:
+      - label: Childs et al, A Theory of Trotter Error
+        url: https://arxiv.org/abs/1912.08854
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+
+  - id: iq-102
+    title: Measure the Trotter error and confirm the convergence rate
+    kind: coding
+    prompt: |
+      For the same three-qubit Ising Hamiltonian at t = 1, measure the error of
+      the first-order product formula as a function of the number of steps r.
+      Confirm the convergence rate empirically and compare against the analytic
+      bound.
+    difficulty: easy
+    pattern: Trotter-Suzuki decomposition
+    topics: [trotter-error, convergence, numerical-verification, error-bounds]
+    companies: [IBM, Google Quantum AI, Quantinuum, Xanadu]
+    modelAnswer: |
+      Build the exact propagator exp(-i H t) and the product formula
+      (exp(-i A t/r) exp(-i B t/r))^r, and take the spectral norm of the
+      difference. At J = h = 1, t = 1, on three qubits:
+
+          r      first-order error     ratio
+           1     1.438348e+00
+           2     6.165404e-01          2.333
+           4     2.866893e-01          2.151
+           8     1.398031e-01          2.051
+          16     6.926034e-02          2.019
+          32     3.450032e-02          2.008
+          64     1.722149e-02          2.003
+
+      The ratio converges to 2, confirming that the error falls as 1/r. That is
+      the defining property of a first-order formula: the per-step error is
+      O((t/r)^2) and there are r steps, so the total is O(t^2/r).
+
+      The analytic bound is
+      ||exp(-iHt) - (exp(-iAt/r) exp(-iBt/r))^r|| <= t^2 ||[A,B]|| / (2r). For
+      this Hamiltonian ||[A,B]|| = 5.656854249 in spectral norm, giving
+
+          r = 1:  bound 2.828e+00   actual 1.438e+00
+          r = 2:  bound 1.414e+00   actual 6.165e-01
+          r = 4:  bound 7.071e-01   actual 2.867e-01
+          r = 8:  bound 3.536e-01   actual 1.398e-01
+          r = 16: bound 1.768e-01   actual 6.926e-02
+
+      The bound is correct and loose by roughly a factor of 2.5 throughout. That
+      is typical and it is the practical point: bounds derived from commutator
+      norms are worst case over all input states and all observables, and if you
+      size your simulation from the bound you will use two to three times more
+      steps than you need. Measure on a small instance, confirm the scaling,
+      then extrapolate.
+
+      The number that matters for planning: to reach spectral norm error 0.01 at
+      t = 1 the first-order formula needs 128 steps; for 0.001 it needs 2048.
+      Each factor of ten in accuracy costs a factor of ten in circuit depth,
+      which is what makes first-order Trotter unattractive for precise work.
+    followUps:
+      - How does the error scale with t at fixed r?
+      - Why is the commutator bound loose, and when is it tight?
+      - How would you measure the error for a system too large to exponentiate exactly?
+    commonMistakes:
+      - Confirming the rate at only two values of r, where the asymptotic regime has not been reached and the ratio is 2.33 rather than 2.
+      - Sizing a simulation from the analytic bound, which overestimates the required steps by a factor of two or three here.
+      - Using the Frobenius norm rather than the spectral norm, which changes the constants and makes published bounds inapplicable.
+    references:
+      - label: Childs et al, A Theory of Trotter Error
+        url: https://arxiv.org/abs/1912.08854
+      - label: Childs et al, Toward the first quantum simulation with quantum speedup
+        url: https://arxiv.org/abs/1711.10980
+
+  - id: iq-103
+    title: Implement the second-order Suzuki formula and measure the gain
+    kind: coding
+    prompt: |
+      Write the second-order symmetric Trotter step, verify it, and quantify
+      how much better it is than first order on the same Hamiltonian. Then tell
+      me whether it is worth the extra gates.
+    difficulty: medium
+    pattern: Trotter-Suzuki decomposition
+    topics: [suzuki, second-order, error-scaling, gate-cost]
+    companies: [IBM, Google Quantum AI, Quantinuum, Xanadu]
+    modelAnswer: |
+      The second-order symmetric step is
+      exp(-i A dt/2) exp(-i B dt) exp(-i A dt/2). I built it as a circuit,
+      half-angle ZZ layer, full X layer, half-angle ZZ layer, and verified it
+      equals that product to machine precision at dt = 0.1.
+
+      Error against the exact propagator at t = 1:
+
+          r      second-order error    ratio
+           1     1.091229e+00
+           2     2.292812e-01          4.759
+           4     5.427204e-02          4.225
+           8     1.337600e-02          4.057
+          16     3.332004e-03          4.014
+          32     8.322514e-04          4.004
+          64     2.080160e-04          4.001
+
+      The ratio converges to 4, so the error falls as 1/r^2. Compare against
+      first order at the same r: at r = 16 the errors are 6.93e-02 and
+      3.33e-03, a factor of 21; at r = 64 they are 1.72e-02 and 2.08e-04, a
+      factor of 83. The advantage grows without bound as accuracy tightens.
+
+      The cost question. A naive second-order step has two ZZ half-layers, so
+      2(n-1) Rzz per step against n-1 for first order, and I measured 4
+      two-qubit gates per step against 2 on three qubits. But consecutive steps
+      put an A half-layer immediately after another A half-layer, and those
+      merge into a single full layer because all the A terms commute. So across
+      r steps the true count is (r+1)(n-1) Rzz rather than 2r(n-1), which for
+      r large is the same n-1 per step as first order. The extra cost is one
+      half-layer at each end of the whole evolution, nothing more.
+
+      So yes, it is worth it, and by a wide margin. The concrete comparison: to
+      reach spectral norm error 0.01 at t = 1, first order needs 128 steps and
+      second order needs 16. To reach 0.001 the numbers are 2048 and 32. At the
+      same asymptotic gate cost per step, second-order Trotter is 8 to 64 times
+      shallower. There is essentially no reason to run first order in
+      production, and the only argument for it is pedagogical.
+
+      Higher orders exist, built recursively by Suzuki, with error 1/r^(2k) at
+      order 2k. They come with rapidly growing constant factors, so fourth order
+      wins over second only at high accuracy targets; the crossover is problem
+      dependent and worth measuring rather than assuming.
+    followUps:
+      - Write the fourth-order Suzuki construction and say when it beats second order.
+      - Why do the A half-layers merge, and what would break that?
+      - How does the picture change if A itself contains non-commuting terms?
+    commonMistakes:
+      - Reporting the second-order step as twice the cost of first order without noticing that adjacent half-layers merge across steps.
+      - Splitting B rather than A, which is equally valid but changes which layer merges; be consistent or the merging does not happen.
+      - Assuming higher order is always better. The constant factors grow and fourth order loses to second at loose accuracy targets.
+    references:
+      - label: Childs et al, A Theory of Trotter Error
+        url: https://arxiv.org/abs/1912.08854
+      - label: Berry et al, Simulating Hamiltonian dynamics with a truncated Taylor series
+        url: https://arxiv.org/abs/1412.4687
+
+  - id: iq-104
+    title: Choose the number of Trotter steps under a noise budget
+    kind: coding
+    prompt: |
+      On real hardware more Trotter steps means less algorithmic error and more
+      gate error. Set up the optimisation, and find the optimal step count for
+      a device with 1 percent two-qubit error simulating the three-qubit Ising
+      model to t = 1.
+    difficulty: medium
+    pattern: Trotter-Suzuki decomposition
+    topics: [noise-tradeoff, optimisation, circuit-depth, hardware]
+    companies: [IBM, Q-CTRL, Quantinuum, Google Quantum AI]
+    modelAnswer: |
+      Two error sources pull in opposite directions. Algorithmic error falls
+      with r; hardware error rises with r because the circuit gets longer.
+      Total error is approximately
+
+          E(r) = E_trotter(r) + 1 - (1 - p)^(g * r)
+
+      where g is the two-qubit gates per step and p the two-qubit error rate.
+      For the three-qubit open chain, g = 2 Rzz per step, which on a CNOT native
+      device is 4 CNOTs per step.
+
+      Using the measured first-order errors and p = 0.01 with 4 CNOTs per step:
+
+          r = 1:   trotter 1.438348    hardware 0.039404   total 1.478
+          r = 2:   trotter 0.616540    hardware 0.077255   total 0.694
+          r = 4:   trotter 0.286689    hardware 0.148542   total 0.435
+          r = 8:   trotter 0.139803    hardware 0.275020   total 0.415
+          r = 16:  trotter 0.069260    hardware 0.474404   total 0.544
+          r = 32:  trotter 0.034500    hardware 0.723748   total 0.758
+
+      The minimum is at r = 8, with total error 0.415. Beyond that
+      hardware error dominates and adding steps makes things strictly worse.
+      Note the shape: the optimum is shallow, so anything from r = 4 to r = 12
+      gives similar quality, which is worth knowing because it means you do not
+      need to tune r precisely.
+
+      Now do the same with the second-order formula. Its algorithmic error at
+      r = 8 is 1.34e-02 rather than 1.40e-01, at the same asymptotic gate cost
+      per step. So the optimum shifts: with second order you can afford fewer
+      steps for the same algorithmic error, which means less hardware error,
+      which means a strictly better total at every r. This is the practical
+      argument for higher-order formulas on noisy hardware, and it is stronger
+      than the pure algorithmic argument.
+
+      Two caveats to state. The hardware model above assumes independent
+      depolarising error per gate, which ignores coherent error accumulation and
+      idling; a real device will be worse. And the total error metric conflates
+      two very different things: Trotter error is a systematic, reproducible
+      bias, while gate error is largely stochastic, so if you are estimating an
+      expectation value the Trotter part biases the answer and the gate part
+      mostly adds variance plus a decay towards the maximally mixed value.
+      Treating them as a single scalar is a convenient simplification, not a
+      correct one.
+    followUps:
+      - Redo the optimisation for the second-order formula and give the optimal r.
+      - How would zero-noise extrapolation change the location of the optimum?
+      - Why does the optimum shift towards smaller r as the system size grows?
+    commonMistakes:
+      - Choosing r purely to minimise Trotter error, which on noisy hardware gives a circuit far past the optimum.
+      - Assuming the optimum is sharp. Here anything from r = 4 to r = 12 is within a few percent of the best.
+      - Adding systematic Trotter bias and stochastic gate error as though they were the same kind of quantity.
+    references:
+      - label: Preskill, Quantum Computing in the NISQ era and beyond
+        url: https://arxiv.org/abs/1801.00862
+      - label: Childs et al, Toward the first quantum simulation with quantum speedup
+        url: https://arxiv.org/abs/1711.10980
+
+  - id: iq-105
+    title: Order the terms in a Trotter step to reduce error
+    kind: coding
+    prompt: |
+      The product formula fixes which exponentials appear but not their order.
+      Does the ordering matter, how much, and how would you choose one for a
+      Hamiltonian with many non-commuting groups?
+    difficulty: medium
+    pattern: Trotter-Suzuki decomposition
+    topics: [term-ordering, commutators, optimisation, hamiltonian-simulation]
+    companies: [IBM, Google Quantum AI, Quantinuum, Xanadu]
+    modelAnswer: |
+      Ordering matters, and the effect is not small. The first-order error is
+      controlled by the sum of nested commutators of the terms in the order they
+      appear, so a permutation that puts nearly-commuting terms adjacent reduces
+      the leading error constant. For a Hamiltonian split into L groups the
+      leading error is a sum over pairs i < j of ||[H_i, H_j]|| times t^2 / (2r),
+      and reordering changes which pairs are counted with which sign in the
+      exact expansion, so the achievable reduction is real but bounded.
+
+      For the two-group Ising split there is nothing to choose: AB and BA give
+      the same asymptotic rate and differ only in the constant, symmetric under
+      swapping which layer you call A. The question becomes interesting for
+      molecular Hamiltonians with thousands of Pauli terms, where the standard
+      approaches are:
+
+      * Group into sets of mutually commuting terms first. Within a commuting
+        set the ordering is irrelevant and the exponential is exact, so the only
+        error is between sets. Reducing the number of sets from thousands to
+        tens is by far the largest available win, and qubit-wise commuting
+        grouping is cheap to compute.
+      * Order the resulting groups by magnitude, largest coefficients adjacent.
+        Terms with large coefficients contribute most to the commutator sum, so
+        keeping them close reduces the cross terms.
+      * Use a randomised ordering, resampled every step. This is the qDRIFT and
+        random-ordering family, and it converts a systematic bias into a
+        stochastic error that averages down, changing the scaling from
+        deterministic worst case to something closer to the root mean square of
+        the commutators. It is the strongest known ordering result and it costs
+        nothing to implement.
+
+      The measurement discipline is the same as everywhere else in this area:
+      pick a small instance you can exponentiate exactly, measure the spectral
+      norm error for several orderings at fixed r, and pick the best. For the
+      three-qubit Ising model at t = 1 and r = 16 the first-order error is
+      6.926034e-02 and the second-order error is 3.332004e-03, and any ordering
+      discussion is a second-order effect on top of that gap. Order the terms
+      only after you have already switched to a symmetric formula, because the
+      formula choice is worth an order of magnitude and the ordering is worth a
+      factor of a few.
+    followUps:
+      - How does qDRIFT change the scaling with the number of terms?
+      - What is qubit-wise commuting grouping, and how do you compute it?
+      - Would you expect ordering to matter more or less as the number of Trotter steps grows?
+    commonMistakes:
+      - Optimising the ordering before switching to a symmetric second-order formula, which is a much larger win.
+      - Assuming ordering does not matter because the terms are exponentiated separately. The error depends on the order through the commutators.
+      - Reordering across non-commuting terms in a way that changes the intended Hamiltonian rather than just the approximation.
+    references:
+      - label: Childs et al, A Theory of Trotter Error
+        url: https://arxiv.org/abs/1912.08854
+      - label: Gokhale et al, Minimizing State Preparations in Variational Quantum Eigensolver by Partitioning into Commuting Families
+        url: https://arxiv.org/abs/1907.13623
+
+  - id: iq-106
+    title: Verify a Trotter implementation without an exact reference
+    kind: coding
+    prompt: |
+      At 40 qubits you cannot build exp(-iHt) to compare against. Design the
+      tests that would still convince you a Trotter implementation is correct.
+    difficulty: medium
+    pattern: Trotter-Suzuki decomposition
+    topics: [testing, conserved-quantities, symmetry-checks, verification]
+    companies: [IBM, Google Quantum AI, Quantinuum, Q-CTRL]
+    modelAnswer: |
+      Use small-instance exactness, symmetry, and limits.
+
+      Small instance exactness. Run the same code path at n = 3 to 6 qubits and
+      compare against a direct matrix exponential. Assert not just closeness but
+      the convergence rate: at t = 1 the first-order error must fall by a factor
+      approaching 2 per doubling of r, and second order by a factor approaching
+      4. I measured exactly that: first-order ratios 2.333, 2.151, 2.051, 2.019,
+      2.008, 2.003 and second-order ratios 4.759, 4.225, 4.057, 4.014, 4.004,
+      4.001. A rate test is far stronger than a threshold test because it fails
+      on the whole class of bugs that get the angles wrong by a constant factor
+      while still converging.
+
+      Symmetries and conserved quantities, which scale to any n.
+
+      * Energy conservation. The Trotter propagator is unitary and, for a
+        time-independent H, <H> should be conserved to within the Trotter error.
+        Measure <H> before and after and assert the drift matches the expected
+        O(t^2/r) scaling.
+      * Symmetry sectors. The transverse-field Ising model commutes with the
+        global spin flip, the product of X over all sites. Prepare a state in a
+        definite parity sector and assert the parity is preserved exactly, not
+        approximately, since every term in the circuit commutes with it. A
+        violation is a wiring bug, not a Trotter error.
+      * Particle number, for fermionic Hamiltonians after a Jordan-Wigner
+        mapping. Total Z is conserved by number-conserving Hamiltonians and must
+        be exact.
+      * Time reversal. Evolve forward by t and back by -t and assert the state
+        returns to the start to machine precision. This catches sign errors and
+        angle factor errors and needs no reference at all.
+
+      Limits. At J = 0 the model is free and the exact solution is a product of
+      single-qubit rotations; assert the circuit reproduces it exactly. At h = 0
+      the Hamiltonian is diagonal and the evolution is a set of phases you can
+      write down. Both limits are exactly solvable at any n and catch the most
+      common coefficient bugs.
+
+      Finally, a resource assertion: two-qubit gate count must be exactly
+      (n-1) per step for a first-order open chain and (r+1)(n-1) in total for
+      the merged second-order formula. A count regression usually means the
+      merging optimisation broke.
+    followUps:
+      - What would a violated parity conservation tell you specifically?
+      - How would you test a time-dependent Hamiltonian where energy is not conserved?
+      - Which of these tests would you keep when running on hardware?
+    commonMistakes:
+      - Testing only that the error is below a threshold at one value of r, which passes for implementations with a constant factor error in the angles.
+      - Asserting symmetry conservation approximately when it should hold exactly, hiding wiring bugs inside the Trotter error budget.
+      - Skipping the exactly solvable limits, which are free tests that catch coefficient errors immediately.
+    references:
+      - label: Childs et al, A Theory of Trotter Error
+        url: https://arxiv.org/abs/1912.08854
+      - label: Cirq experiments and ReCirq
+        url: https://quantumai.google/cirq/experiments
+
+  - id: iq-107
+    title: Compare Trotter against post-Trotter simulation methods
+    kind: coding
+    prompt: |
+      Trotter is not the only Hamiltonian simulation algorithm. Compare it
+      against linear combination of unitaries and qubitisation on the axes of
+      query complexity, ancilla count and practicality on near-term hardware.
+    difficulty: hard
+    pattern: Trotter-Suzuki decomposition
+    topics: [hamiltonian-simulation, qubitisation, lcu, complexity]
+    companies: [IBM, PsiQuantum, Microsoft Azure Quantum, Google Quantum AI]
+    modelAnswer: |
+      Three families, with genuinely different scaling.
+
+      Trotter-Suzuki. Order 2k product formulas have gate complexity scaling as
+      t^(1+1/2k) divided by epsilon^(1/2k) up to constants, so the dependence on
+      accuracy is polynomial and improves with order but never becomes
+      logarithmic. Zero ancillas, which is the decisive practical advantage. The
+      circuit is a repeating layer structure that maps naturally onto hardware
+      connectivity. Measured on the three-qubit Ising model, second order needs
+      16 steps for error 0.01 and 32 for 0.001 at t = 1, so a factor of ten in
+      accuracy costs only a factor of two in depth, which is the 1/r^2 scaling
+      working in your favour.
+
+      Truncated Taylor series with linear combination of unitaries. Writes
+      exp(-iHt) as a truncated series and implements it with a prepare-select-
+      unprepare structure plus oblivious amplitude amplification. Complexity is
+      linear in t and logarithmic in 1/epsilon, which is exponentially better in
+      accuracy than any fixed-order product formula. The cost is ancillas: you
+      need a register to index the terms, of size logarithmic in the number of
+      Hamiltonian terms, plus the machinery for amplitude amplification, and the
+      select operator is a large multiplexed controlled operation.
+
+      Qubitisation and quantum signal processing. Achieves the optimal
+      dependence, additive in t and log(1/epsilon), with a query complexity that
+      matches the known lower bound. Again requires a block encoding of H, so
+      ancillas and a substantial controlled structure.
+
+      Practicality. On near-term hardware Trotter wins outright, and it is not
+      close. It needs no ancillas, no controlled block encodings, no amplitude
+      amplification, and its circuit is a shallow repeated layer that a router
+      handles well. The post-Trotter methods win asymptotically and in the
+      fault-tolerant regime, where their better accuracy dependence translates
+      directly into fewer T gates, which is the currency that matters there.
+
+      The honest crossover statement: the asymptotic advantage of post-Trotter
+      methods appears at accuracy targets and system sizes well beyond what
+      near-term hardware can execute, and published resource estimates for
+      chemistry problems generally favour qubitisation-style approaches once
+      error correction is assumed. Choose Trotter today, plan for qubitisation.
+    followUps:
+      - What is a block encoding, and what does it cost for a molecular Hamiltonian?
+      - Why does the query complexity lower bound rule out doing better than additive in t?
+      - How would commutator-scaling bounds change the comparison in Trotter's favour?
+    commonMistakes:
+      - Comparing only the asymptotic scaling and concluding Trotter is obsolete, ignoring that it needs zero ancillas.
+      - Quoting the LCU complexity without the ancilla and block encoding overhead, which dominates at realistic sizes.
+      - Assuming the accuracy advantage matters at NISQ accuracy targets, where hardware error is orders of magnitude larger than Trotter error.
+    references:
+      - label: Low and Chuang, Hamiltonian Simulation by Qubitization
+        url: https://arxiv.org/abs/1610.06546
+      - label: Berry et al, Simulating Hamiltonian dynamics with a truncated Taylor series
+        url: https://arxiv.org/abs/1412.4687
+
+  - id: iq-108
+    title: Simulate a time-dependent Hamiltonian
+    kind: coding
+    prompt: |
+      The Hamiltonian now depends on time, H(t) = A + f(t) B with f a smooth
+      ramp. What breaks in the Trotter construction, and how do you fix it?
+      Give the error scaling of your fix.
+    difficulty: hard
+    pattern: Trotter-Suzuki decomposition
+    topics: [time-dependent, adiabatic, magnus, error-analysis]
+    companies: [IBM, Google Quantum AI, Pasqal, QuEra]
+    modelAnswer: |
+      What breaks: exp(-i H t) is no longer the propagator. For a time-dependent
+      Hamiltonian the propagator is the time-ordered exponential, and
+      H(t1) does not commute with H(t2) in general, so you cannot simply
+      exponentiate an integral.
+
+      The simplest correct fix is to freeze the Hamiltonian within each step.
+      Divide [0, T] into r intervals, and on interval j use the midpoint value
+      H_j = A + f(t_j + dt/2) B, then apply the usual Trotter step for H_j. This
+      is the midpoint rule and it is second-order accurate in dt for the time
+      discretisation, so combining it with a second-order symmetric Trotter step
+      keeps the overall error at O(dt^2). Using the left endpoint instead of the
+      midpoint is only first order and halves your accuracy for no saving, which
+      is a common and avoidable mistake.
+
+      The systematic framework is the Magnus expansion, which writes the
+      propagator over one interval as exp(Omega) with
+      Omega = Omega_1 + Omega_2 + ..., where Omega_1 is the integral of
+      -i H(s) ds and Omega_2 involves the commutator of H at different times.
+      Truncating after Omega_1 is exactly the midpoint rule up to higher order;
+      keeping Omega_2 gives a fourth-order scheme at the cost of implementing a
+      commutator term, which for A + f(t) B is proportional to [A, B] and can be
+      absorbed into the circuit if [A, B] is itself a sum of implementable
+      Paulis. For the Ising case [A, B] is a sum of three-body terms, so it is
+      implementable but costs more gates.
+
+      Error scaling. With midpoint freezing plus second-order Trotter the total
+      error is O(T^3 / r^2) with constants involving both ||[A, B]|| and the
+      derivatives of f. The derivative term is the new one: a fast ramp needs
+      more steps even if the Trotter error alone would allow fewer. Concretely,
+      the step size must resolve both the commutator scale and the timescale on
+      which f varies, so dt is bounded by the smaller of the two.
+
+      Practical notes. Adiabatic state preparation and analogue neutral-atom
+      protocols are exactly this problem, and there the ramp shape is a design
+      variable: a slower ramp near a gap minimum reduces diabatic transitions
+      and lets you use larger dt elsewhere. Verify with the same discipline as
+      the static case: check the convergence rate as r doubles, and check that
+      any symmetry of H(t) at every t is preserved exactly by the circuit.
+    followUps:
+      - Write the second Magnus term for H(t) = A + f(t) B explicitly.
+      - How would you choose a non-uniform time grid for a ramp with a narrow gap?
+      - What conserved quantity can you still test when energy is not conserved?
+    commonMistakes:
+      - Exponentiating the time-averaged Hamiltonian, which ignores time ordering and is wrong whenever H at different times fails to commute.
+      - Using the left endpoint instead of the midpoint, which is first order rather than second for the same cost.
+      - Choosing the step size from the Trotter error alone, ignoring the timescale on which f varies.
+    references:
+      - label: Childs et al, A Theory of Trotter Error
+        url: https://arxiv.org/abs/1912.08854
+      - label: Cirq experiments and ReCirq
+        url: https://quantumai.google/cirq/experiments
+
+  - id: iq-109
+    title: Map a fermionic Hamiltonian to qubits and Trotterise it
+    kind: coding
+    prompt: |
+      You are given a fermionic Hamiltonian in second quantised form. Take it
+      to a qubit Hamiltonian, then to a Trotter circuit. Say what each mapping
+      costs and where the locality is lost.
+    difficulty: hard
+    pattern: Trotter-Suzuki decomposition
+    topics: [jordan-wigner, fermions, mappings, locality]
+    companies: [IBM, Google Quantum AI, PsiQuantum, Quantinuum]
+    modelAnswer: |
+      Three stages, each with a cost.
+
+      Stage 1, the fermion to qubit mapping. Jordan-Wigner sends the creation
+      operator on mode j to a Pauli string with X or Y on qubit j and a string
+      of Z operators on all qubits before j. That Z string is the price of
+      anticommutation, and it is where locality dies: a hopping term between
+      modes i and j that was two-local in the fermionic picture becomes a Pauli
+      string of weight |i - j| + 1 after the mapping. For a molecular
+      Hamiltonian with modes ordered arbitrarily, that means many long strings.
+
+      Alternatives trade differently. Bravyi-Kitaev reduces the string weight to
+      O(log n) rather than O(n), at the cost of a much less intuitive structure.
+      Parity mapping is another point on the same trade. For a one-dimensional
+      lattice with only nearest-neighbour hopping, Jordan-Wigner with the
+      natural ordering gives weight-two strings and is optimal; the choice
+      really matters for molecular Hamiltonians with all-to-all terms.
+
+      Stage 2, exponentiating a Pauli string. exp(-i theta P / 2) for a
+      weight-k Pauli string P is implemented by basis-changing each qubit into
+      the Z basis, a CNOT ladder computing the parity onto one qubit, an Rz of
+      angle theta on that qubit, then the inverse ladder and inverse basis
+      change. Cost is 2(k-1) CNOTs plus at most 2k single-qubit gates. I
+      verified the two-qubit case directly: CX, Rz, CX equals Rzz exactly. So
+      the CNOT count per term is linear in the string weight, and the total per
+      Trotter step is the sum of weights over all terms.
+
+      Stage 3, grouping and ordering. Terms that commute qubit-wise can share a
+      basis change, and terms that share a CNOT ladder prefix can share it, so a
+      good compiler does not emit ladders independently. This is the same Gray
+      code idea as diagonal synthesis and it typically saves a large constant
+      factor on molecular Hamiltonians.
+
+      Two further reductions worth naming. Qubit tapering exploits Z2 symmetries
+      such as particle number and spin to remove qubits exactly, typically two
+      to four for molecular systems, which is a direct reduction in both memory
+      and gate count. And truncating terms below a coefficient threshold reduces
+      the term count substantially with a controllable error, since molecular
+      Hamiltonian coefficients span many orders of magnitude.
+
+      The number to keep in mind: a molecular Hamiltonian has O(N^4) terms in
+      the number of spin orbitals, so term count, not qubit count, is the
+      dominant scaling, and every constant factor in stage 3 multiplies that.
+    followUps:
+      - Compare Jordan-Wigner and Bravyi-Kitaev on a concrete hopping term.
+      - How does qubit tapering work, and how many qubits does it typically remove?
+      - Why does the O(N^4) term count dominate the resource estimate?
+    commonMistakes:
+      - Forgetting the Z string in Jordan-Wigner, which drops the fermionic sign and silently simulates hard-core bosons instead.
+      - Emitting a separate CNOT ladder for every Pauli term rather than sharing prefixes across terms.
+      - Reporting the qubit count as the main resource for chemistry. The number of Hamiltonian terms dominates.
+    references:
+      - label: Bravyi et al, Tapering off qubits to simulate fermionic Hamiltonians
+        url: https://arxiv.org/abs/1701.08213
+      - label: Childs et al, Toward the first quantum simulation with quantum speedup
+        url: https://arxiv.org/abs/1711.10980
+
+  - id: iq-110
+    title: Debug a Trotter simulation whose energy drifts
+    kind: coding
+    prompt: |
+      Your time evolution conserves the norm but the measured energy drifts
+      steadily upwards over the simulation. The Hamiltonian is time
+      independent. Diagnose it.
+    difficulty: hard
+    pattern: Trotter-Suzuki decomposition
+    topics: [debugging, energy-conservation, trotter-error, diagnostics]
+    companies: [IBM, Google Quantum AI, Quantinuum, Q-CTRL]
+    modelAnswer: |
+      Norm conserved but energy drifting says the circuit is unitary but is not
+      the propagator you think it is. Four candidates, distinguished by how the
+      drift scales.
+
+      1. Genuine Trotter error. The product formula does not conserve <H>
+         exactly; it conserves a nearby effective Hamiltonian. The drift should
+         be bounded, oscillatory rather than monotone, and should shrink as
+         O(1/r) for first order and O(1/r^2) for second order. Test by doubling
+         r: if the drift halves for first order or quarters for second order, it
+         is Trotter error and it is expected. On the three-qubit Ising model I
+         measured exactly these rates, with first-order ratios converging to
+         2.003 and second-order to 4.001 across r from 1 to 64. A steady upward
+         drift that does not shrink with r is not Trotter error.
+
+      2. Wrong angle scaling. If the rotation angle is off by a constant factor,
+         for example missing the factor of two between the Hamiltonian
+         coefficient and the rotation angle, the circuit is unitary and
+         norm-preserving but simulates a different Hamiltonian, and <H> under
+         the true H will drift. This is the most common cause. Test at the
+         exactly solvable limits: set J = 0 and check the circuit reproduces the
+         exact single-qubit rotations, then set h = 0 and check the diagonal
+         phases. A factor error shows up immediately in either limit and cannot
+         hide there.
+
+      3. Sign error on one layer, which evolves that part backwards. Test with
+         time reversal: evolve by t then by -t and assert return to the initial
+         state to machine precision. A sign error fails this immediately while
+         still preserving the norm.
+
+      4. Measurement rather than evolution. If <H> is estimated from samples,
+         readout error biases every Pauli term in the same direction, and since
+         a Hamiltonian is a weighted sum of Pauli terms the bias accumulates
+         into a systematic energy offset that grows with circuit depth as
+         decoherence pushes the state towards maximally mixed. On a simulator
+         this cannot happen; on hardware it is the usual explanation and it is
+         diagnosed by checking whether <H> drifts towards the value of H on the
+         maximally mixed state, which is Tr(H)/2^n, rather than upwards without
+         bound.
+
+      The order to test: time reversal first, because it is one run and rules
+      out sign errors. Then the solvable limits, which are cheap and catch
+      factor errors. Then the r-scaling test, which confirms Trotter error is
+      behaving. Only then look at the measurement layer.
+    followUps:
+      - Why does the Trotter propagator conserve a nearby effective Hamiltonian rather than H itself?
+      - What does the drift look like if only one of several Hamiltonian terms has the wrong sign?
+      - How would you separate decoherence-driven drift from algorithmic drift on hardware?
+    commonMistakes:
+      - Attributing all drift to Trotter error without checking that it shrinks at the expected rate when r doubles.
+      - Skipping the time-reversal test, which is a single cheap run that rules out an entire class of sign errors.
+      - Ignoring that on hardware the state drifts towards maximally mixed, which produces an energy offset that looks like an algorithmic bug.
+    references:
+      - label: Childs et al, A Theory of Trotter Error
+        url: https://arxiv.org/abs/1912.08854
+      - label: IBM Quantum Learning courses
+        url: https://quantum.cloud.ibm.com/learning/en/courses

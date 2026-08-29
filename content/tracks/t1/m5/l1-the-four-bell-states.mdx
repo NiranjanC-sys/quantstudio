@@ -1,0 +1,188 @@
+---
+id: t1.m5.l1
+title: The Four Bell States
+type: concept
+track: t1
+module: t1.m5
+level: L1
+minutes: 13
+objectives:
+  - Write the four Bell states and the circuit that prepares each from a basis state
+  - Verify that the four Bell states form an orthonormal basis of the two-qubit space
+  - Convert between Bell states using a single X or Z on one qubit
+prerequisites: [t1.m4.l4]
+sources:
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [entanglement, bell]
+---
+
+Four states of two qubits appear in nearly every protocol in this curriculum:
+teleportation, superdense coding, entanglement swapping, key distribution, and
+the nonlocal games of T1.M6. They are the Bell states, and they are not four
+unrelated curiosities. They are a single orthonormal basis, produced by a single
+two-gate circuit run on the four computational basis states.
+
+## The four states
+
+$$
+\ket{\Phi^+} = \frac{\ket{00} + \ket{11}}{\sqrt2},
+\qquad
+\ket{\Phi^-} = \frac{\ket{00} - \ket{11}}{\sqrt2},
+$$
+
+$$
+\ket{\Psi^+} = \frac{\ket{01} + \ket{10}}{\sqrt2},
+\qquad
+\ket{\Psi^-} = \frac{\ket{01} - \ket{10}}{\sqrt2} .
+$$
+
+The $\Phi$ pair correlates the two bits and the $\Psi$ pair anticorrelates them.
+Within each pair the sign is the only difference. All four are maximally
+entangled: applying the factorisation test of T1.M4.L3, each has
+$|a_0 a_3 - a_1 a_2| = \tfrac12$, so the concurrence is 1 and none of them is a
+product.
+
+<Margin label="Names">
+$\ket{\Psi^-}$ is the **singlet**, the unique two-qubit state invariant under
+$U \otimes U$ for every one-qubit $U$. The other three span the **triplet**. The
+singlet's anticorrelation therefore holds in every basis, which is what makes it
+the state of choice in Bell-inequality experiments.
+</Margin>
+
+## One circuit, four outputs
+
+Apply $H$ to qubit 0 and then a CNOT from qubit 0 to qubit 1. Run that on each
+of the four computational basis states and you get the four Bell states, in
+order.
+
+$$
+\ket{00} \mapsto \ket{\Phi^+}, \quad
+\ket{01} \mapsto \ket{\Psi^+}, \quad
+\ket{10} \mapsto \ket{\Phi^-}, \quad
+\ket{11} \mapsto \ket{\Psi^-} .
+$$
+
+Trace the third of these by hand. Starting from $\ket{10}$, the Hadamard on
+qubit 0 gives $\tfrac{1}{\sqrt2}(\ket{0} - \ket{1}) \otimes \ket{0}$, which
+expands to $\tfrac{1}{\sqrt2}(\ket{00} - \ket{10})$. The CNOT leaves $\ket{00}$
+alone and turns $\ket{10}$ into $\ket{11}$, giving
+$\tfrac{1}{\sqrt2}(\ket{00} - \ket{11}) = \ket{\Phi^-}$.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="H then CNOT on |00>. Amplitudes 0.707107 on |00> and |11>: this is Phi-plus."
+  ir={{
+    version: 1,
+    name: "bell-phi-plus",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "cx", gate: "x", targets: [1], controls: [0] }
+    ]
+  }}
+/>
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="X on both qubits first, then H and CNOT. Amplitudes +0.707107 on |01> and -0.707107 on |10>: this is Psi-minus, the singlet."
+  ir={{
+    version: 1,
+    name: "bell-psi-minus",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "x0", gate: "x", targets: [0] },
+      { id: "x1", gate: "x", targets: [1] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "cx", gate: "x", targets: [1], controls: [0] }
+    ]
+  }}
+/>
+
+Because $H$ and CNOT are unitary and the four inputs are orthonormal, the four
+outputs are orthonormal: unitaries preserve inner products, so
+$\braket{\Phi^+}{\Psi^-} = \braket{00}{11} = 0$ and so on for all six pairs.
+That is the whole proof that the Bell states are a basis, and it also shows the
+circuit is invertible: running $\mathrm{CX}$ then $H$ backwards maps each Bell
+state to its computational label, which is exactly a **Bell measurement** and is
+the step teleportation needs in T1.M7.L2.
+
+Check orthogonality directly on one pair to see it concretely:
+
+$$
+\braket{\Phi^+}{\Phi^-}
+= \tfrac12 \left( \braket{00}{00} - \braket{00}{11} + \braket{11}{00} - \braket{11}{11} \right)
+= \tfrac12 (1 - 0 + 0 - 1) = 0 .
+$$
+
+## Moving between them with one gate
+
+Because each Bell state differs from $\ket{\Phi^+}$ by which of $\ket{00}$ or
+$\ket{01}$ it starts from and by a sign, a single Pauli on **one** qubit
+converts any of them into any other.
+
+| target | operation on qubit 1 | effect |
+| --- | --- | --- |
+| $\ket{\Phi^+}$ | $I$ | leave alone |
+| $\ket{\Psi^+}$ | $X$ | flip the second bit of each term |
+| $\ket{\Phi^-}$ | $Z$ | negate the $\ket{11}$ term |
+| $\ket{\Psi^-}$ | $Z$ then $X$ | both, giving $\ket{01} - \ket{10}$ |
+
+Verify the second row: $X$ on qubit 1 sends $\ket{00} \mapsto \ket{01}$ and
+$\ket{11} \mapsto \ket{10}$, so $\ket{\Phi^+} \mapsto \tfrac{1}{\sqrt2}(\ket{01} + \ket{10}) = \ket{\Psi^+}$.
+Verify the third: $Z$ on qubit 1 leaves $\ket{00}$ alone and negates $\ket{11}$,
+giving $\ket{\Phi^-}$.
+
+This one-qubit reachability is the mechanism of superdense coding in T1.M7.L1.
+Alice holds one half of a shared $\ket{\Phi^+}$, applies one of the four
+operations in the table, and sends her qubit; Bob's Bell measurement then reads
+two classical bits out of one transmitted qubit. The order matters in the last
+row: applying $Z$ and then $X$ gives $\ket{\Psi^-}$ exactly, while $X$ and then
+$Z$ gives $-\ket{\Psi^-}$, the same state up to a global phase.
+
+<Callout tone="gotcha" title="Local operations move you around the Bell basis, not out of it">
+$X$ and $Z$ on one qubit permute the four Bell states, and every one of them
+stays maximally entangled. No sequence of single-qubit gates can reduce the
+entanglement of a Bell pair or create it from a product state. Entanglement is
+changed only by gates acting on both qubits, which is the content of the phrase
+"local operations cannot create entanglement" and the reason T1.M5.L2 is about
+what local operations *can* do.
+</Callout>
+
+## Correlation in every basis
+
+Measuring $\ket{\Phi^+}$ in the computational basis gives $00$ or $11$, each with
+probability $0.5$: the bits always agree. Now apply $H$ to both qubits first.
+Since $(H \otimes H)\ket{\Phi^+} = \ket{\Phi^+}$, the outcomes still agree every
+time. The same holds for the singlet, with anticorrelation in place of
+correlation.
+
+A classical shared random bit reproduces the first observation and fails the
+second: copying a coin flip onto two cards makes the cards agree in the "which
+face" basis and agree only half the time in any rotated one. The gap between
+those two behaviours is measurable, and T1.M6.L1 turns it into an inequality
+that no classical model can satisfy.
+
+<Check question="Which Bell state does the circuit H on qubit 0, CNOT from 0 to 1, then Z on qubit 0 produce from $\ket{00}$? Compare with applying Z to qubit 1 instead.">
+The circuit produces $\ket{\Phi^+}$ and then $Z$ on qubit 0 negates every term
+whose first bit is 1, which is only $\ket{11}$, giving
+$\tfrac{1}{\sqrt2}(\ket{00} - \ket{11}) = \ket{\Phi^-}$. Applying $Z$ to qubit 1
+instead negates every term whose second bit is 1, again only $\ket{11}$, giving
+the same state. So $Z \otimes I$ and $I \otimes Z$ act identically on
+$\ket{\Phi^+}$: on a maximally entangled state a local operation on one qubit
+can always be mimicked by an operation on the other, which is the first hint of
+the reduced-state story in T1.M5.L3.
+</Check>
+
+## Where this comes from
+
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses),
+  Basics of quantum information, for the Bell basis, the preparation circuit and
+  the Bell measurement as its inverse.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 1.3.6 and box 1.3, which introduce the four states under the name EPR
+  pairs and use them immediately for teleportation and dense coding.

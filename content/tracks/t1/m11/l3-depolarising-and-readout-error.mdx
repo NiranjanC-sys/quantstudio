@@ -1,0 +1,172 @@
+---
+id: t1.m11.l3
+title: Depolarising and Readout Error, Hands-On
+type: lab
+track: t1
+module: t1.m11
+level: L1
+minutes: 35
+objectives:
+  - Apply a single-qubit depolarising channel to a density matrix and compute the resulting fidelity
+  - Invert a two-by-two readout confusion matrix to correct measured counts
+prerequisites:
+  - t1.m11.l2
+sources:
+  - label: CS269Q Elements of Quantum Computer Programming (Stanford)
+    url: https://cs269q.stanford.edu/
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+tags: [lab, noise, mitigation]
+---
+
+The last two lessons described noise. This one makes you compute with it. Two
+models, both linear, both a dozen lines of Python: the depolarising channel, which
+is the standard stand-in for "something went wrong and we do not know what", and
+the readout confusion matrix, which is the only error in this module you can
+simply undo.
+
+## The depolarising channel
+
+A pure state is a vector, but a state that *might* have been damaged is a mixture
+and needs a density matrix. For one qubit,
+$\rho = \ketbra{\psi}{\psi}$ when the state is pure, and a general
+$\rho$ is any positive semidefinite matrix with $\tr \rho = 1$.
+
+The depolarising channel with parameter $p$ replaces the state with the maximally
+mixed state with probability $p$ and leaves it alone otherwise:
+
+$$
+\mathcal{D}_p(\rho) = (1-p)\,\rho + p\,\frac{I}{2}.
+$$
+
+Two properties to check before you code it. It is **trace preserving**, since
+$\tr\rho = 1$ and $\tr(I/2) = 1$ give $\tr \mathcal{D}_p(\rho) = (1-p) + p = 1$.
+And it is **linear** in $\rho$, so composing two of them just multiplies the
+surviving weights: $\mathcal{D}_q \circ \mathcal{D}_p$ has surviving weight
+$(1-p)(1-q)$.
+
+<Margin label="Why this channel">
+Any noise process, averaged over a random Clifford twirl, becomes depolarising
+with the same average error rate. That is why randomised benchmarking reports a
+single depolarising parameter and why it is the honest default when you have one
+number and no model.
+</Margin>
+
+The fidelity with $\ket{0}$ is the diagonal entry
+$F = \bra{0}\rho\ket{0} = \rho_{00}$. Starting from the pure state
+$\rho = \ketbra{0}{0}$:
+
+$$
+F(p) = (1-p) \cdot 1 + p \cdot \half = 1 - \frac{p}{2}.
+$$
+
+| $p$ | $F$ |
+| --- | --- |
+| $0$ | $1.000$ |
+| $0.1$ | $0.950$ |
+| $0.37$ | $0.815$ |
+| $1$ | $0.500$ |
+
+Note the floor. Even at $p = 1$, when the state has been completely destroyed, the
+fidelity with $\ket{0}$ is $0.5$, because a coin flip agrees with any fixed answer
+half the time. A fidelity of $0.5$ on one qubit means no information at all, not
+half the information.
+
+## The readout confusion matrix
+
+Readout error is classical. Let $e_0$ be the probability of reporting 1 when the
+state was $\ket{0}$, and $e_1$ the probability of reporting 0 when the state was
+$\ket{1}$. Then the observed distribution $m$ relates to the true distribution
+$q$ by
+
+$$
+m = A q, \qquad
+A = \begin{pmatrix} 1 - e_0 & e_1 \\ e_0 & 1 - e_1 \end{pmatrix}.
+$$
+
+$A$ has determinant $(1-e_0)(1-e_1) - e_0 e_1 = 1 - e_0 - e_1$, which is non-zero
+unless $e_0 + e_1 = 1$, the case where readout is pure noise. So invert it:
+
+$$
+q = \frac{1}{1 - e_0 - e_1}
+\begin{pmatrix} 1 - e_1 & -e_1 \\ -e_0 & 1 - e_0 \end{pmatrix} m .
+$$
+
+Worked example with $e_0 = e_1 = 0.05$. The determinant is $0.9$. Observed
+frequencies $m = (0.95, 0.05)$, which is 950 counts of 0 and 50 of 1 out of 1000:
+
+$$
+q_0 = \frac{0.95 \cdot 0.95 - 0.05 \cdot 0.05}{0.9}
+    = \frac{0.9}{0.9} = 1, \qquad q_1 = 0 .
+$$
+
+Exactly right: a state that was really $\ket{0}$ every time, misreported 5% of the
+time, corrected back to certainty. Observed $m = (0.9, 0.1)$ instead and the
+correction returns $q_0 = 0.944444$ and $q_1 = 0.055556$.
+
+<Callout tone="warning" title="The inverse is not a probability distribution">
+Feed the corrector $m = (1.0, 0.0)$ with $e_0 = e_1 = 0.05$ and it returns
+$q_0 = 1.055556$ and $q_1 = -0.055556$. A negative probability. Matrix inversion
+knows nothing about the simplex, and with finite shots the observed $m$ routinely
+lands outside the image of $A$ restricted to valid distributions. Production
+mitigation therefore uses a constrained least-squares fit instead of a raw
+inverse. Your implementation should return the raw inverse, because that is what
+the tests check and because seeing the negative number is the point.
+</Callout>
+
+## What to implement
+
+```python
+Matrix = list[list[complex]]
+
+
+def depolarise(rho: Matrix, p: float) -> Matrix:
+    """Return (1 - p) rho + p I / n, for an n by n density matrix."""
+
+
+def fidelity_with_zero(rho: Matrix) -> float:
+    """Return <0|rho|0>, a real number."""
+
+
+def correct_readout(counts: dict[str, int], e0: float, e1: float) -> dict[str, float]:
+    """Invert the confusion matrix and return corrected probabilities."""
+```
+
+Three things the tests will catch.
+
+`depolarise` must work for any matrix size, not just two by two, because the
+maximally mixed state on $n$ dimensions is $I/n$ and the hidden tests use the same
+function on a two-qubit density matrix. Divide by the actual dimension.
+
+`fidelity_with_zero` must return a real `float`. A density matrix stored with
+complex entries has $\rho_{00}$ complex-typed even though its imaginary part is
+zero, and a comparison against a float will fail on the type before it fails on
+the value.
+
+`correct_readout` must normalise the counts to frequencies before inverting, and
+must not divide by zero when the total is zero.
+
+Public tests: depolarising $\ketbra{0}{0}$ with $p = 0.1$ leaves fidelity $0.95$,
+and with $e_0 = e_1 = 0$ the corrected probabilities equal the raw ones. Hidden
+tests add the $p = 1$ floor at $0.5$, trace preservation at $p = 0.37$, and a
+property check that fidelity decreases monotonically in $p$.
+
+<Check question="Your corrected distribution for a two-qubit experiment sums to $1.0$ but contains one negative entry. Is the correction wrong?">
+The arithmetic is right and the answer is unusable. Inverting a stochastic matrix
+preserves the sum, because every column of $A$ sums to 1 and therefore so does
+every column of $A^{-1}$ applied to a vector summing to 1, but nothing preserves
+non-negativity. A negative entry is a signal that the observed counts were not
+consistent with any true distribution under your assumed $e_0$ and $e_1$, which
+usually means shot noise, a stale calibration, or correlated readout error across
+qubits that a per-qubit model cannot express. The fix is a constrained fit, not a
+different inverse.
+</Check>
+
+## Where this comes from
+
+- [CS269Q, Stanford](https://cs269q.stanford.edu/), whose benchmarking assignment
+  is the model for teaching the depolarising parameter as the single number a
+  benchmark reports.
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses), for
+  the measurement-mitigation workflow of calibrating a confusion matrix and
+  applying its inverse, together with the warning about unconstrained inversion.

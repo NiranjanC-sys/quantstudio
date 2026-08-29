@@ -1,0 +1,50 @@
+module: t0.m5
+cards:
+  - id: t0.m5.d1
+    front: "What are the dimensions of the Kronecker product of an m by n matrix and a p by q matrix?"
+    back: "mp by nq. Two 2 by 2 matrices give a 4 by 4 matrix."
+    lesson: t0.m5.l1
+  - id: t0.m5.d2
+    front: "Write the tensor product |0> tensor |1> as a length-4 column vector."
+    back: "(0, 1, 0, 0) transposed. The entry at index 1 is the one that is set, because |01> has binary index 1."
+    lesson: t0.m5.l1
+  - id: t0.m5.d3
+    front: "How many complex amplitudes describe an n-qubit pure state?"
+    back: "2 to the n. For n = 50 that is 1125899906842624 amplitudes."
+    lesson: t0.m5.l2
+  - id: t0.m5.d4
+    front: "State the mixed-product rule for Kronecker products."
+    back: "(A tensor B)(C tensor D) = (AC) tensor (BD), whenever the ordinary products are defined."
+    lesson: t0.m5.l1
+  - id: t0.m5.d5
+    front: "How do you apply a single-qubit gate U to qubit 1 of a two-qubit system?"
+    back: "Apply I tensor U, with the identity in the slot of the untouched qubit."
+    lesson: t0.m5.l2
+  - id: t0.m5.d6
+    front: "In the RedQuant convention, which qubit is the most significant bit of a basis index?"
+    back: "Qubit 0. For n qubits, basis index i assigns qubit q the value (i >> (n - 1 - q)) and 1."
+    lesson: t0.m5.l3
+  - id: t0.m5.d7
+    front: "In the RedQuant convention, how do you read the two-qubit basis string |01>?"
+    back: "Left to right as |q0 q1>, so qubit 0 is in state 0 and qubit 1 is in state 1."
+    lesson: t0.m5.l3
+  - id: t0.m5.d8
+    front: "Which major SDK uses the opposite qubit ordering to the one RedQuant uses, and where is the conversion done?"
+    back: "Qiskit is little-endian, printing qubit 0 rightmost. RedQuant converts at the code-generation and parsing boundary."
+    lesson: t0.m5.l3
+  - id: t0.m5.d9
+    front: "Which textbooks and frameworks share the RedQuant ordering?"
+    back: "Nielsen and Chuang, and Cirq: qubit 0 is the most significant bit."
+    lesson: t0.m5.l3
+  - id: t0.m5.d10
+    front: "Is the Kronecker product commutative?"
+    back: "No. A tensor B and B tensor A are related by a permutation of rows and columns, not equal in general."
+    lesson: t0.m5.l1
+  - id: t0.m5.d11
+    front: "How much memory does a dense complex128 statevector of 30 qubits need?"
+    back: "16 bytes per amplitude times 2 to the 30 amplitudes, which is 16 GiB."
+    lesson: t0.m5.l2
+  - id: t0.m5.d12
+    front: "How do you tell whether a two-qubit state is a product state from its amplitude vector (a, b, c, d)?"
+    back: "It is a product state exactly when ad - bc = 0. A non-zero value of that determinant means it is entangled."
+    lesson: t0.m5.l2

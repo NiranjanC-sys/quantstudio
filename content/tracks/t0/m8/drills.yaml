@@ -1,0 +1,54 @@
+module: t0.m8
+cards:
+  - id: t0.m8.d1
+    front: "Placement review: which norm constraint separates a probabilistic bit from a qubit?"
+    back: "The probabilistic bit has l1 norm 1 with non-negative entries; the qubit has l2 norm 1 with arbitrary complex entries."
+    lesson: t0.m1.l1
+  - id: t0.m8.d2
+    front: "Placement review: what is exp(i pi) and what is |exp(i theta)| for real theta?"
+    back: "exp(i pi) = -1, and |exp(i theta)| = 1 for every real theta."
+    lesson: t0.m2.l2
+  - id: t0.m8.d3
+    front: "Placement review: what does it mean for two vectors to be orthogonal?"
+    back: "Their inner product is zero. Orthogonal quantum states are perfectly distinguishable in one measurement."
+    lesson: t0.m3.l1
+  - id: t0.m8.d4
+    front: "Placement review: give the defining equation of a unitary matrix."
+    back: "U dagger U = I, equivalently U preserves norms and inner products."
+    lesson: t0.m4.l2
+  - id: t0.m8.d5
+    front: "Placement review: what must be true of the eigenvalues of a Hermitian matrix and of a unitary matrix?"
+    back: "Hermitian eigenvalues are real. Unitary eigenvalues have modulus 1."
+    lesson: t0.m4.l2
+  - id: t0.m8.d6
+    front: "Placement review: for a Hermitian H and real t, what kind of operator is exp(-i H t)?"
+    back: "Unitary. This is how a Hamiltonian generates norm-preserving time evolution."
+    lesson: t0.m4.l4
+  - id: t0.m8.d7
+    front: "Placement review: how many complex amplitudes does an n-qubit state have?"
+    back: "2 to the n. The exponential is in the number of qubits, not in the circuit length."
+    lesson: t0.m5.l2
+  - id: t0.m8.d8
+    front: "Placement review: in RedQuant, which qubit is the most significant bit and how does |q0 q1> read?"
+    back: "Qubit 0 is most significant, and the string reads left to right, matching Cirq and Nielsen and Chuang."
+    lesson: t0.m5.l3
+  - id: t0.m8.d9
+    front: "Placement review: define the depth of a circuit in one sentence."
+    back: "The number of layers under as-soon-as-possible scheduling, that is the longest chain of operations that must run in sequence."
+    lesson: t0.m6.l2
+  - id: t0.m8.d10
+    front: "Placement review: why must classical subroutines be made reversible before use in a quantum circuit?"
+    back: "Because every quantum gate is unitary and therefore invertible. Irreversible functions are embedded by writing the output with an XOR into a fresh register."
+    lesson: t0.m6.l3
+  - id: t0.m8.d11
+    front: "Placement review: what is the standard error of a probability estimated from N shots?"
+    back: "sqrt(p (1 - p) / N), which at p = 0.5 and N = 4096 is 0.007812."
+    lesson: t0.m7.l3
+  - id: t0.m8.d12
+    front: "Placement review: why does comparing two statevectors need to be done up to global phase?"
+    back: "Because multiplying a state by exp(i theta) leaves every measurement probability unchanged, so the two vectors describe the same physical state."
+    lesson: t0.m7.l2
+  - id: t0.m8.d13
+    front: "Placement review: what is the Shannon entropy of a fair coin, and of a uniform distribution on n outcomes?"
+    back: "1 bit, and log2 n bits."
+    lesson: t0.m1.l5

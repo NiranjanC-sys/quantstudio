@@ -16,7 +16,8 @@
     "db:migrate": "pnpm --filter @redquant/api db:migrate",
     "loadtest": "k6 run infra/loadtest/main.js",
     "validate:content": "node scripts/validate-content.mjs content/tracks",
-    "fix:math": "node scripts/fix-split-math.mjs content/tracks"
+    "fix:math": "node scripts/fix-split-math.mjs content/tracks",
+    "check:cross-engine": "node scripts/cross-engine-check.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

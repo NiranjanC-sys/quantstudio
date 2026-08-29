@@ -1,0 +1,50 @@
+module: t0.m7
+cards:
+  - id: t0.m7.d1
+    front: "Which NumPy dtype should a statevector use, and how many bytes per amplitude does it cost?"
+    back: "complex128, at 16 bytes per amplitude. A 30-qubit dense statevector therefore needs 16 GiB."
+    lesson: t0.m7.l1
+  - id: t0.m7.d2
+    front: "Which NumPy function builds a tensor (Kronecker) product of two arrays?"
+    back: "numpy.kron. Applying it left to right in qubit order matches the convention that qubit 0 is the most significant bit."
+    lesson: t0.m7.l1
+  - id: t0.m7.d3
+    front: "How do you compute the conjugate transpose of a NumPy array A?"
+    back: "A.conj().T. Using A.T alone gives the transpose without conjugation and silently breaks every unitarity check."
+    lesson: t0.m7.l1
+  - id: t0.m7.d4
+    front: "How do you turn a NumPy statevector into a probability array?"
+    back: "numpy.abs(psi) ** 2. Squaring the raw complex entries instead is a common and silent bug."
+    lesson: t0.m7.l1
+  - id: t0.m7.d5
+    front: "Which NumPy call checks a matrix identity numerically, and why not use the equality operator?"
+    back: "numpy.allclose. Floating-point arithmetic makes exact equality fail on results that are correct to 1e-16."
+    lesson: t0.m7.l2
+  - id: t0.m7.d6
+    front: "How do you verify numerically that a matrix U is unitary?"
+    back: "Check numpy.allclose(U.conj().T @ U, numpy.eye(len(U)))."
+    lesson: t0.m7.l2
+  - id: t0.m7.d7
+    front: "Why must a statevector comparison be made up to global phase, and how?"
+    back: "Because exp(i theta) times a state is the same physical state. Compare |<a|b>| against 1, or divide out the phase of the first non-zero amplitude."
+    lesson: t0.m7.l2
+  - id: t0.m7.d8
+    front: "What is the standard error of an estimated probability p from N shots?"
+    back: "sqrt(p (1 - p) / N). At p = 0.5 and N = 1000 that is 0.015811."
+    lesson: t0.m7.l3
+  - id: t0.m7.d9
+    front: "By what factor must the shot count grow to halve a shot-noise error bar?"
+    back: "Four. The error falls as 1 over sqrt(N), so quartering the error costs sixteen times the shots."
+    lesson: t0.m7.l3
+  - id: t0.m7.d10
+    front: "What is the standard error of an estimated probability at p = 0.5 with 4096 shots?"
+    back: "sqrt(0.25 / 4096) = 0.007812."
+    lesson: t0.m7.l3
+  - id: t0.m7.d11
+    front: "Why should a distribution plot in a quantum experiment always carry error bars?"
+    back: "Because every bar is an estimate from finitely many shots, and two bars that differ by less than their error bars are not distinguishable by the data."
+    lesson: t0.m7.l3
+  - id: t0.m7.d12
+    front: "Which NumPy operator performs matrix multiplication, and which performs elementwise multiplication?"
+    back: "The @ operator multiplies matrices; the * operator multiplies elementwise. Using * for a gate application is a silent wrong answer."
+    lesson: t0.m7.l1

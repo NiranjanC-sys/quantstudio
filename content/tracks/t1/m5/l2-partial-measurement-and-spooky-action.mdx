@@ -1,0 +1,183 @@
+---
+id: t1.m5.l2
+title: Partial Measurement and Spooky Action
+type: concept
+track: t1
+module: t1.m5
+level: L1
+minutes: 14
+objectives:
+  - Compute the post-measurement state of a Bell pair after measuring only qubit 0
+  - Show that the marginal distribution of qubit 1 is unchanged by any operation on qubit 0
+  - Explain why correlated outcomes do not permit faster-than-light signalling
+prerequisites: [t1.m5.l1, t1.m2.l2]
+sources:
+  - label: Cleve, QIC 710 Quantum Information Processing (Waterloo IQC)
+    url: https://cleve.iqc.uwaterloo.ca/qic710/
+  - label: Preskill, Ph219/CS219 Quantum Computation lecture notes (Caltech)
+    url: http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html
+tags: [entanglement, measurement]
+---
+
+Alice and Bob share a Bell pair and walk to opposite ends of the galaxy. Alice
+measures her qubit and instantly knows Bob's. Einstein called this spooky action
+at a distance, and popular accounts stop there. The interesting content is the
+next step: prove carefully that Alice can learn about Bob and still send him
+nothing.
+
+## Measuring half of a Bell pair
+
+Take $\ket{\Phi^+} = \tfrac{1}{\sqrt2}(\ket{00} + \ket{11})$ and measure qubit 0
+only. The projector for outcome 0 keeps every basis state whose first bit is 0,
+so from the rule of T1.M2.L2:
+
+$$
+P_0 \ket{\Phi^+} = \tfrac{1}{\sqrt2}\ket{00},
+\qquad
+\Pr[0] = \left\| \tfrac{1}{\sqrt2}\ket{00} \right\|^2 = \tfrac12 ,
+$$
+
+and renormalising by $\sqrt{1/2}$ gives the post-measurement state $\ket{00}$.
+The other branch gives $\ket{11}$ with probability $\tfrac12$. In both cases
+qubit 1 has become a definite basis state, even though nobody touched it.
+
+Two things are true at once and it is worth separating them. Alice's outcome is
+random: she gets 0 or 1 with probability $\tfrac12$, and she cannot choose which.
+Her outcome is perfectly correlated with Bob's: whatever she gets, he will get
+the same. Correlation without control is the entire phenomenon.
+
+<Margin label="Conditional versus marginal">
+Before Alice looks, Bob's outcome distribution is $(0.5, 0.5)$. After Alice
+looks and gets 0, Bob's *conditional* distribution is $(1, 0)$. But Bob cannot
+compute a conditional distribution without Alice's outcome, and until it arrives
+by ordinary classical means his own statistics are the marginal, unchanged.
+</Margin>
+
+## Nothing Alice does changes Bob's statistics
+
+The stronger claim is that no operation whatsoever on qubit 0, unitary or
+measurement, in any basis, changes the outcome distribution of qubit 1. Apply a
+Hadamard to Alice's qubit:
+
+$$
+(H \otimes I)\ket{\Phi^+} = \tfrac12 \left( \ket{00} + \ket{01} + \ket{10} - \ket{11} \right) .
+$$
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="A Bell pair with a Hadamard applied to qubit 0 only. All four probabilities are 0.25, so qubit 1 still reads 0 or 1 with probability 0.5."
+  ir={{
+    version: 1,
+    name: "bell-plus-local-h",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "cx", gate: "x", targets: [1], controls: [0] },
+      { id: "h2", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+Qubit 1 reads 0 in $\ket{00}$ and $\ket{10}$, so its marginal is
+$0.25 + 0.25 = 0.5$, exactly as before the Hadamard. Try an arbitrary gate
+instead, say $U(1.1, 0.3, 0.7)$ on qubit 0. The four joint probabilities become
+$0.363399, 0.136601, 0.136601, 0.363399$, which are not what they were, and the
+marginal of qubit 1 is $0.363399 + 0.136601 = 0.5$ again.
+
+<Simulate
+  show="probabilities"
+  caption="The same Bell pair with an arbitrary U(1.1, 0.3, 0.7) on qubit 0. The joint distribution changed; the marginal of qubit 1 did not."
+  ir={{
+    version: 1,
+    name: "bell-plus-local-u",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "cx", gate: "x", targets: [1], controls: [0] },
+      { id: "u0", gate: "u", targets: [0], params: [1.1, 0.3, 0.7] }
+    ]
+  }}
+/>
+
+The general proof is three lines. Let $\ket{\psi}$ be any two-qubit state and let
+$U$ act on qubit 0 alone. Bob's probability of outcome $b$ is the sum over
+Alice's outcomes:
+
+$$
+\Pr[b] = \sum_{a \in \{0,1\}} \left| \left( \bra{a} \otimes \bra{b} \right) (U \otimes I) \ket{\psi} \right|^2
+= \bra{\psi} (U^{\dagger} \otimes I) \left( \sum_a \ketbra{a}{a} \otimes \ketbra{b}{b} \right) (U \otimes I) \ket{\psi} .
+$$
+
+The inner sum is $I \otimes \ketbra{b}{b}$, because Alice's projectors are
+complete. That operator commutes with $U \otimes I$, so the $U^{\dagger}$ and
+$U$ meet and cancel:
+
+$$
+\Pr[b] = \bra{\psi} \left( U^{\dagger}U \otimes \ketbra{b}{b} \right)\ket{\psi}
+= \bra{\psi} \left( I \otimes \ketbra{b}{b} \right)\ket{\psi} ,
+$$
+
+which is the probability with no $U$ at all. The same argument with a
+measurement in place of $U$ works because a measurement Alice does not report is
+a sum over its branches, and that sum is again a complete set of projectors.
+
+## Why this is not signalling
+
+Suppose Alice wants to send Bob one bit at a distance. She can measure or not
+measure, measure in the $Z$ basis or the $X$ basis, apply any gate she likes.
+The theorem above says every one of those choices leaves Bob's distribution
+exactly $(0.5, 0.5)$. Bob, holding a billion Bell halves and every measurement
+apparatus in existence, sees the same statistics regardless of what Alice did.
+There is no channel.
+
+What Alice and Bob do share is a *correlation*, and correlations become visible
+only when the two records are brought together, which requires ordinary
+communication at or below the speed of light. This is the same reason a pair of
+gloves separated into two boxes carries no signal: opening one box tells you
+about the other and transmits nothing.
+
+<Callout tone="gotcha" title="Then what is spooky about it?">
+Not the correlation. Classical shared randomness produces correlations too. The
+spooky part is that the correlation persists in *every* measurement basis in a
+way no assignment of pre-existing values can reproduce. Measure both halves of
+$\ket{\Phi^+}$ in the $Z$ basis and the bits agree; measure both in the $X$ basis
+and they agree again; measure both in the $Y$ basis and they disagree every
+time. T1.M6.L1 shows that no list of predetermined answers can match all of
+those at once.
+</Callout>
+
+## Collapse is a statement about your description
+
+It is tempting to imagine something travelling from Alice's qubit to Bob's at
+the instant of measurement. Nothing in the formalism supplies such a thing, and
+the no-signalling result says nothing observable travels. What changes at the
+moment Alice looks is her description of the joint system, and descriptions are
+not localised objects. Bob's description does not change until he learns her
+outcome.
+
+This is also why the ordering of spacelike-separated measurements does not
+matter. If Bob measures first, the same calculation gives him $(0.5, 0.5)$ and
+leaves Alice with a conditional state; the joint statistics are identical either
+way, and there is no fact about who collapsed whom.
+
+<Check question="Alice measures her half of $\ket{\Psi^-} = \tfrac{1}{\sqrt2}(\ket{01} - \ket{10})$ in the X basis and gets the outcome +. What is Bob's state, and what would Bob see if he never learned her result?">
+Write the singlet in the $X$ basis: it equals
+$-\tfrac{1}{\sqrt2}(\ket{+}\ket{-} - \ket{-}\ket{+})$, the singlet being
+invariant in form under any common basis change up to a phase. So Alice getting
+$+$ projects Bob onto $\ket{-}$, perfectly anticorrelated as in every other
+basis. Without her result Bob's distribution in any basis he chooses is
+$(0.5, 0.5)$: his marginal is unchanged by her choice of basis and by her
+outcome, which is exactly the no-signalling statement.
+</Check>
+
+## Where this comes from
+
+- [Cleve, QIC 710](https://cleve.iqc.uwaterloo.ca/qic710/), whose treatment of
+  partial measurement derives the no-signalling identity in the same
+  complete-projector form used above.
+- [Preskill, Ph219](http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html),
+  chapter 2, for the framing of collapse as an update to a description and for
+  the argument that measurement order on spacelike-separated halves is
+  unobservable.

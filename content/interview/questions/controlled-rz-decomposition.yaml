@@ -1,0 +1,685 @@
+# Benchmark pattern 10: custom controlled-Rz decomposition. Every identity in
+# this file was verified by constructing both unitaries and comparing them
+# entry by entry at theta = 0.7.
+
+questions:
+  - id: iq-091
+    title: Decompose controlled-Rz into CNOTs and single-qubit rotations
+    kind: coding
+    prompt: |
+      Your device has CNOT and arbitrary single-qubit rotations but no
+      controlled-Rz. Write CRz(theta) with control on qubit 0 and target on
+      qubit 1 using only those primitives. Give the exact angles, state the
+      CNOT count, and prove the construction is exact rather than exact up to
+      global phase.
+    difficulty: easy
+    pattern: Controlled-Rz decomposition
+    topics: [gate-decomposition, controlled-rotations, cnot-count, exactness]
+    companies: [IBM, Rigetti, Quantinuum, IonQ]
+    modelAnswer: |
+      Two CNOTs and two Rz gates, both on the target:
+
+          Rz(theta/2) on qubit 1
+          CX(0, 1)
+          Rz(-theta/2) on qubit 1
+          CX(0, 1)
+
+      Why it works: CRz is diagonal, so track the phase on each of the four
+      basis states. Conjugating Rz(-theta/2) by CNOT gives Rz(-theta/2) when the
+      control is 0 and Rz(+theta/2) when the control is 1, because the CNOT
+      flips the target and Rz is odd under that flip. Adding the unconditional
+      Rz(theta/2) then gives phase 0 when the control is 0 and Rz(theta) when
+      the control is 1, which is exactly CRz.
+
+      I built both unitaries at theta = 0.7 and compared them entry by entry.
+      Both diagonals are
+
+          [1, 1, 0.939372713 - 0.342897807j, 0.939372713 + 0.342897807j]
+
+      and they agree to machine precision, not merely up to global phase. That
+      distinction matters: this decomposition is exact, so it remains correct
+      when the whole block is itself controlled by another qubit.
+
+      ```python
+      import cirq
+
+      def crz(theta: float) -> cirq.Circuit:
+          q = cirq.LineQubit.range(2)
+          return cirq.Circuit(
+              cirq.rz(theta / 2)(q[1]),
+              cirq.CNOT(q[0], q[1]),
+              cirq.rz(-theta / 2)(q[1]),
+              cirq.CNOT(q[0], q[1]),
+          )
+      ```
+
+      An equivalent ordering also works and is sometimes preferred because it
+      ends on a single-qubit gate that can be merged with whatever follows:
+
+          CX(0, 1), Rz(-theta/2) on 1, CX(0, 1), Rz(theta/2) on 1
+
+      I verified this variant matches CRz exactly as well.
+
+      Two CNOTs is optimal. CRz(theta) for generic theta is a non-local
+      two-qubit gate, and the only two-qubit unitaries reachable with one CNOT
+      plus local gates are those with a single non-zero interaction coefficient
+      of magnitude pi/4 in the Cartan decomposition. CRz has interaction
+      strength theta/4, which does not meet that condition for generic theta, so
+      one CNOT is impossible and two is the minimum.
+    followUps:
+      - What is the corresponding decomposition for controlled-Rx and controlled-Ry?
+      - Show why one CNOT cannot suffice for generic theta.
+      - How would you fuse the trailing Rz with the next gate in a compiler pass?
+    commonMistakes:
+      - Putting one of the Rz rotations on the control qubit, which adds a phase on the control branch and produces CP rather than CRz.
+      - Using theta rather than theta/2 in the rotations, which doubles the applied angle.
+      - Assuming the construction is only correct up to global phase. It is exact, and that is what lets it be nested under another control.
+    references:
+      - label: Barenco et al, Elementary gates for quantum computation
+        url: https://arxiv.org/abs/quant-ph/9503016
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+
+  - id: iq-092
+    title: Distinguish controlled-Rz from controlled-phase
+    kind: coding
+    prompt: |
+      Two engineers disagree: one says CRz(theta) and CP(theta) are the same
+      gate, the other says they differ by a global phase. Settle it with the
+      matrices, and say when the difference is observable.
+    difficulty: easy
+    pattern: Controlled-Rz decomposition
+    topics: [controlled-phase, global-phase, conventions, relative-phase]
+    companies: [IBM, Classiq, Quantinuum, Google Quantum AI]
+    modelAnswer: |
+      Both engineers are wrong. Write the diagonals at theta = 0.7, computed
+      directly:
+
+          CRz(0.7) = diag(1, 1, 0.939372713 - 0.342897807j,
+                                0.939372713 + 0.342897807j)
+          CP(0.7)  = diag(1, 1, 1, 0.764842187 + 0.644217687j)
+
+      These are not equal, and they are not equal up to global phase either. I
+      checked both: the elementwise comparison fails, and the up-to-phase
+      comparison also fails, because a global phase would have to make entry 3
+      of one match entry 3 of the other while simultaneously making entries 1
+      and 2 match, and no single phase does both.
+
+      The precise relation is
+      CP(theta) = CRz(theta) times a phase gate P(theta/2) on the control. I
+      verified that: applying the four-gate CRz decomposition followed by
+      P(theta/2) on qubit 0 reproduces CP(0.7) exactly to machine precision.
+
+      Equivalently, CRz applies the phases exp(-i theta/2) and exp(+i theta/2)
+      symmetrically about zero on the control-1 branch, while CP applies 0 and
+      exp(i theta) asymmetrically. The difference is a phase exp(i theta/2)
+      applied to the whole control-1 branch, and a phase applied to one branch
+      of a control is a relative phase, not a global one.
+
+      When it is observable: always, once the gate sits inside a larger
+      interference. In a QFT the controlled rotations are CP by convention, and
+      substituting CRz shifts every phase by theta/2 on the control branch,
+      which changes the transform. In a phase estimation circuit, substituting
+      one for the other shifts the estimated phase. In a variational ansatz that
+      is only ever measured in the computational basis at the end, the
+      difference can be invisible, which is exactly why the bug survives to
+      production.
+
+      Cost note. CRz costs 2 CNOTs and 2 Rz gates. CP costs the same 2 CNOTs
+      plus a third Rz on the control. So the conversion is one extra
+      single-qubit gate, which is free on most hardware, and there is never a
+      good reason to use the wrong one to save it.
+    followUps:
+      - Which convention does the standard QFT circuit use, and why does it matter?
+      - How would you write a test that catches a CRz for CP substitution?
+      - Do Rz and P differ observably as single-qubit gates?
+    commonMistakes:
+      - Claiming they differ by a global phase. The difference is a phase on one branch of a control, which is a relative phase.
+      - Testing the substitution only on circuits that measure in the computational basis, where the difference is often invisible.
+      - Assuming a framework's rz and p functions follow a shared convention. Check the matrix.
+    references:
+      - label: Cirq documentation
+        url: https://quantumai.google/cirq
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+
+  - id: iq-093
+    title: Decompose controlled-Rx and controlled-Ry
+    kind: coding
+    prompt: |
+      Extend the controlled-Rz construction to controlled-Rx and
+      controlled-Ry. Give the exact conjugation for each, state the CNOT count,
+      and say which one has a shortcut that does not need conjugation.
+    difficulty: medium
+    pattern: Controlled-Rz decomposition
+    topics: [basis-change, controlled-rotations, conjugation, cnot-count]
+    companies: [IBM, IonQ, Rigetti, Quantinuum]
+    modelAnswer: |
+      Both reduce to the CRz construction by a basis change on the target, and
+      both cost 2 CNOTs.
+
+      Controlled-Rx. Since X = H Z H, conjugating the whole CRz block by
+      Hadamards on the target gives CRx:
+
+          H(1), Rz(theta/2) on 1, CX(0,1), Rz(-theta/2) on 1, CX(0,1), H(1)
+
+      I built this and compared against CRx(0.7): exact match to machine
+      precision.
+
+      Controlled-Ry. Since Y = S X S-dagger and X = H Z H, the conjugation is
+      S-dagger then H before the block and H then S after:
+
+          Sdg(1), H(1), Rz(theta/2) on 1, CX(0,1), Rz(-theta/2) on 1,
+          CX(0,1), H(1), S(1)
+
+      Verified exact against CRy(0.7).
+
+      Controlled-Ry has the shortcut, and it is the one worth remembering. Ry is
+      real, so it commutes with the CNOT structure in a way that lets you skip
+      the basis change entirely:
+
+          Ry(theta/2) on 1, CX(0,1), Ry(-theta/2) on 1, CX(0,1)
+
+      I verified this equals CRy(0.7) exactly. It is the same shape as the CRz
+      construction with Ry substituted for Rz. The reason is that
+      X Ry(alpha) X = Ry(-alpha), exactly as X Rz(alpha) X = Rz(-alpha), so the
+      conjugation argument goes through unchanged. Rx does not have this
+      property because X commutes with Rx, so X Rx(alpha) X = Rx(alpha) and the
+      two rotations cancel instead of adding, giving the identity. That is the
+      structural reason CRx needs the Hadamard conjugation and CRy does not, and
+      it is a good thing to be able to say rather than to memorise.
+
+      ```python
+      import cirq
+
+      def cry(theta: float) -> cirq.Circuit:
+          q = cirq.LineQubit.range(2)
+          return cirq.Circuit(
+              cirq.ry(theta / 2)(q[1]), cirq.CNOT(q[0], q[1]),
+              cirq.ry(-theta / 2)(q[1]), cirq.CNOT(q[0], q[1]),
+          )
+      ```
+
+      All three gates cost 2 CNOTs, which is the minimum for a generic
+      controlled rotation.
+    followUps:
+      - What happens if you try the CRy shortcut shape with Rx, and why does it fail?
+      - Give the decomposition for a controlled rotation about an arbitrary axis.
+      - How would a compiler recognise these patterns and fuse the basis changes?
+    commonMistakes:
+      - Using the Ry shortcut shape with Rx, which yields the identity on the interaction because X commutes with Rx.
+      - Getting the S and S-dagger order backwards in the CRy conjugation, which produces CRy with the opposite sign of angle.
+      - Assuming CRx needs more CNOTs than CRz. All generic controlled rotations cost 2.
+    references:
+      - label: Barenco et al, Elementary gates for quantum computation
+        url: https://arxiv.org/abs/quant-ph/9503016
+      - label: Shende, Bullock and Markov, Synthesis of Quantum Logic Circuits
+        url: https://arxiv.org/abs/quant-ph/0406176
+
+  - id: iq-094
+    title: Implement controlled-Rz on a device with a native ZZ interaction
+    kind: coding
+    prompt: |
+      Your hardware exposes Rzz(phi) = exp(-i phi Z Z / 2) as a native
+      two-qubit gate, plus arbitrary single-qubit rotations. Build CRz(theta)
+      and count the entangling operations. Compare against the CNOT-based
+      construction.
+    difficulty: medium
+    pattern: Controlled-Rz decomposition
+    topics: [native-gates, zz-interaction, trapped-ions, gate-count]
+    companies: [IonQ, Quantinuum, Pasqal, Rigetti]
+    modelAnswer: |
+      One Rzz and one single-qubit Rz. Concretely:
+
+          Rzz(-theta/2) on qubits 0 and 1
+          Rz(theta/2) on qubit 1
+
+      I built both and compared against CRz(0.7): exact match to machine
+      precision, diagonal
+
+          [1, 1, 0.939372713 - 0.342897807j, 0.939372713 + 0.342897807j]
+
+      That is half the entangling cost of the CNOT construction, which needs
+      two CNOTs.
+
+      The derivation is worth showing because it generalises. Every diagonal
+      two-qubit unitary has phases expressible in the Pauli basis
+      {I, Z0, Z1, Z0Z1}. Write CRz phases as
+      (p00, p01, p10, p11) = (0, 0, -theta/2, +theta/2) and solve for the four
+      coefficients. The result is that the I and Z0 coefficients are both zero,
+      the Z1 coefficient corresponds to Rz(theta/2) on the target, and the Z0Z1
+      coefficient corresponds to Rzz(-theta/2). No Rz on the control and no
+      global phase, which is a slightly surprising asymmetry and exactly what
+      the algebra says.
+
+      Doing the same solve for CP(theta) gives non-zero I, Z0, Z1 and Z0Z1
+      coefficients, so CP costs the same one Rzz plus rotations on both qubits
+      plus a global phase. I verified that too: Rzz(-theta/2), Rz(theta/2) on
+      the target and Rz(theta/2) on the control reproduce CP(0.7) up to a global
+      phase factor of 0.984726539 + 0.174108138j, which is exp(i theta/4).
+
+      Why this matters. On trapped-ion hardware the native two-qubit gate is a
+      Molmer-Sorensen interaction, which is an XX rotation and is equivalent to
+      Rzz up to local basis changes. Halving the entangling count is the
+      dominant cost saving because two-qubit gate error is one to two orders of
+      magnitude larger than single-qubit gate error. A compiler that emits CNOTs
+      on such a device and then translates each CNOT into an MS gate plus local
+      rotations produces two entangling operations where one would do. Recognise
+      the diagonal structure before decomposing.
+    followUps:
+      - Derive the same decomposition for a device whose native gate is Rxx.
+      - How would you extend this to a diagonal gate on three qubits?
+      - What is the analogous saving for CP rather than CRz?
+    commonMistakes:
+      - Translating a CNOT-based decomposition gate by gate into the native basis, doubling the entangling count.
+      - Adding an Rz on the control, which produces CP rather than CRz on this route as well.
+      - Getting the sign of the Rzz angle wrong, which negates the controlled rotation.
+    references:
+      - label: IonQ documentation
+        url: https://docs.ionq.com/
+      - label: pytket documentation
+        url: https://docs.quantinuum.com/tket/
+
+  - id: iq-095
+    title: Build a doubly-controlled Rz
+    kind: coding
+    prompt: |
+      Extend to CCRz(theta), a rotation on the target conditioned on both
+      control qubits being 1. Give the construction, verify it, and count the
+      CNOTs. Then tell me the general rule for k controls.
+    difficulty: medium
+    pattern: Controlled-Rz decomposition
+    topics: [multi-controlled-gates, recursion, cnot-count, synthesis]
+    companies: [IBM, Classiq, Microsoft Azure Quantum, Quantinuum]
+    modelAnswer: |
+      The standard recursion halves the angle and uses the outer control to
+      cancel the wrong branches:
+
+          CRz(theta/2) with control 1, target 2
+          CX(0, 1)
+          CRz(-theta/2) with control 1, target 2
+          CX(0, 1)
+          CRz(theta/2) with control 0, target 2
+
+      Check the four control patterns. Control (0,0): the three CRz blocks all
+      see control 0, nothing happens. Control (0,1): first block applies
+      theta/2, the CNOT flips qubit 1 to 0 so the second block does nothing, the
+      CNOT flips back, third block sees control 0. Net theta/2, which is wrong,
+      so trace it again more carefully: the CNOT with control 0 does not fire
+      when qubit 0 is 0, so qubit 1 stays 1 and the second block applies
+      -theta/2. Net zero. Control (1,0): first block sees control 0, the CNOT
+      flips qubit 1 to 1, second block applies -theta/2, CNOT flips back, third
+      block applies theta/2. Net zero. Control (1,1): first block applies
+      theta/2, CNOT flips qubit 1 to 0, second block does nothing, CNOT flips
+      back, third block applies theta/2. Net theta. Correct.
+
+      I built the whole thing and compared against a directly constructed CCRz
+      at theta = 0.7: exact match to machine precision.
+
+      CNOT count. Each CRz costs 2 CNOTs, and there are three of them, plus the
+      two explicit CNOTs, giving 8 CNOTs total. I confirmed 8 by counting the
+      two-qubit operations in the built circuit.
+
+      The general rule for k controls by this recursion is that the CNOT count
+      grows as O(k^2) with no ancillas, because each level of the recursion
+      triples the number of blocks while halving the angle, and the CNOT
+      cancellation gives a quadratic rather than exponential total. With one
+      clean ancilla you do better: compute the AND of the controls into the
+      ancilla with a chain of Toffolis, apply a single CRz controlled on the
+      ancilla, and uncompute, which is O(k) two-qubit gates at the cost of k-1
+      ancillas and 2(k-1) Toffolis.
+
+      So the decision is the usual one: without spare qubits pay O(k^2) gates,
+      with spare qubits pay O(k) gates and O(k) qubits. On a NISQ device with
+      few idle qubits the first wins; on a fault-tolerant machine where ancillas
+      are cheap and depth is expensive, the second does.
+    followUps:
+      - Write the ancilla-based version and count its Toffolis.
+      - How does the relative-phase Toffoli of Maslov change this trade?
+      - What is the depth of each version, as opposed to the gate count?
+    commonMistakes:
+      - Using theta rather than theta/2 in the recursion, which applies twice the intended rotation on the (1,1) branch.
+      - Forgetting that each CRz block itself costs 2 CNOTs, so reporting 2 CNOTs total instead of 8.
+      - Assuming the ancilla-free construction is exponential in k. The recursion with cancellation is quadratic.
+    references:
+      - label: Barenco et al, Elementary gates for quantum computation
+        url: https://arxiv.org/abs/quant-ph/9503016
+      - label: Classiq documentation
+        url: https://docs.classiq.io/
+
+  - id: iq-096
+    title: Optimise a chain of controlled-Rz gates
+    kind: coding
+    prompt: |
+      A QFT-like block applies CRz gates between many qubit pairs in sequence.
+      After naive decomposition every CRz becomes two CNOTs. Show me the
+      optimisations a compiler should find, and estimate the saving.
+    difficulty: medium
+    pattern: Controlled-Rz decomposition
+    topics: [circuit-optimisation, gate-cancellation, qft, compiler-passes]
+    companies: [IBM, Classiq, Quantinuum, Rigetti]
+    modelAnswer: |
+      Three optimisations, in increasing order of cleverness.
+
+      First, merge commuting gates before decomposing. Every CRz is diagonal,
+      so any two CRz gates commute, and two on the same pair compose by adding
+      angles. I verified this directly: CRz(0.3) followed by CRz(0.4) equals
+      CRz(0.7) to machine precision. So k consecutive CRz gates on the same pair
+      collapse to one, taking 2k CNOTs down to 2. The mistake to avoid is
+      decomposing first: once each CRz has become Rz, CX, Rz, CX, the inner
+      CNOTs are separated by an Rz on the target, which does not commute with
+      CX, so they do not simply cancel. Merge at the gate level, then decompose.
+      A peephole pass that resynthesises each two-qubit block recovers the same
+      saving after decomposition, at more cost.
+
+      Second, angle merging across the whole diagonal block. Every CRz is
+      diagonal, so any set of CRz gates on any pairs all commute with each
+      other. A block of CRz gates is therefore a single diagonal unitary, and
+      diagonal unitaries can be synthesised directly. For a QFT block on n
+      qubits the naive count is n(n-1)/2 CRz gates, so n(n-1) CNOTs; direct
+      diagonal synthesis with a Gray code ordering reduces this substantially by
+      reusing the CNOT ladder across many phase rotations rather than building
+      and tearing it down per gate.
+
+      Third, angle truncation. In a QFT the controlled rotation angles fall as
+      2*pi/2^k, so the smallest ones are far below the device's achievable gate
+      fidelity. Dropping rotations below a threshold gives an approximate QFT
+      with error bounded by the sum of dropped angles, and keeping only
+      O(log n) levels of rotation gives an approximation good enough for phase
+      estimation. This turns the CRz count from n(n-1)/2 to O(n log n), which is
+      the single largest saving available and the one that makes QFT practical
+      at all on noisy hardware.
+
+      Estimating for n = 10: naive QFT is 45 CRz gates, so 90 CNOTs. Truncating
+      to rotations at most 5 levels deep leaves about 35 CRz gates, so 70 CNOTs.
+      Gray code diagonal synthesis of the remaining block reduces the CNOT
+      ladder overhead further. The order to apply them is truncation first,
+      because it removes gates rather than restructuring them, then cancellation,
+      then synthesis.
+
+      One correctness warning: all three optimisations are only valid because
+      CRz gates are diagonal and therefore mutually commuting. The moment a
+      non-diagonal gate is interleaved, the reordering is illegal and a compiler
+      that applies these passes without checking will produce a wrong circuit.
+    followUps:
+      - Bound the error of the approximate QFT as a function of the truncation level.
+      - Describe the Gray code ordering for diagonal unitary synthesis.
+      - How does routing on a limited coupling map interact with these optimisations?
+    commonMistakes:
+      - Reordering CRz gates across a non-diagonal gate, which is not a legal commutation.
+      - Truncating small rotations without bounding the resulting error, so an approximation is presented as exact.
+      - Applying cancellation before truncation, which does more work on gates that are about to be deleted.
+    references:
+      - label: IBM Quantum transpilation guide
+        url: https://docs.quantum.ibm.com/guides/transpile
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+
+  - id: iq-097
+    title: Route a controlled-Rz when the qubits are not adjacent
+    kind: coding
+    prompt: |
+      You need CRz(theta) between qubits 0 and 4 on a line coupling map
+      0-1-2-3-4. Give the cheapest implementation, count the two-qubit gates,
+      and compare against inserting SWAPs.
+    difficulty: hard
+    pattern: Controlled-Rz decomposition
+    topics: [routing, coupling-map, swap-insertion, permutation-tracking]
+    companies: [IBM, Rigetti, Quantinuum, Classiq]
+    modelAnswer: |
+      Route with SWAPs, do not restore the layout, and do not reach for a
+      long-range CNOT gadget. All three options below were built and checked
+      against a directly constructed CRz(0.7) between qubits 0 and 4.
+
+      Option 1, SWAP and restore. Move qubit 0 next to qubit 4 with 3 SWAPs,
+      apply the CRz as 2 CNOTs, then undo the 3 SWAPs. Verified correct, and it
+      costs 6 SWAPs at 3 CNOTs each plus 2, so 20 CNOTs.
+
+      Option 2, SWAP and keep the permutation. The same 3 SWAPs and the CRz,
+      with no return trip. The circuit then equals the intended CRz composed
+      with a known qubit permutation, which the compiler records and applies
+      when interpreting measurement results. Cost is 3*3 + 2 = 11 CNOTs.
+
+      Option 3, long-range CNOT gadget. The CRz decomposition needs two CNOTs
+      between qubits 0 and 4, and a CNOT between the endpoints of a path costs
+      4(d-1) CNOTs by the standard staircase identity. I verified the identity
+      at d = 2, 3, 4 and 5, giving 4, 8, 12 and 16 CNOTs, and the full CRz built
+      this way is correct and costs 24 CNOTs. That is worse than both SWAP
+      routes, which is the point: gadgets that look clever are not automatically
+      cheaper, and you should count before choosing.
+
+      So option 2 wins at 11 CNOTs. The scaling is 3(d-1) + 2 for a control and
+      target d hops apart, verified at d = 2, 3, 4, 5 and 6 giving 5, 8, 11, 14
+      and 17. Meeting in the middle, moving each qubit half the distance, gives
+      the same count because the number of SWAPs is unchanged; it wins on depth,
+      not on gate count, since the two halves of the route run in parallel.
+
+      Two further savings a good router finds. A SWAP immediately adjacent to a
+      two-qubit gate on the same pair should be fused rather than emitted
+      separately: any two-qubit unitary needs at most 3 CNOTs, while a SWAP plus
+      a CRz emitted independently costs 5. And when a block contains several
+      diagonal gates over overlapping qubit ranges, a swap network that sweeps
+      the qubits past each other once applies every gate during the sweep and
+      amortises the routing across all of them, instead of routing each gate
+      separately.
+
+      The caveat: none of this applies to non-diagonal long-range gates in the
+      same way, and the depth cost of a long SWAP chain idles the intermediate
+      qubits, so on hardware with short coherence relative to gate time measure
+      rather than assume.
+    followUps:
+      - What is the depth of the meet-in-the-middle route compared to the one-sided route?
+      - How would you decide between the two on a device with a given coherence time?
+      - Extend the analysis to a heavy-hex topology rather than a line.
+    commonMistakes:
+      - Restoring the layout after routing, which doubles the SWAP cost when the permutation could simply be recorded.
+      - Assuming a long-range CNOT gadget beats SWAP routing. At distance 4 it costs 24 CNOTs against 11.
+      - Counting a SWAP as one gate. On a CNOT-native device it is three.
+    references:
+      - label: Li, Ding and Xie, Tackling the Qubit Mapping Problem for NISQ-Era Quantum Devices
+        url: https://arxiv.org/abs/1809.02573
+      - label: Cowtan et al, On the qubit routing problem
+        url: https://arxiv.org/abs/1902.08091
+
+  - id: iq-098
+    title: Handle a controlled-Rz with a symbolic angle
+    kind: coding
+    prompt: |
+      In a variational circuit the CRz angle is a symbolic parameter that will
+      be bound at run time and differentiated. What changes about the
+      decomposition, and how does the parameter-shift rule apply to the
+      decomposed form?
+    difficulty: hard
+    pattern: Controlled-Rz decomposition
+    topics: [parameter-shift, differentiation, symbolic-parameters, variational]
+    companies: [IBM, Xanadu, Classiq, Google Quantum AI]
+    modelAnswer: |
+      The decomposition is unchanged in structure: Rz(theta/2), CX,
+      Rz(-theta/2), CX, with theta symbolic. What changes is the gradient.
+
+      The parameter-shift rule in its standard form applies to a gate of the
+      form exp(-i theta G / 2) where G has two distinct eigenvalues, plus and
+      minus 1. Then
+
+          d<H>/d theta = ( <H>(theta + pi/2) - <H>(theta - pi/2) ) / 2
+
+      Rz satisfies this with G = Z. But CRz does not: its generator is
+      (I - Z0)/2 tensor Z1, whose eigenvalues are 0, 0, +1 and -1, three
+      distinct values rather than two. So the two-term shift rule is not valid
+      for CRz taken as a single gate, and using it silently gives a wrong
+      gradient. The correct rule for a generator with eigenvalue gaps
+      {1, 2} is a four-term rule.
+
+      This is precisely where the decomposition helps. After decomposing, the
+      parameter theta appears in two independent Rz gates, each of which does
+      satisfy the two-term rule. The gradient is then the sum of two two-term
+      shifts, one per occurrence, by the chain rule for a parameter appearing
+      multiple times:
+
+          d<H>/d theta = sum over occurrences of
+                         (1/2) * ( <H> with that occurrence shifted by +pi/2
+                                   minus shifted by -pi/2 ) * d(local angle)/d theta
+
+      Here the local angles are theta/2 and -theta/2, so the chain rule factors
+      are +1/2 and -1/2. That gives four circuit evaluations for one CRz
+      parameter, which matches the four-term rule you would derive directly, and
+      is a good consistency check.
+
+      Practical consequences. First, the number of circuit evaluations for a
+      gradient is not the number of parameters but the number of parameter
+      occurrences times two, so sharing one parameter across many gates is
+      expensive to differentiate even though it reduces the parameter count.
+      Second, the transpiler must not be allowed to merge the two Rz gates into
+      one, which it will try to do if it does not know they carry the same
+      symbol with opposite signs; merging changes the shift structure and breaks
+      the gradient. Third, binding the parameter before decomposition and
+      recompiling per shifted value is correct but slow; the right design keeps
+      the circuit symbolic and binds at execution time.
+    followUps:
+      - Derive the four-term shift rule for a generator with eigenvalue gaps 1 and 2.
+      - How does a framework track which gates share a symbolic parameter through transpilation?
+      - What is the shot cost of a full gradient for a circuit with 100 CRz parameters?
+    commonMistakes:
+      - Applying the two-term parameter-shift rule to CRz directly. Its generator has three distinct eigenvalues and the rule does not hold.
+      - Letting the transpiler merge the two symbolic Rz gates, which breaks the gradient computation.
+      - Counting one gradient evaluation per parameter rather than per parameter occurrence.
+    references:
+      - label: Schuld et al, Evaluating analytic gradients on quantum hardware
+        url: https://arxiv.org/abs/1811.11184
+      - label: Crooks, Gradients of parameterized quantum gates using the parameter-shift rule and gate decomposition
+        url: https://arxiv.org/abs/1905.13311
+
+  - id: iq-099
+    title: Prove the two-CNOT lower bound for controlled rotations
+    kind: coding
+    prompt: |
+      Show that CRz(theta) for generic theta cannot be implemented with one
+      CNOT plus arbitrary single-qubit gates, and say for which special values
+      of theta one CNOT suffices.
+    difficulty: hard
+    pattern: Controlled-Rz decomposition
+    topics: [lower-bounds, kak-decomposition, cartan, entangling-power]
+    companies: [IBM, Classiq, Quantinuum, Google Quantum AI]
+    modelAnswer: |
+      Every two-qubit unitary has a canonical form
+
+          U = (A1 tensor A2) exp(i (c1 X X + c2 Y Y + c3 Z Z)) (B1 tensor B2)
+
+      with local unitaries A and B and a canonical triple (c1, c2, c3) unique up
+      to a known symmetry group. This is the KAK or Cartan decomposition, and
+      the triple is the complete local invariant: two gates are equivalent under
+      local operations exactly when their triples agree up to the symmetry.
+
+      A single CNOT has canonical triple (pi/4, 0, 0). Therefore the set of
+      two-qubit unitaries implementable with one CNOT plus local gates is
+      exactly the set with triple equivalent to (pi/4, 0, 0).
+
+      CRz(theta) is diagonal, so it has no XX or YY component: its canonical
+      triple is (0, 0, theta/4). For that to be locally equivalent to
+      (pi/4, 0, 0) you need theta/4 to equal pi/4 up to the symmetry, that is
+      theta = pi modulo the allowed identifications. So one CNOT suffices only
+      for theta = pi, where CRz(pi) is CZ up to local phase gates, and for
+      theta = 0 where the gate is the identity and needs no CNOT at all. For
+      every other theta, two CNOTs are necessary.
+
+      Two is also sufficient, as the explicit construction shows, and I verified
+      that construction reproduces CRz(0.7) exactly. So the answer is tight: two
+      CNOTs, except at theta = 0 where zero suffice and theta = pi where one
+      does.
+
+      The same argument gives the general two-qubit result. An arbitrary
+      two-qubit unitary has a generic triple with all three components non-zero,
+      and three CNOTs are necessary and sufficient. Gates with one zero
+      component, such as any diagonal gate or any controlled rotation, need two.
+      Gates locally equivalent to CNOT need one. That three-tier classification
+      is what a synthesis library implements, and it is why a good compiler
+      never emits three CNOTs for a controlled rotation.
+
+      The practical version of this argument, for when you do not want to invoke
+      Cartan: count parameters. A general two-qubit unitary has 15 real
+      parameters up to global phase. Local gates supply 3 each, so a circuit with
+      k CNOTs and local gates around them has at most 3*(2k+2) - 3 = 6k + 3
+      parameters after removing redundancy, giving k = 2 for the 15 needed. It
+      is a counting bound rather than a proof of the specific case, but it gets
+      the right numbers and is faster to state.
+    followUps:
+      - What is the canonical triple of the iSWAP gate, and how many CNOTs does it need?
+      - How would you compute the canonical triple of an arbitrary two-qubit unitary numerically?
+      - Extend the counting argument to three qubits.
+    commonMistakes:
+      - Claiming three CNOTs are needed for CRz. Three is the bound for a generic two-qubit unitary; controlled rotations need two.
+      - Missing the theta = pi special case, where CRz is CZ and one CNOT suffices.
+      - Treating the parameter counting argument as a proof. It gives the right answer but the Cartan classification is the actual theorem.
+    references:
+      - label: Shende, Bullock and Markov, Synthesis of Quantum Logic Circuits
+        url: https://arxiv.org/abs/quant-ph/0406176
+      - label: Barenco et al, Elementary gates for quantum computation
+        url: https://arxiv.org/abs/quant-ph/9503016
+
+  - id: iq-100
+    title: Debug a controlled rotation that works alone but not when nested
+    kind: coding
+    prompt: |
+      An engineer's controlled-Rz passes every test in isolation. When the
+      whole block is placed under an extra control for an amplitude estimation
+      routine, the results are wrong. Diagnose it and give the fix.
+    difficulty: hard
+    pattern: Controlled-Rz decomposition
+    topics: [global-phase, nesting, amplitude-estimation, debugging]
+    companies: [IBM, Classiq, Google Quantum AI, Microsoft Azure Quantum]
+    modelAnswer: |
+      The block is correct up to global phase but not exactly, and adding a
+      control turns an unobservable global phase into an observable relative
+      phase.
+
+      This is the single most important failure mode in gate synthesis and it
+      has a specific signature: every isolated test passes, because isolated
+      tests compare states or unitaries up to global phase, and the failure
+      appears only under a control. Amplitude estimation is where it surfaces
+      because it controls a Grover operator from a counting register, so every
+      internal global phase becomes a phase on one branch of the counting
+      register and shifts the estimated amplitude.
+
+      Concrete instances that produce it:
+
+      * Implementing CP(theta) where CRz(theta) was intended, or the reverse.
+        These differ by a phase exp(i theta/2) on the control-1 branch, which is
+        global inside the block and relative outside it. At theta = 0.7 the
+        diagonals are diag(1, 1, 0.939372713 - 0.342897807j,
+        0.939372713 + 0.342897807j) for CRz and diag(1, 1, 1,
+        0.764842187 + 0.644217687j) for CP, and I confirmed these are not equal
+        even up to global phase.
+      * A diffusion operator built as H X CCZ X H, which I verified equals
+        minus the textbook 2|s><s| - I. Inside Grover the sign is
+        unobservable; under a control it is not.
+      * A synthesis library that emits a decomposition correct up to phase and
+        records the phase in metadata that the controlling wrapper ignores.
+
+      The fix is threefold. First, track global phase explicitly through
+      synthesis rather than discarding it: most frameworks have a global phase
+      field on the circuit object for exactly this reason, and controlling a
+      circuit must convert that field into a phase gate on the control. Second,
+      change the tests: assert exact unitary equality rather than equality up to
+      phase for any block that might later be controlled, and add a test that
+      controls the block and compares against the controlled reference. Third,
+      as a code review rule, treat "up to global phase" as a claim that must be
+      justified per block, not as a default.
+
+      The diagnostic that identifies it in minutes: build the block's unitary,
+      build the reference, and compute the ratio of corresponding non-zero
+      entries. If all ratios are equal to some phase not equal to 1, you have
+      found it, and the phase you computed is exactly what the control needs to
+      apply.
+    followUps:
+      - How should a framework represent global phase so that controlling a circuit is correct by construction?
+      - Write the test that would have caught this in the original pull request.
+      - Which other algorithms besides amplitude estimation control a large block and would expose this?
+    commonMistakes:
+      - Comparing synthesised blocks only up to global phase, which is the correct comparison for standalone gates and the wrong one for blocks that will be controlled.
+      - Discarding the global phase field during transpilation, so the information needed to control the block correctly is lost.
+      - Debugging the amplitude estimation routine rather than the block, since the routine is usually correct and the block is not.
+    references:
+      - label: Cirq documentation
+        url: https://quantumai.google/cirq
+      - label: Classiq documentation
+        url: https://docs.classiq.io/

@@ -1,0 +1,62 @@
+module: t1.m4
+cards:
+  - id: t1.m4.d1
+    front: "How do you build the state of two independent qubits from their individual states?"
+    back: "Take the tensor product. |psi> tensor |phi> has four amplitudes, each a product of one amplitude from each factor."
+    lesson: t1.m4.l1
+  - id: t1.m4.d2
+    front: "How many amplitudes does an n-qubit state have, and how does that scale with adding one qubit?"
+    back: "2 to the n amplitudes, doubling with each qubit added."
+    lesson: t1.m4.l2
+  - id: t1.m4.d3
+    front: "In RedQuant's ordering, which qubit does the leftmost symbol of |011> describe?"
+    back: "Qubit 0, the most significant bit. So qubit 0 is 0, qubit 1 is 1 and qubit 2 is 1."
+    lesson: t1.m4.l2
+  - id: t1.m4.d4
+    front: "Give the algebraic test for whether a two-qubit state with amplitudes (a, b, c, d) is a product state."
+    back: "It is a product state exactly when ad - bc = 0. Any non-zero value means it is entangled."
+    lesson: t1.m4.l3
+  - id: t1.m4.d5
+    front: "Is (|00> + |11>) / sqrt(2) a product state?"
+    back: "No. With a = d = 0.7071 and b = c = 0, ad - bc = 0.5, which is non-zero, so it is entangled."
+    lesson: t1.m4.l3
+  - id: t1.m4.d6
+    front: "What does CNOT do to the four computational basis states?"
+    back: "It leaves |00> and |01> alone and swaps |10> with |11>, flipping the target when the control is 1."
+    lesson: t1.m4.l4
+  - id: t1.m4.d7
+    front: "What does CZ do, and why is it symmetric in its two qubits?"
+    back: "It negates the amplitude of |11> only. The condition 'both qubits are 1' does not distinguish control from target."
+    lesson: t1.m4.l4
+  - id: t1.m4.d8
+    front: "How do you turn a CNOT into a CZ?"
+    back: "Conjugate the target by Hadamards: CZ = (I tensor H) CNOT (I tensor H)."
+    lesson: t1.m4.l4
+  - id: t1.m4.d9
+    front: "How many CNOTs does a SWAP cost?"
+    back: "Three, alternating direction: CNOT(0 to 1), CNOT(1 to 0), CNOT(0 to 1)."
+    lesson: t1.m4.l4
+  - id: t1.m4.d10
+    front: "Why does routing on a limited coupling map get expensive?"
+    back: "Because each SWAP inserted costs three CNOTs, and at a 0.005 two-qubit error rate one SWAP costs about 1.5 percent of the success probability."
+    lesson: t1.m4.l4
+  - id: t1.m4.d11
+    front: "How many CNOTs does a general controlled-U cost, using the standard ABC construction?"
+    back: "Two CNOTs plus three single-qubit rotations and a phase on the control."
+    lesson: t1.m4.l5
+  - id: t1.m4.d12
+    front: "What does the Toffoli gate do?"
+    back: "It flips its target exactly when both controls are 1, that is it negates only the |110> to |111> pair."
+    lesson: t1.m4.l6
+  - id: t1.m4.d13
+    front: "How many CNOTs does the standard Toffoli decomposition use, and how many T or T dagger gates?"
+    back: "Six CNOTs and seven T or T dagger gates, plus two Hadamards, for a total of 15 gates at depth 11."
+    lesson: t1.m4.l6
+  - id: t1.m4.d14
+    front: "What does the Fredkin gate do, and where is it used?"
+    back: "It swaps two qubits when its control is 1. It is the core of the swap test for state overlap."
+    lesson: t1.m4.l6
+  - id: t1.m4.d15
+    front: "Is the Toffoli gate a Clifford gate?"
+    back: "No. Adding a second control to X leaves the Clifford group, which is why Toffoli needs T gates to decompose."
+    lesson: t1.m4.l6

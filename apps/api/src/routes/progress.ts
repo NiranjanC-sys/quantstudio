@@ -28,8 +28,8 @@ import {
   awardXp,
   bumpXpLeaderboards,
   completeLesson,
+  ensureMasteryFrontier,
   loadLessonGraph,
-  readMastery,
 } from '../progress/service.js';
 import {
   authed,
@@ -96,8 +96,10 @@ export const progressRoutes: FastifyPluginAsync = async (app) => {
     const auth = authed(request);
     const now = new Date();
 
+    const graph = await loadLessonGraph(db, redis.client);
+
     const [masteryRow, streakRows, xpRows, dueCount] = await Promise.all([
-      readMastery(db.read(request.readFromPrimary), auth.userId),
+      ensureMasteryFrontier(db, graph, auth.userId),
       db.read(request.readFromPrimary)
         .select({
           current: streaks.current,
@@ -147,7 +149,8 @@ export const progressRoutes: FastifyPluginAsync = async (app) => {
   app.get('/mastery', { preHandler: [readLimit] }, async (request, reply) => {
     const auth = authed(request);
     const now = new Date();
-    const masteryRow = await readMastery(db.read(request.readFromPrimary), auth.userId);
+    const graph = await loadLessonGraph(db, redis.client);
+    const masteryRow = await ensureMasteryFrontier(db, graph, auth.userId);
     const byConcept = await currentConceptMastery(auth.userId, now);
 
     return reply.send({
@@ -174,9 +177,9 @@ export const progressRoutes: FastifyPluginAsync = async (app) => {
     );
 
     const now = new Date();
-    const [graph, masteryRow, conceptState] = await Promise.all([
-      loadLessonGraph(db, redis.client),
-      readMastery(db.read(request.readFromPrimary), auth.userId),
+    const graph = await loadLessonGraph(db, redis.client);
+    const [masteryRow, conceptState] = await Promise.all([
+      ensureMasteryFrontier(db, graph, auth.userId),
       currentConceptMastery(auth.userId, now),
     ]);
 
@@ -238,7 +241,8 @@ export const progressRoutes: FastifyPluginAsync = async (app) => {
       .where(and(eq(lessonState.userId, auth.userId), eq(lessonState.lessonId, lessonId)))
       .limit(1);
 
-    const masteryRow = await readMastery(db.read(request.readFromPrimary), auth.userId);
+    const graph = await loadLessonGraph(db, redis.client);
+    const masteryRow = await ensureMasteryFrontier(db, graph, auth.userId);
 
     return reply.send({
       state: rows[0] ?? null,

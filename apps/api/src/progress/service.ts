@@ -183,6 +183,40 @@ export async function recomputeUnlocked(
   return { unlocked, applied: updated.length > 0 };
 }
 
+/**
+ * Lazily materialises the frontier for an account that has never completed
+ * anything.
+ *
+ * `provisionNewUser` cannot do this at signup without pulling the whole
+ * catalogue into the identity path, so a fresh `progress.mastery` row starts
+ * with an empty `unlocked_lesson_ids`. §5 promises that array *is* the answer to
+ * "what can I do next", so the first read that needs it computes the DAG roots
+ * once and stores them, under the same optimistic lock as any other recompute.
+ */
+export async function ensureMasteryFrontier(
+  db: DatabaseHandles,
+  graph: LessonGraph,
+  userId: string,
+): Promise<MasteryRow> {
+  const current = await readMastery(db.primary, userId);
+  if (current.unlockedLessonIds.length > 0 || current.completedLessonIds.length > 0) {
+    return current;
+  }
+
+  const result = await recomputeUnlocked(
+    db.primary,
+    userId,
+    graph,
+    new Set(current.completedLessonIds),
+    current.version,
+  );
+
+  // Losing the compare-and-set means a concurrent request already did it.
+  if (!result.applied) return readMastery(db.primary, userId);
+
+  return { ...current, unlockedLessonIds: result.unlocked, version: current.version + 1 };
+}
+
 export type XpKind =
   | 'lesson_complete'
   | 'lab_pass'

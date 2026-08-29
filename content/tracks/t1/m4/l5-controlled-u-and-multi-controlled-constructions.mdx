@@ -1,0 +1,187 @@
+---
+id: t1.m4.l5
+title: Controlled-U and Multi-Controlled Constructions
+type: concept
+track: t1
+module: t1.m4
+level: L1
+minutes: 14
+objectives:
+  - Build a controlled-U from a decomposition U = e^{i alpha} A X B X C with ABC = I
+  - Convert a CZ into a CX by conjugating the target with H
+  - Estimate the two-qubit gate cost of a k-controlled X built from ancillas
+prerequisites: [t1.m4.l4, t1.m3.l5]
+sources:
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+tags: [multi-qubit, controlled]
+---
+
+Hardware gives you CNOT, or CZ, and single-qubit gates. Algorithms ask for
+controlled-$R_z$, controlled-$H$, controlled-$U$ for an arbitrary $U$, and
+controlled operations with five controls at once. Every one of those has to be
+built, and the constructions are short enough to derive rather than look up.
+
+## The easy case: conjugate the target
+
+If $U = V W V^{\dagger}$ for some $V$, then controlled-$U$ is $V$ on the target,
+controlled-$W$, then $V^{\dagger}$ on the target. The reason is that when the
+control is $\ket{0}$ the two $V$ factors cancel, and when it is $\ket{1}$ they
+sandwich $W$.
+
+The workhorse instance uses $HZH = X$ from T1.M3.L1:
+
+$$
+\mathrm{CX}_{0\to1} = (I \otimes H)\,\mathrm{CZ}\,(I \otimes H) ,
+$$
+
+so a CNOT is a CZ with Hadamards on the target, and a CZ is a CNOT with
+Hadamards on the target. Devices whose native entangler is CZ compile every
+CNOT this way, at a cost of two single-qubit gates and no extra two-qubit gates.
+
+<Margin label="Why this is free">
+Single-qubit gates on superconducting hardware are roughly an order of magnitude
+faster and less noisy than two-qubit gates. Any rewrite that trades two-qubit
+gates for single-qubit gates is a win; any rewrite that goes the other way needs
+justification.
+</Margin>
+
+## Controlled rotations in two CNOTs
+
+For $U = R_z(\theta)$ there is a construction cheaper than the general one.
+Split the angle in half and conjugate by CNOTs on the target:
+
+$$
+\mathrm{C}R_z(\theta):\quad
+R_z(\theta/2),\ \mathrm{CX},\ R_z(-\theta/2),\ \mathrm{CX} .
+$$
+
+When the control is $\ket{0}$ the two CNOTs do nothing and the target sees
+$R_z(\theta/2)R_z(-\theta/2) = I$. When the control is $\ket{1}$ the CNOTs flip
+the target between the two rotations, and since $X R_z(-\theta/2) X = R_z(\theta/2)$
+the target sees $R_z(\theta/2)R_z(\theta/2) = R_z(\theta)$. The same trick works
+for $R_y$ and, with an extra basis change, for $R_x$.
+
+## The general case: A, X, B, X, C
+
+Any one-qubit $U$ can be controlled with two CNOTs and three single-qubit gates,
+plus one phase gate on the control. Start from the Euler form of T1.M3.L5,
+
+$$
+U = e^{i\alpha}R_z(\beta)R_y(\gamma)R_z(\delta) ,
+$$
+
+and define
+
+$$
+A = R_z(\beta)R_y(\gamma/2),
+\qquad
+B = R_y(-\gamma/2)R_z\!\left(-\tfrac{\delta + \beta}{2}\right),
+\qquad
+C = R_z\!\left(\tfrac{\delta - \beta}{2}\right) .
+$$
+
+Two facts make the construction work. First $ABC = I$: the $R_y$ halves cancel
+and the three $R_z$ angles sum to
+$\beta - \tfrac{\delta+\beta}{2} + \tfrac{\delta-\beta}{2} = 0$. Second
+$AXBXC = e^{-i\alpha}U$, which follows from $XR_y(\phi)X = R_y(-\phi)$ and
+$XR_z(\phi)X = R_z(-\phi)$: pushing the two $X$ gates outward flips the sign of
+every angle inside $B$ and turns the product into the Euler form.
+
+So the circuit is $C$, CNOT, $B$, CNOT, $A$ on the target, and $P(\alpha)$ on
+the control to supply the phase. When the control is $\ket{0}$ the CNOTs vanish
+and the target sees $ABC = I$; when it is $\ket{1}$ it sees $AXBXC$, and the
+control picks up $e^{i\alpha}$ exactly on the branch that needs it.
+
+Run it for $U = H$, whose Euler angles from T1.M3.L5 are $\alpha = \pi/2$,
+$\beta = 0$, $\gamma = \pi/2$, $\delta = \pi$. That gives
+$A = R_y(\pi/4)$, $B = R_y(-\pi/4)R_z(-\pi/2)$ and $C = R_z(\pi/2)$.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="A hand-built controlled-H acting on |+> and |0>. Amplitudes 0.707107 on |00> and 0.5 on both |10> and |11>."
+  ir={{
+    version: 1,
+    name: "controlled-h-from-abc",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "c1", gate: "rz", targets: [1], params: [1.5707963267948966] },
+      { id: "x1", gate: "x", targets: [1], controls: [0] },
+      { id: "b1", gate: "rz", targets: [1], params: [-1.5707963267948966] },
+      { id: "b2", gate: "ry", targets: [1], params: [-0.7853981633974483] },
+      { id: "x2", gate: "x", targets: [1], controls: [0] },
+      { id: "a1", gate: "ry", targets: [1], params: [0.7853981633974483] },
+      { id: "ph", gate: "p", targets: [0], params: [1.5707963267948966] }
+    ]
+  }}
+/>
+
+The control was in $\ket{+}$, so the $\ket{0}$ branch keeps the target at
+$\ket{0}$ with amplitude $0.707107$, and the $\ket{1}$ branch splits it into
+$0.5$ and $0.5$. That is exactly what a controlled Hadamard does, and the seven
+gates above use two CNOTs, matching the bound.
+
+<Callout tone="gotcha" title="Forgetting the phase gate gives the wrong gate">
+Drop the $P(\alpha)$ on the control and you build controlled-$(e^{-i\alpha}U)$
+instead of controlled-$U$. On the target alone the difference is a global phase
+and invisible; under a control it is a relative phase between branches and
+entirely visible. This is the concrete reason T1.M3.L5 insisted on tracking
+$\alpha$ rather than discarding it.
+</Callout>
+
+## More than one control
+
+For $k$ controls the standard construction spends ancillas to build the AND of
+the controls one Toffoli at a time.
+
+Take $k$ control qubits and $k-2$ clean ancillas initialised to $\ket{0}$.
+Compute the running AND: a Toffoli from controls 1 and 2 into ancilla 1, then
+from control 3 and ancilla 1 into ancilla 2, and so on, using $k-2$ Toffolis to
+land the AND of the first $k-1$ controls in ancilla $k-2$. One more Toffoli, from
+control $k$ and that ancilla into the target, performs the flip. Then run the
+first $k-2$ Toffolis again in reverse to return the ancillas to $\ket{0}$, which
+is the uncomputation step of T0.M6.L3 and is not optional: leaving the ancillas
+entangled would destroy the interference the rest of the algorithm depends on.
+
+$$
+\text{Toffoli count} = 2(k-2) + 1 = 2k - 3 .
+$$
+
+Each Toffoli costs six CNOTs by the decomposition of T1.M4.L6, so a
+$k$-controlled $X$ costs about $12k - 18$ two-qubit gates and needs $k-2$
+ancillas.
+
+| $k$ | ancillas | Toffolis | CNOTs |
+| --- | --- | --- | --- |
+| $3$ | $1$ | $3$ | $18$ |
+| $4$ | $2$ | $5$ | $30$ |
+| $5$ | $3$ | $7$ | $42$ |
+| $10$ | $8$ | $17$ | $102$ |
+
+The cost is linear in $k$, which is the good news, and the constant is 12, which
+is the bad news: a five-controlled gate is 42 of the noisiest operations on the
+device. Ancilla-free constructions exist and cost $O(k^2)$ gates instead, so
+the choice is a genuine space-time trade, and it is the kind of decision T3
+makes when compiling an oracle.
+
+<Check question="You need a controlled-$S$ gate and the device offers only CNOT and single-qubit gates. Give a two-CNOT construction.">
+$S = P(\pi/2) = e^{i\pi/4}R_z(\pi/2)$, so controlled-$S$ is controlled-$R_z(\pi/2)$
+together with $P(\pi/4)$ on the control. Using the two-CNOT rotation
+construction: $R_z(\pi/4)$ on the target, CNOT, $R_z(-\pi/4)$ on the target,
+CNOT, then $P(\pi/4)$ on the control. Two CNOTs and three single-qubit gates.
+Equivalently, and more symmetrically, controlled-$S$ is $T$ on the control, $T$
+on the target, CNOT, $T^{\dagger}$ on the target, CNOT, which is the form used
+inside the quantum Fourier transform in T2.
+</Check>
+
+## Where this comes from
+
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  corollary 4.2 and figures 4.6 and 4.10, which are the source of the $ABC$
+  construction and of the ancilla-based multi-controlled decomposition.
+- [PennyLane Codebook](https://pennylane.ai/codebook), whose circuit-synthesis
+  exercises build controlled rotations in the two-CNOT form used above.

@@ -1,0 +1,183 @@
+---
+id: t1.m5.l5
+title: Schmidt Rank and Entanglement Entropy
+type: concept
+track: t1
+module: t1.m5
+level: L1
+minutes: 15
+objectives:
+  - Compute the Schmidt decomposition of a given two-qubit state
+  - Use the Schmidt rank to decide whether a state is entangled
+  - Compute the entanglement entropy of a Bell state and of a product state
+prerequisites: [t1.m5.l4, t0.m1.l5]
+sources:
+  - label: Cleve, QIC 710 Quantum Information Processing (Waterloo IQC)
+    url: https://cleve.iqc.uwaterloo.ca/qic710/
+  - label: Preskill, Ph219/CS219 Quantum Computation lecture notes (Caltech)
+    url: http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html
+tags: [entanglement, schmidt]
+---
+
+T1.M4.L3 gave a yes-or-no test for entanglement and T1.M5.L3 observed that the
+halves of an entangled state are mixed. Neither answers "how much". The Schmidt
+decomposition supplies the missing structure, and one number computed from it,
+the entanglement entropy, is the standard answer to the question.
+
+## The decomposition
+
+Every pure state of two qubits can be written
+
+$$
+\ket{\chi} = \sum_{k} \lambda_k \, \ket{u_k} \otimes \ket{v_k},
+\qquad \lambda_k \ge 0, \quad \sum_k \lambda_k^2 = 1 ,
+$$
+
+where $\{\ket{u_k}\}$ and $\{\ket{v_k}\}$ are orthonormal bases of the two
+qubits, chosen to suit the state. The $\lambda_k$ are the **Schmidt
+coefficients** and the number of non-zero ones is the **Schmidt rank**.
+
+Two features make this different from an arbitrary expansion. There is a single
+sum, not a double sum: index $k$ appears on both sides. And the bases are
+orthonormal but not the computational ones; they are whatever the state
+requires.
+
+Getting the decomposition is a singular value decomposition. Arrange the four
+amplitudes in a matrix, rows indexed by qubit 0 and columns by qubit 1:
+
+$$
+M = \begin{pmatrix} a_{00} & a_{01} \\ a_{10} & a_{11} \end{pmatrix},
+\qquad M = U \Sigma V^{\dagger} ,
+$$
+
+and the singular values on the diagonal of $\Sigma$ are the Schmidt
+coefficients, with $\ket{u_k}$ the columns of $U$ and $\ket{v_k}$ the conjugated
+rows of $V^{\dagger}$.
+
+<Margin label="Why the rank decides">
+Schmidt rank 1 means one term, $\ket{\chi} = \ket{u_1}\otimes\ket{v_1}$, which is
+a product state. Rank 2 or more means no product decomposition exists. So
+"rank 1" and "$\det M = 0$" and "concurrence 0" are three names for the same
+condition, and T1.M4.L3's test is the rank test in disguise.
+</Margin>
+
+## Worked, three states
+
+**A product state.** For $\ket{+}\otimes\ket{+}$, every amplitude is $0.5$, so
+$M = 0.5\begin{pmatrix}1 & 1 \\ 1 & 1\end{pmatrix}$, which has rank 1. Its
+singular values are $1$ and $0$: Schmidt rank 1, one term, no entanglement.
+
+**A Bell state.** For $\ket{\Phi^+}$,
+$M = \tfrac{1}{\sqrt2}\begin{pmatrix}1 & 0 \\ 0 & 1\end{pmatrix}$, whose singular
+values are both $0.707107$. Schmidt rank 2 with equal coefficients, which is the
+definition of maximally entangled.
+
+**A partly entangled state.** For $0.5\ket{00} + 0.866025\ket{11}$, prepared by
+$R_y(2\pi/3)$ followed by a CNOT, $M = \mathrm{diag}(0.5, 0.866025)$ is already
+diagonal, so the Schmidt coefficients are $0.866025$ and $0.5$: rank 2, but
+lopsided.
+
+<Simulate
+  show={['amplitudes', 'bloch']}
+  caption="Ry(2 pi/3) then CNOT. Amplitudes 0.5 and 0.866025, so the Schmidt coefficients are 0.866025 and 0.5 and each Bloch arrow has length 0.5."
+  ir={{
+    version: 1,
+    name: "partial-schmidt",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "r0", gate: "ry", targets: [0], params: [2.0943951023931953] },
+      { id: "cx", gate: "x", targets: [1], controls: [0] }
+    ]
+  }}
+/>
+
+## The coefficients live in the reduced state
+
+Squaring the Schmidt coefficients gives the eigenvalues of both reduced states:
+
+$$
+\rho_A = \sum_k \lambda_k^2 \, \ketbra{u_k}{u_k},
+\qquad
+\rho_B = \sum_k \lambda_k^2 \, \ketbra{v_k}{v_k} .
+$$
+
+The two halves therefore have the *same* spectrum, however different they look.
+For the state above, $\lambda_1^2 = 0.75$ and $\lambda_2^2 = 0.25$, so each
+reduced state has eigenvalues $0.75$ and $0.25$, and the corresponding Bloch
+arrow has length $0.75 - 0.25 = 0.5$, which is what the figure reports.
+
+This also explains why the Schmidt coefficients do not change under local gates.
+A unitary on qubit 0 rotates $\ket{u_k}$ and leaves $\lambda_k$ alone, since
+$\rho_A \mapsto U\rho_A U^{\dagger}$ has the same eigenvalues. Apply a Hadamard
+to qubit 1 of a Bell pair and the amplitudes become
+$0.5, 0.5, 0.5, -0.5$, an entirely different-looking vector, whose singular
+values are still $0.707107$ and $0.707107$.
+
+## Entanglement entropy
+
+Feed the squared coefficients to the Shannon entropy of T0.M1.L5:
+
+$$
+S = -\sum_k \lambda_k^2 \log_2 \lambda_k^2 .
+$$
+
+This is the **entanglement entropy**, and it is the von Neumann entropy of
+either reduced state. It measures, in bits, how much the local description had
+to forget.
+
+| state | $\lambda_k^2$ | $S$ |
+| --- | --- | --- |
+| $\ket{+}\otimes\ket{+}$ | $1,\ 0$ | $0$ |
+| $0.5\ket{00} + 0.866025\ket{11}$ | $0.75,\ 0.25$ | $0.8112781$ |
+| $0.6\ket{00} + 0.8\ket{11}$ | $0.64,\ 0.36$ | $0.9426832$ |
+| $\ket{\Phi^+}$ | $0.5,\ 0.5$ | $1$ |
+
+Check the third row by hand:
+
+$$
+S = -\left( 0.64 \log_2 0.64 + 0.36 \log_2 0.36 \right)
+= -\left( 0.64 \times (-0.6438562) + 0.36 \times (-1.4739312) \right) ,
+$$
+
+which is $0.4120680 + 0.5306152 = 0.9426832$. Note that the more nearly balanced
+state, $0.6$ and $0.8$, is more entangled than the $0.5$ and $0.866025$ one,
+even though both have Schmidt rank 2. Rank says whether; entropy says how much.
+
+<Callout tone="note" title="Zero, one, and the units">
+$S = 0$ exactly when the state is a product, and $S = 1$ exactly when both
+Schmidt coefficients are $1/\sqrt2$. The unit is the **ebit**, one Bell pair's
+worth of entanglement, and it is the currency of T1.M7: teleporting one qubit
+costs one ebit plus two classical bits, and superdense coding spends one ebit to
+buy one extra bit of channel capacity.
+</Callout>
+
+## Beyond two qubits
+
+For a split of $n$ qubits into a part of size $m$ and the rest, the coefficient
+matrix is $2^m \times 2^{n-m}$ and the Schmidt rank can be as large as
+$2^{\min(m,\, n-m)}$, so the maximum entropy across a balanced cut grows like
+$n/2$. States whose entropy across every cut stays bounded by a constant are
+exactly the ones a matrix product state can represent efficiently, which is the
+loophole T1.M4.L2 mentioned: low entanglement entropy is what makes a large
+circuit classically simulable. T5 makes this precise, and the area law is why
+tensor networks work at all for physical Hamiltonians.
+
+<Check question="A two-qubit state has amplitudes $0.5, 0.5, 0.5, -0.5$. What are its Schmidt coefficients and its entanglement entropy?">
+The coefficient matrix is
+$M = 0.5\begin{pmatrix}1 & 1 \\ 1 & -1\end{pmatrix}$, so
+$M M^{\dagger} = 0.25\begin{pmatrix}2 & 0 \\ 0 & 2\end{pmatrix} = 0.5 I$ and both
+singular values are $\sqrt{0.5} = 0.707107$. Schmidt rank 2 with equal
+coefficients, so $S = 1$: the state is maximally entangled. It is in fact
+$\ket{\Phi^+}$ with a Hadamard applied to qubit 1, and the local gate could not
+have changed the entropy.
+</Check>
+
+## Where this comes from
+
+- [Cleve, QIC 710](https://cleve.iqc.uwaterloo.ca/qic710/), whose lectures
+  derive the Schmidt decomposition from the singular value decomposition and use
+  the rank as the working entanglement criterion.
+- [Preskill, Ph219](http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html),
+  chapter 4, for entanglement entropy as the von Neumann entropy of the reduced
+  state and for the ebit as a resource.

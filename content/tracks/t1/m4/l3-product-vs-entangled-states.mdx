@@ -1,0 +1,195 @@
+---
+id: t1.m4.l3
+title: Product vs Entangled States
+type: concept
+track: t1
+module: t1.m4
+level: L1
+minutes: 14
+objectives:
+  - Decide whether a given two-qubit state factorises by testing a0 a3 = a1 a2
+  - Prove that the Bell state (|00> + |11>)/sqrt(2) has no product decomposition
+  - Construct a product state with the same measurement marginals as a Bell state
+prerequisites: [t1.m4.l2]
+sources:
+  - label: Cleve, QIC 710 Quantum Information Processing (Waterloo IQC)
+    url: https://cleve.iqc.uwaterloo.ca/qic710/
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [multi-qubit, entanglement]
+---
+
+Every two-qubit state is a vector of four amplitudes. Only some of them come
+from a pair of one-qubit states. The ones that do not are entangled, and this
+lesson gives a one-line test to tell which is which, plus a proof that the test
+is not merely a failure of imagination.
+
+## The test
+
+A general two-qubit state is
+$\ket{\chi} = a_0\ket{00} + a_1\ket{01} + a_2\ket{10} + a_3\ket{11}$. Suppose it
+factors as $(\alpha_0, \alpha_1) \otimes (\beta_0, \beta_1)$. Then
+
+$$
+a_0 = \alpha_0\beta_0, \quad a_1 = \alpha_0\beta_1, \quad
+a_2 = \alpha_1\beta_0, \quad a_3 = \alpha_1\beta_1 ,
+$$
+
+and multiplying the first and last against the middle two,
+
+$$
+a_0 a_3 = \alpha_0\beta_0\alpha_1\beta_1 = a_1 a_2 .
+$$
+
+So $a_0 a_3 - a_1 a_2 = 0$ is necessary for a product state. It is also
+sufficient: arrange the amplitudes in the matrix
+
+$$
+M = \begin{pmatrix} a_0 & a_1 \\ a_2 & a_3 \end{pmatrix},
+$$
+
+and the condition says $\det M = 0$, that is $M$ has rank at most 1, which means
+$M = \alpha \beta^{\mathsf T}$ for some vectors, which is exactly a product
+decomposition. Normalising the two factors is then a matter of moving a scalar
+between them.
+
+<Margin label="Concurrence">
+The quantity $C = 2|a_0 a_3 - a_1 a_2|$ is the **concurrence** of a two-qubit
+pure state. It runs from 0 for a product state to 1 for a maximally entangled
+one, so the test above is the statement $C = 0$, and the size of $C$ measures
+how far from product the state is. T1.M5.L5 relates it to entropy.
+</Margin>
+
+## Bell fails the test
+
+The state
+$\ket{\Phi^+} = \tfrac{1}{\sqrt2}\left( \ket{00} + \ket{11} \right)$
+has $a_0 = a_3 = 0.707107$ and $a_1 = a_2 = 0$. Then
+
+$$
+a_0 a_3 - a_1 a_2 = 0.5 - 0 = 0.5 \ne 0 ,
+$$
+
+so it does not factor, and its concurrence is 1: it is maximally entangled.
+
+The direct argument is worth seeing too, because it is the argument that
+generalises. Suppose $\ket{\Phi^+} = (\alpha_0, \alpha_1) \otimes (\beta_0, \beta_1)$.
+Matching the $\ket{01}$ coefficient gives $\alpha_0 \beta_1 = 0$, so
+$\alpha_0 = 0$ or $\beta_1 = 0$. If $\alpha_0 = 0$ then the $\ket{00}$
+coefficient $\alpha_0\beta_0$ is 0, contradicting $a_0 = 1/\sqrt2$. If
+$\beta_1 = 0$ then the $\ket{11}$ coefficient $\alpha_1\beta_1$ is 0,
+contradicting $a_3 = 1/\sqrt2$. Both branches fail, so no factorisation exists.
+
+The Bell state is what a Hadamard and a CNOT produce from $\ket{00}$.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="H on qubit 0, then CNOT with control 0 and target 1. Two amplitudes of 0.707107 on |00> and |11>, and nothing on the mixed strings."
+  ir={{
+    version: 1,
+    name: "bell-pair",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "cx", gate: "x", targets: [1], controls: [0] }
+    ]
+  }}
+/>
+
+## Same marginals, different state
+
+Now build a product state with identical single-qubit statistics. Put both
+qubits in $\ket{+}$:
+
+$$
+\ket{+} \otimes \ket{+} = \tfrac12 \left( \ket{00} + \ket{01} + \ket{10} + \ket{11} \right) .
+$$
+
+Its test value is $0.25 - 0.25 = 0$, so it is a product state, as constructed.
+Each qubit reads 0 or 1 with probability $0.5$, exactly as for the Bell state:
+for $\ket{\Phi^+}$, $\Pr[q_0 = 0] = 0.5$ from the single term $\ket{00}$, and for
+$\ket{+}\otimes\ket{+}$ it is $0.25 + 0.25 = 0.5$. The two states are
+indistinguishable by any measurement on one qubit alone.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="H on both qubits. Four equal amplitudes of 0.5, and the same single-qubit marginals as the Bell pair above."
+  ir={{
+    version: 1,
+    name: "product-plus-plus",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+The joint distributions are completely different. The Bell state produces only
+$00$ and $11$, so the two bits always agree. The product state produces all four
+strings equally, so the bits agree half the time. Correlation, not marginals, is
+where entanglement shows up.
+
+<Callout tone="gotcha" title="Correlation alone is not entanglement">
+A classical coin copied onto two cards also produces only $00$ and $11$. That
+mixture is correlated and not entangled, and no amount of measuring in the
+computational basis distinguishes it from $\ket{\Phi^+}$. What separates them is
+what happens in another basis. Apply $H$ to both qubits of $\ket{\Phi^+}$ and the
+state is $\ket{\Phi^+}$ again, so the outcomes still agree every time; do the
+same to the classical mixture and the outcomes agree only half the time. T1.M6
+turns this gap into a testable inequality.
+</Callout>
+
+Applying $H$ to both qubits of the product state $\ket{+}\otimes\ket{+}$ gives
+$\ket{0}\otimes\ket{0}$, a certain outcome of $00$. Applying it to
+$\ket{\Phi^+}$ leaves $\ket{\Phi^+}$ unchanged, still a coin flip that agrees.
+Three preparations, indistinguishable on one qubit, separated cleanly by a
+two-qubit measurement in the right basis.
+
+## Partly entangled states
+
+Entanglement is not binary in degree, only in kind. Prepare qubit 0 in
+$(0.6, 0.8)$ and then apply a CNOT:
+
+$$
+\ket{\chi} = 0.6\ket{00} + 0.8\ket{11},
+\qquad a_0 a_3 - a_1 a_2 = 0.48 ,
+$$
+
+so $C = 0.96$: entangled, but not maximally. Its marginals are $0.36$ and
+$0.64$ on each qubit, and its outcomes still always agree.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="Ry(1.8545904) then CNOT. A partly entangled state with concurrence 0.96 and unequal marginals."
+  ir={{
+    version: 1,
+    name: "partial-entanglement",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "r0", gate: "ry", targets: [0], params: [1.8545904360032246] },
+      { id: "cx", gate: "x", targets: [1], controls: [0] }
+    ]
+  }}
+/>
+
+<Check question="Is $\tfrac12\left(\ket{00} - \ket{01} + \ket{10} - \ket{11}\right)$ entangled? If not, factor it.">
+The amplitudes are $a_0 = 0.5$, $a_1 = -0.5$, $a_2 = 0.5$, $a_3 = -0.5$, so
+$a_0 a_3 - a_1 a_2 = -0.25 + 0.25 = 0$ and the state is a product. To factor,
+group by qubit 0: the state is
+$\tfrac{1}{\sqrt2}\ket{0}\otimes\ket{-} + \tfrac{1}{\sqrt2}\ket{1}\otimes\ket{-}$,
+which is $\ket{+} \otimes \ket{-}$. Both qubits are in an even superposition, so
+the marginals are again $0.5$ and $0.5$, and the concurrence is 0.
+</Check>
+
+## Where this comes from
+
+- [Cleve, QIC 710](https://cleve.iqc.uwaterloo.ca/qic710/), whose treatment
+  introduces the rank-1 criterion as the two-qubit case of the Schmidt
+  decomposition, which T1.M5.L5 then develops.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 1.3.6 and exercise 2.72, for the Bell state and the standard
+  contradiction proof that it does not factor.

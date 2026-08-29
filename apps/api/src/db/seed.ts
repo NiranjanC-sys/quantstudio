@@ -92,7 +92,6 @@ export interface SeedSummary {
   demoUsers: number;
 }
 
-/* eslint-disable no-await-in-loop -- the seed is deliberately sequential. */
 export async function seed(db: Db, env: Env): Promise<SeedSummary> {
   const summary: SeedSummary = {
     tracks: 0,
@@ -609,7 +608,6 @@ export async function seed(db: Db, env: Env): Promise<SeedSummary> {
 
   return summary;
 }
-/* eslint-enable no-await-in-loop */
 
 async function main(): Promise<void> {
   const env = loadEnv();

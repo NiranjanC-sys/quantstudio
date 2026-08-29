@@ -1,0 +1,255 @@
+---
+id: t1.m4.l6
+title: Toffoli and Fredkin
+type: lab
+track: t1
+module: t1.m4
+level: L1
+minutes: 40
+objectives:
+  - Build a Toffoli gate from H, T, T-dagger and at most six CX gates
+  - Build a Fredkin gate from one Toffoli and two CX gates
+prerequisites: [t1.m4.l5]
+sources:
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+tags: [lab, multi-qubit, toffoli]
+---
+
+Toffoli is the gate that makes classical computation fit inside a quantum
+circuit: it is universal for reversible Boolean logic, so any function a
+classical computer can evaluate can be evaluated by a circuit of Toffolis. No
+hardware implements it directly. This lab builds it from the gates hardware does
+implement, and then builds Fredkin from it.
+
+## What the two gates do
+
+**Toffoli**, written CCX, flips the target when both controls are $\ket{1}$.
+With controls on qubits 0 and 1 and target on qubit 2, it exchanges $\ket{110}$
+and $\ket{111}$, indices 6 and 7, and fixes the other six basis states. As a
+Boolean map it is $(a, b, c) \mapsto (a, b, c \oplus ab)$, which computes AND
+into the target when $c$ starts at 0.
+
+**Fredkin**, written CSWAP, swaps qubits 1 and 2 when qubit 0 is $\ket{1}$. It
+exchanges $\ket{101}$ and $\ket{110}$, indices 5 and 6, and fixes the rest. As a
+Boolean map it is a controlled exchange, which conserves the number of ones and
+is therefore a *conservative* reversible gate.
+
+<Circuit
+  caption="A native CCX on |110>. Both controls are set, so the target flips and the output is |111>."
+  show={['amplitudes', 'probabilities']}
+  ir={{
+    version: 1,
+    name: "toffoli-truth-row",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "x0", gate: "x", targets: [0] },
+      { id: "x1", gate: "x", targets: [1] },
+      { id: "cc", gate: "x", targets: [2], controls: [0, 1] }
+    ]
+  }}
+/>
+
+## The six-CNOT decomposition
+
+The standard construction uses six CNOTs, seven $T$ or $T^{\dagger}$ gates and
+two Hadamards. In circuit order, with $a$ and $b$ the controls and $c$ the
+target:
+
+$$
+H_c,\ \mathrm{CX}_{b \to c},\ T^{\dagger}_c,\ \mathrm{CX}_{a \to c},\ T_c,\
+\mathrm{CX}_{b \to c},\ T^{\dagger}_c,\ \mathrm{CX}_{a \to c},\ T_b,\ T_c,\ H_c,
+$$
+
+$$
+\mathrm{CX}_{a \to b},\ T_a,\ T^{\dagger}_b,\ \mathrm{CX}_{a \to b} .
+$$
+
+The idea behind it is worth stating even though the algebra is long. Conjugating
+the target with Hadamards turns the required $\mathrm{CCX}$ into a
+$\mathrm{CCZ}$, which is diagonal and therefore symmetric in all three qubits. A
+diagonal gate that applies $-1$ to exactly the $\ket{111}$ amplitude can be
+written as a signed sum of phases $e^{\pm i\pi/4}$ on the parities of the three
+qubits, and each parity is computed into the target by a CNOT and rotated by a
+$T$ or $T^{\dagger}$. The final CNOT pair and the $T$ gates on $a$ and $b$ clean
+up the single-qubit and two-qubit parity terms.
+
+<Margin label="T-count">
+Seven $T$ gates is the well-known cost, and it is optimal for a Clifford-plus-T
+circuit implementing Toffoli. Under error correction $T$ is the expensive gate,
+so T-count is the resource that dominates estimates for Shor's algorithm in T2
+and for the fault-tolerant designs in T4.
+</Margin>
+
+<Circuit
+  caption="The fifteen-gate decomposition applied to |110>. Six CNOTs, seven T-family gates, two Hadamards, and the output is |111>."
+  show={['amplitudes', 'probabilities']}
+  ir={{
+    version: 1,
+    name: "toffoli-decomposed",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "x0", gate: "x", targets: [0] },
+      { id: "x1", gate: "x", targets: [1] },
+      { id: "g1", gate: "h", targets: [2] },
+      { id: "g2", gate: "x", targets: [2], controls: [1] },
+      { id: "g3", gate: "tdg", targets: [2] },
+      { id: "g4", gate: "x", targets: [2], controls: [0] },
+      { id: "g5", gate: "t", targets: [2] },
+      { id: "g6", gate: "x", targets: [2], controls: [1] },
+      { id: "g7", gate: "tdg", targets: [2] },
+      { id: "g8", gate: "x", targets: [2], controls: [0] },
+      { id: "g9", gate: "t", targets: [1] },
+      { id: "g10", gate: "t", targets: [2] },
+      { id: "g11", gate: "h", targets: [2] },
+      { id: "g12", gate: "x", targets: [1], controls: [0] },
+      { id: "g13", gate: "t", targets: [0] },
+      { id: "g14", gate: "tdg", targets: [1] },
+      { id: "g15", gate: "x", targets: [1], controls: [0] }
+    ]
+  }}
+/>
+
+One truth-table row is weak evidence, since a circuit could be right on the
+basis states and wrong on superpositions. Run the same fifteen gates on
+$\ket{+}\otimes\ket{+}\otimes\ket{0}$ instead, where all four control settings
+are present at once.
+
+<Simulate
+  show="amplitudes"
+  caption="The decomposition on |+ + 0>. Amplitude 0.5 on |000>, |010>, |100> and |111>: the target flipped only in the branch where both controls were 1."
+  ir={{
+    version: 1,
+    name: "toffoli-superposition",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "g1", gate: "h", targets: [2] },
+      { id: "g2", gate: "x", targets: [2], controls: [1] },
+      { id: "g3", gate: "tdg", targets: [2] },
+      { id: "g4", gate: "x", targets: [2], controls: [0] },
+      { id: "g5", gate: "t", targets: [2] },
+      { id: "g6", gate: "x", targets: [2], controls: [1] },
+      { id: "g7", gate: "tdg", targets: [2] },
+      { id: "g8", gate: "x", targets: [2], controls: [0] },
+      { id: "g9", gate: "t", targets: [1] },
+      { id: "g10", gate: "t", targets: [2] },
+      { id: "g11", gate: "h", targets: [2] },
+      { id: "g12", gate: "x", targets: [1], controls: [0] },
+      { id: "g13", gate: "t", targets: [0] },
+      { id: "g14", gate: "tdg", targets: [1] },
+      { id: "g15", gate: "x", targets: [1], controls: [0] }
+    ]
+  }}
+/>
+
+All four amplitudes are $+0.5$ with no stray phases, which is the check that
+matters: a decomposition that is correct up to a phase on one branch would show
+a $-0.5$ or an imaginary entry here and would fail inside a larger algorithm.
+
+## Fredkin from Toffoli
+
+A controlled swap is a swap conditioned on qubit 0, and a swap of qubits 1 and 2
+is three CNOTs by T1.M4.L4. Conditioning all three would cost three Toffolis.
+The cheaper route conditions only the middle one:
+
+$$
+\mathrm{CSWAP}_{0}(1,2) = \mathrm{CX}_{2 \to 1}\ \cdot\ \mathrm{CCX}_{0,1 \to 2}\ \cdot\ \mathrm{CX}_{2 \to 1} ,
+$$
+
+read as a circuit left to right: a CNOT from qubit 2 into qubit 1, then the
+Toffoli, then the same CNOT again. The outer CNOTs are their own inverses, so
+when qubit 0 is $\ket{0}$ they cancel and nothing happens. When qubit 0 is
+$\ket{1}$ the three gates perform the standard three-CNOT swap with the middle
+CNOT made conditional, which is exactly a controlled exchange.
+
+<Simulate
+  show="probabilities"
+  caption="A native CSWAP on |101>. The control is set, so qubits 1 and 2 exchange and the output is |110>."
+  ir={{
+    version: 1,
+    name: "fredkin-truth-row",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "x0", gate: "x", targets: [0] },
+      { id: "x2", gate: "x", targets: [2] },
+      { id: "cs", gate: "swap", targets: [1, 2], controls: [0] }
+    ]
+  }}
+/>
+
+## Your task
+
+```python
+import cirq
+
+
+def toffoli() -> cirq.Circuit:
+    q = cirq.LineQubit.range(3)  # controls q[0], q[1]; target q[2]
+    return cirq.Circuit()  # your code here
+
+
+def fredkin() -> cirq.Circuit:
+    q = cirq.LineQubit.range(3)  # control q[0]; swap q[1] and q[2]
+    return cirq.Circuit()  # your code here
+```
+
+`toffoli()` must use only `H`, `T`, `T**-1` and `CNOT`, with at most six
+two-qubit gates, and must equal CCX with controls on qubits 0 and 1 and target
+on qubit 2. `fredkin()` must equal CSWAP with control on qubit 0 swapping qubits
+1 and 2, built from one Toffoli and two CNOTs. Qubit 0 is the most significant
+bit throughout, so the hidden tests check that `toffoli()` maps $\ket{110}$ to
+$\ket{111}$ and that `fredkin()` maps $\ket{101}$ to $\ket{110}$.
+
+<Callout tone="gotcha" title="Cirq's qubit order matches ours; Qiskit's does not">
+`cirq.LineQubit.range(3)` gives `q[0]` as the most significant bit of the
+statevector index, which is the convention used everywhere in this track. If you
+prototype in Qiskit, the same circuit will print reversed bitstrings and the
+tests will fail on the ordering rather than on the physics. Reverse before
+comparing.
+</Callout>
+
+<Check question="Why can a Toffoli not be built from CNOTs and single-qubit gates without any T gates?">
+Because CNOT, $H$ and $S$ are all Clifford gates, and products of Clifford gates
+are Clifford. Toffoli is not Clifford: conjugating $Z$ on the target by a
+Toffoli gives an operator that is not a Pauli. By the Gottesman-Knill theorem a
+Clifford circuit is classically simulable in polynomial time, so if Toffoli were
+Clifford then every circuit built from Toffolis, which is every classical
+computation, would be too. The $T$ gates are precisely what takes the
+construction outside the Clifford group.
+</Check>
+
+<Solution>
+For the Toffoli, transcribe the fifteen gates in the order given above. For the
+Fredkin, wrap:
+
+```python
+def fredkin() -> cirq.Circuit:
+    a, b, c = cirq.LineQubit.range(3)
+    return (cirq.Circuit([cirq.CNOT(c, b)])
+            + toffoli()
+            + cirq.Circuit([cirq.CNOT(c, b)]))
+```
+
+The only trap in the Toffoli is the direction of the final two CNOTs, which run
+from control $a$ into control $b$, not into the target. Getting them backwards
+produces a circuit that is correct on every basis state and wrong on
+superpositions, which the hidden unitary test catches and a truth-table test
+would not.
+</Solution>
+
+## Where this comes from
+
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  figure 4.9, which is the six-CNOT Toffoli circuit transcribed above, and
+  section 3.2.5 for reversible classical universality.
+- [Microsoft Quantum Katas](https://github.com/microsoft/QuantumKatas), whose
+  reversible-computing kata sets the same two constructions with the same gate
+  budgets.

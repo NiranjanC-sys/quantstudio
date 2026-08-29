@@ -1,0 +1,50 @@
+module: t0.m2
+cards:
+  - id: t0.m2.d1
+    front: "Give the modulus and the argument of the complex number 3 + 4i."
+    back: "Modulus 5, argument atan2(4, 3) = 0.927295 radians, which is 53.130102 degrees."
+    lesson: t0.m2.l1
+  - id: t0.m2.d2
+    front: "What is |z|^2 in terms of z and its conjugate?"
+    back: "|z|^2 = z times the conjugate of z. For z = a + bi it equals a^2 + b^2, always a non-negative real."
+    lesson: t0.m2.l1
+  - id: t0.m2.d3
+    front: "State Euler's formula."
+    back: "exp(i theta) = cos theta + i sin theta."
+    lesson: t0.m2.l2
+  - id: t0.m2.d4
+    front: "What is exp(i pi)?"
+    back: "Exactly -1, since cos pi = -1 and sin pi = 0."
+    lesson: t0.m2.l2
+  - id: t0.m2.d5
+    front: "What is exp(i pi / 2), and which gate multiplies |1> by it?"
+    back: "It equals i. The S gate applies that phase to |1>, leaving |0> alone."
+    lesson: t0.m2.l2
+  - id: t0.m2.d6
+    front: "In polar form, what does multiplying two complex numbers do to their moduli and arguments?"
+    back: "Moduli multiply and arguments add: r1 exp(i a) times r2 exp(i b) = r1 r2 exp(i(a + b))."
+    lesson: t0.m2.l2
+  - id: t0.m2.d7
+    front: "What is the modulus of exp(i theta) for any real theta, and why does this matter for quantum states?"
+    back: "It is exactly 1, so multiplying a state by exp(i theta) changes no probability. That is why a global phase is unobservable."
+    lesson: t0.m2.l2
+  - id: t0.m2.d8
+    front: "List the three cube roots of unity."
+    back: "1, exp(2 pi i / 3) = -0.5 + 0.866025 i, and exp(4 pi i / 3) = -0.5 - 0.866025 i."
+    lesson: t0.m2.l3
+  - id: t0.m2.d9
+    front: "Give the general formula for the N-th roots of unity."
+    back: "exp(2 pi i k / N) for k = 0, 1, ..., N - 1. They sit at equal spacing on the unit circle."
+    lesson: t0.m2.l3
+  - id: t0.m2.d10
+    front: "What is the sum of all N roots of unity for N greater than 1?"
+    back: "Zero. This cancellation is the algebraic engine of the quantum Fourier transform."
+    lesson: t0.m2.l3
+  - id: t0.m2.d11
+    front: "Which complex numbers lie on the unit circle?"
+    back: "Exactly those of modulus 1, that is those of the form exp(i theta) for a real theta."
+    lesson: t0.m2.l2
+  - id: t0.m2.d12
+    front: "What is the conjugate of exp(i theta)?"
+    back: "exp(-i theta). Conjugation reflects a point across the real axis, negating the argument."
+    lesson: t0.m2.l1

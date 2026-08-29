@@ -1,0 +1,62 @@
+module: t0.m1
+cards:
+  - id: t0.m1.d1
+    front: "Write the deterministic bit values 0 and 1 as vectors in R^2."
+    back: "|0> = (1, 0) transposed and |1> = (0, 1) transposed, the standard basis vectors e1 and e2."
+    lesson: t0.m1.l1
+  - id: t0.m1.d2
+    front: "What two conditions make a vector in R^2 a valid probabilistic state of one bit?"
+    back: "Non-negativity, p0 >= 0 and p1 >= 0, and normalisation, p0 + p1 = 1."
+    lesson: t0.m1.l1
+  - id: t0.m1.d3
+    front: "Is (0.6, 0.6) a valid probabilistic state of one bit? Give the reason."
+    back: "No. It sums to 1.2, so it fails normalisation. Its squares sum to 0.72, so it is not a qubit either."
+    lesson: t0.m1.l1
+  - id: t0.m1.d4
+    front: "Which norm equals 1 for a probabilistic state, and which for a qubit?"
+    back: "The l1 norm equals 1 for a probabilistic state (with non-negative entries); the l2 norm equals 1 for a qubit, with no sign restriction."
+    lesson: t0.m1.l1
+  - id: t0.m1.d5
+    front: "Geometrically, what is the set of all probabilistic states of one bit?"
+    back: "The straight line segment joining (1, 0) to (0, 1). The deterministic bits are its two endpoints."
+    lesson: t0.m1.l1
+  - id: t0.m1.d6
+    front: "The vector (0.7071, 0.7071) fails to be a probabilistic bit. What is it instead?"
+    back: "A qubit state. Its entries sum to sqrt(2), but their squares sum to 0.5 + 0.5 = 1."
+    lesson: t0.m1.l1
+  - id: t0.m1.d7
+    front: "How do you compute an expected value from a probability vector and a payoff vector?"
+    back: "As the matrix product f p, with the payoffs as a row vector and the state as a column vector."
+    lesson: t0.m1.l1
+  - id: t0.m1.d8
+    front: "What makes a square matrix (left) stochastic?"
+    back: "Every entry is non-negative and every column sums to 1. Such a matrix maps the probability simplex into itself."
+    lesson: t0.m1.l3
+  - id: t0.m1.d9
+    front: "How do you obtain a marginal distribution from a joint distribution?"
+    back: "Sum the joint probabilities over every value of the variable you are eliminating."
+    lesson: t0.m1.l4
+  - id: t0.m1.d10
+    front: "State the definition of independence for two random variables in terms of the joint distribution."
+    back: "The joint probability factorises: P(X = x, Y = y) = P(X = x) P(Y = y) for every x and y."
+    lesson: t0.m1.l4
+  - id: t0.m1.d11
+    front: "Give the formula for the Shannon entropy of a distribution p, in bits."
+    back: "H(p) = -sum over i of p_i log2 p_i, with 0 log2 0 taken as 0."
+    lesson: t0.m1.l5
+  - id: t0.m1.d12
+    front: "What is the Shannon entropy of a fair coin, and of a deterministic bit?"
+    back: "1 bit for the fair coin, 0 bits for the deterministic bit."
+    lesson: t0.m1.l5
+  - id: t0.m1.d13
+    front: "Compute the Shannon entropy of a coin that lands heads with probability 0.9."
+    back: "H = -0.9 log2 0.9 - 0.1 log2 0.1 = 0.468996 bits."
+    lesson: t0.m1.l5
+  - id: t0.m1.d14
+    front: "Which distribution on n outcomes has the largest Shannon entropy, and what is that value?"
+    back: "The uniform distribution, with entropy log2 n bits."
+    lesson: t0.m1.l5
+  - id: t0.m1.d15
+    front: "What is the probability simplex on 3 outcomes, as a shape?"
+    back: "A triangle. On 2 outcomes it is a segment and on 4 outcomes a tetrahedron."
+    lesson: t0.m1.l1

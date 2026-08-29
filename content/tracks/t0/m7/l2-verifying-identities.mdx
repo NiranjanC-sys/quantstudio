@@ -1,0 +1,201 @@
+---
+id: t0.m7.l2
+title: Verifying Identities Numerically
+type: concept
+track: t0
+module: t0.m7
+level: L0
+minutes: 13
+objectives:
+  - Check an operator identity by comparing matrices within a stated tolerance
+  - Compare two unitaries up to global phase without being fooled by an overall factor
+  - Choose a tolerance from the floating-point error you actually expect
+prerequisites: [t0.m7.l1]
+sources:
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+  - label: CS269Q Elements of Quantum Computer Programming (Stanford)
+    url: https://cs269q.stanford.edu/
+tags: [python, testing]
+---
+
+You have derived that $HXH = Z$ and you want to be sure. Typing
+`H @ X @ H == Z` returns an array of booleans that will contain at least one
+`False`, and it will be `False` for a reason that has nothing to do with your
+algebra. Floating-point equality is the wrong question. Getting the right
+question, and the right tolerance, is what makes numerical verification a proof
+technique rather than a source of false confidence.
+
+## Never test floats for equality
+
+In double precision $1/\sqrt2$ is not exactly representable, so the off-diagonal
+entries of $HXH$ come out as $\pm 2.237114 \times 10^{-17}$ where the algebra
+says zero. Elementwise `==` therefore reports `False` in two of the four
+positions. The tool is `np.allclose`:
+
+```python
+import numpy as np
+assert np.allclose(H @ X @ H, Z)      # True
+```
+
+`np.allclose(a, b)` tests $|a - b| \le \text{atol} + \text{rtol}\,|b|$
+elementwise, with defaults `atol=1e-8` and `rtol=1e-5`. Two things about those
+defaults deserve attention. The comparison is asymmetric, since `rtol` scales
+the *second* argument, so put the reference value second. And `rtol=1e-5` is
+very loose for this work: it would accept an amplitude of $0.5$ against
+$0.500005$, a difference far larger than any honest rounding error.
+
+For operator identities, set the tolerance yourself:
+
+```python
+def close(a, b, tol=1e-12):
+    return np.allclose(a, b, atol=tol, rtol=0.0)
+```
+
+Setting `rtol=0` makes the test purely absolute, which is what you want when
+every quantity is bounded by 1 anyway.
+
+## Choosing the number
+
+Double precision has machine epsilon
+$\varepsilon = 2.220446 \times 10^{-16}$, the gap between 1 and the next
+representable number. A single arithmetic operation has relative error at most
+$\varepsilon$. Errors from $k$ operations grow at worst like $k\varepsilon$ and
+in practice, with signs uncorrelated, like $\sqrt{k}\,\varepsilon$.
+
+A $2 \times 2$ product is a handful of operations, so $10^{-15}$ is already
+generous. A depth-1000 circuit on 10 qubits performs on the order of $10^{6}$
+multiply-adds, giving an expected drift near
+$10^{3}\varepsilon \approx 2 \times 10^{-13}$, so $10^{-12}$ is a sensible
+default and $10^{-9}$ is safe for anything you are likely to write. Tolerances
+looser than about $10^{-6}$ stop being floating-point tolerances and start
+hiding real bugs.
+
+<Margin label="State the tolerance in the assertion">
+A test that says `assert close(a, b)` with a hidden default tells a future
+reader nothing. `assert close(a, b, tol=1e-12), "Euler decomposition"` tells
+them what precision the claim was made at, which is the difference between a
+regression test and a rumour.
+</Margin>
+
+## Global phase will fool you
+
+Two unitaries that differ by an overall factor $e^{i\varphi}$ describe the same
+physics: every probability, every expectation value and every measurement
+outcome distribution is identical. But `np.allclose` sees two different
+matrices.
+
+The standard example is $R_z(\pi)$ against $Z$:
+
+$$
+R_z(\pi) = e^{-i\pi Z/2} = \operatorname{diag}\left(e^{-i\pi/2}, e^{i\pi/2}\right)
+= \operatorname{diag}(-i,\; i) = -i\,Z .
+$$
+
+So `np.allclose(Rz(np.pi), Z)` is `False`, and the derivation is nonetheless
+correct. Two repairs, both worth having:
+
+```python
+def eq_up_to_phase(A, B, tol=1e-12):
+    """Divide out the phase of the largest-magnitude entry of A."""
+    idx = np.unravel_index(np.argmax(np.abs(A)), A.shape)
+    if abs(B[idx]) < tol:
+        return False
+    phase = A[idx] / B[idx]
+    return np.allclose(A, phase * B, atol=tol, rtol=0.0) and abs(abs(phase) - 1) < tol
+
+def eq_by_overlap(A, B, tol=1e-12):
+    """|tr(A^dag B)| / d equals 1 exactly when A and B agree up to phase."""
+    d = A.shape[0]
+    return abs(abs(np.trace(A.conj().T @ B)) / d - 1.0) < tol
+```
+
+The second is the better test. For unitaries $A$ and $B$ of dimension $d$, the
+normalised overlap satisfies
+
+$$
+\frac{\left|\tr\!\left(A\dg B\right)\right|}{d} \le 1,
+$$
+
+by Cauchy-Schwarz on the Hilbert-Schmidt inner product, with equality exactly
+when $B = e^{i\varphi}A$. For $R_z(\pi)$ and $Z$ the quantity evaluates to
+$1.000000$, confirming the identity while a naive comparison rejects it.
+
+<Callout tone="warning" title="Global phase is unobservable, relative phase is not">
+Only an overall factor is unphysical. A gate that differs from the intended one
+by a phase on a *single* basis state is a different gate, and the overlap test
+will correctly reject it. Never apply a phase-insensitive comparison to
+statevectors partway through a controlled operation, where today's global phase
+becomes tomorrow's relative phase through phase kickback.
+</Callout>
+
+## Verifying an identity end to end
+
+$HXH = Z$ says the two circuits below must produce the same state from any
+input. Take $R_y(0.8)\ket{0} = 0.921061\ket{0} + 0.389418\ket{1}$ as the input
+and compare.
+
+<Simulate
+  show="amplitudes"
+  caption="Ry(0.8) followed by H, X, H. The Z-like sign flip appears on the second amplitude."
+  ir={{
+    version: 1,
+    name: "hxh-route",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "r0", gate: "ry", targets: [0], params: [0.8] },
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "x0", gate: "x", targets: [0] },
+      { id: "h2", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+<Simulate
+  show="amplitudes"
+  caption="Ry(0.8) followed by a single Z. Identical amplitudes, with three fewer gates."
+  ir={{
+    version: 1,
+    name: "z-route",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "r0", gate: "ry", targets: [0], params: [0.8] },
+      { id: "z0", gate: "z", targets: [0] }
+    ]
+  }}
+/>
+
+Both report amplitudes $0.9211$ and $-0.3894$, with probabilities $0.848353$ and
+$0.151647$. Here the agreement is exact rather than up to phase, because
+$HXH$ equals $Z$ on the nose, with no leftover factor.
+
+<Callout tone="note" title="Test on a generic input, not on |0>">
+Had the input been $\ket{0}$, both circuits would return $\ket{0}$ and the test
+would have passed for two identities that are false as well as for the one that
+is true. Verify operator identities either on the full matrix or on a state with
+no zero amplitudes, chosen at random if you can.
+</Callout>
+
+<Check question="You implement $S$ and want to check that $S^2 = Z$. Which comparison do you use, and what would you have to change to check $T^4 = Z$?">
+$S = \operatorname{diag}(1, i)$, so $S^2 = \operatorname{diag}(1, -1) = Z$
+exactly, with no phase discrepancy. A plain `close(S @ S, Z, tol=1e-12)` is
+correct and is the stronger claim, so prefer it.
+
+$T = \operatorname{diag}(1, e^{i\pi/4})$ gives
+$T^4 = \operatorname{diag}(1, e^{i\pi}) = \operatorname{diag}(1,-1) = Z$, again
+exactly. Nothing needs to change except the tolerance budget: four
+multiplications instead of one, so the drift is a few multiples of
+$\varepsilon$, still far inside $10^{-12}$. You would need the
+phase-insensitive test only if you compared against $R_z$ rotations, which carry
+the symmetric phases $e^{\mp i\varphi/2}$.
+</Check>
+
+## Where this comes from
+
+- [PennyLane Codebook](https://pennylane.ai/codebook), whose exercises are
+  graded by numerical comparison and therefore have to take global phase
+  seriously.
+- [CS269Q, Stanford](https://cs269q.stanford.edu/), for the engineering practice
+  of asserting circuit identities in tests rather than trusting a derivation.

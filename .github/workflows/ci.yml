@@ -167,6 +167,56 @@ jobs:
             echo "::warning::no pytest tests found, skipping (this does not mask real test failures once tests exist)"
           fi
 
+  cross-engine:
+    name: cross-engine agreement (browser vs kernel)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda  # v4.1.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node 22
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Node dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the browser engine
+        run: pnpm --filter @redquant/qir build
+
+      - name: Install the kernel
+        working-directory: apps/quantum-kernel
+        run: |
+          set -euo pipefail
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -e .
+
+      # Neither test suite can catch a divergence between the two engines,
+      # because each only ever compares against itself. A learner must get the
+      # same amplitudes whether a circuit ran in their browser or on the
+      # server, or a lesson's stated numbers are true on one tier and false on
+      # the other.
+      - name: Compare amplitudes across both engines
+        run: node scripts/cross-engine-check.mjs
+
   integration:
     name: integration
     runs-on: ubuntu-24.04
@@ -299,7 +349,7 @@ jobs:
   ci-ok:
     name: CI OK
     if: always()
-    needs: [node, content, python, integration, contract-drift]
+    needs: [node, content, python, cross-engine, integration, contract-drift]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
