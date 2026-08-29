@@ -1,0 +1,58 @@
+module: t1.m5
+cards:
+  - id: t1.m5.d1
+    front: "Write the four Bell states."
+    back: "Phi+ = (|00> + |11>)/sqrt(2), Phi- = (|00> - |11>)/sqrt(2), Psi+ = (|01> + |10>)/sqrt(2), Psi- = (|01> - |10>)/sqrt(2)."
+    lesson: t1.m5.l1
+  - id: t1.m5.d2
+    front: "Which two gates prepare Phi+ from |00>?"
+    back: "H on qubit 0, then CNOT from qubit 0 to qubit 1. Depth 2, one two-qubit gate."
+    lesson: t1.m5.l1
+  - id: t1.m5.d3
+    front: "How do you turn Phi+ into each of the other three Bell states with local gates?"
+    back: "Z on qubit 0 gives Phi-, X on qubit 1 gives Psi+, and both gives Psi- up to a global sign."
+    lesson: t1.m5.l1
+  - id: t1.m5.d4
+    front: "Are the four Bell states orthonormal?"
+    back: "Yes. They form an orthonormal basis of the two-qubit space, which is what makes a Bell measurement able to distinguish them with certainty."
+    lesson: t1.m5.l1
+  - id: t1.m5.d5
+    front: "You measure qubit 0 of Phi+ and get 1. What is the state of qubit 1?"
+    back: "|1>, with certainty. The joint state has collapsed to |11>."
+    lesson: t1.m5.l2
+  - id: t1.m5.d6
+    front: "Can a local gate applied by Alice to her half of a Bell pair change anything Bob can measure?"
+    back: "No. Bob's reduced state is I/2 before and after, so no local operation of Alice's can signal to him."
+    lesson: t1.m5.l2
+  - id: t1.m5.d7
+    front: "What is the reduced state of one qubit of any Bell state?"
+    back: "The maximally mixed state I/2. Both outcomes are equally likely in every measurement basis."
+    lesson: t1.m5.l3
+  - id: t1.m5.d8
+    front: "What does it mean when a pure global state has a maximally mixed reduced state?"
+    back: "That subsystem is maximally entangled with the rest. On the Bloch sphere its vector has length 0."
+    lesson: t1.m5.l3
+  - id: t1.m5.d9
+    front: "State the no-cloning theorem."
+    back: "There is no unitary U with U(|psi> tensor |0>) = |psi> tensor |psi> for every |psi>. Only orthogonal states can be copied."
+    lesson: t1.m5.l4
+  - id: t1.m5.d10
+    front: "Which property of unitary evolution makes cloning impossible?"
+    back: "Preservation of inner products. Cloning would map an overlap of <a|b> to <a|b> squared, which fails unless the overlap is 0 or 1."
+    lesson: t1.m5.l4
+  - id: t1.m5.d11
+    front: "Does no-cloning forbid a forger from producing two states that usually pass a test?"
+    back: "No. It forbids exact copying only. Approximate copying succeeds with probability 3/4 per qubit in Wiesner money."
+    lesson: t1.m5.l4
+  - id: t1.m5.d12
+    front: "What does the Schmidt rank of a bipartite pure state tell you?"
+    back: "Rank 1 means product, rank greater than 1 means entangled. Two qubits have a maximum Schmidt rank of 2."
+    lesson: t1.m5.l5
+  - id: t1.m5.d13
+    front: "What is the entanglement entropy of a Bell state?"
+    back: "Exactly 1 ebit: the reduced state is I/2, whose von Neumann entropy is 1 bit."
+    lesson: t1.m5.l5
+  - id: t1.m5.d14
+    front: "What is the entanglement entropy of a product state?"
+    back: "Zero. Each reduced state is pure, and a pure state has zero von Neumann entropy."
+    lesson: t1.m5.l5

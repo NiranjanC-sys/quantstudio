@@ -1,0 +1,54 @@
+module: t1.m6
+cards:
+  - id: t1.m6.d1
+    front: "What is the CHSH bound for any local hidden-variable model?"
+    back: "|S| is at most 2, where S = E(a,b) + E(a,b') + E(a',b) - E(a',b')."
+    lesson: t1.m6.l1
+  - id: t1.m6.d2
+    front: "What is the maximum value of the CHSH expression that quantum mechanics allows?"
+    back: "2 sqrt(2) = 2.828427, the Tsirelson bound."
+    lesson: t1.m6.l1
+  - id: t1.m6.d3
+    front: "What two assumptions does a Bell inequality derivation make?"
+    back: "Locality, that a measurement outcome depends only on the local setting, and realism, that outcomes for unperformed measurements exist."
+    lesson: t1.m6.l1
+  - id: t1.m6.d4
+    front: "What is the best classical winning probability in the CHSH game?"
+    back: "0.75, achieved by both players always answering 0."
+    lesson: t1.m6.l2
+  - id: t1.m6.d5
+    front: "What is the optimal quantum winning probability in the CHSH game?"
+    back: "cos squared of pi/8, which is 0.853553."
+    lesson: t1.m6.l2
+  - id: t1.m6.d6
+    front: "For Phi+ with measurements in the x-z plane, what is the correlator E(theta_A, theta_B)?"
+    back: "cos(theta_A - theta_B). With settings 0, pi/2 for Alice and pi/4, -pi/4 for Bob, each of the four correlators has magnitude 0.707107."
+    lesson: t1.m6.l2
+  - id: t1.m6.d7
+    front: "How is a measurement along an x-z plane angle theta implemented on hardware?"
+    back: "Apply Ry(-theta) and then measure in the computational basis."
+    lesson: t1.m6.l2
+  - id: t1.m6.d8
+    front: "What is the classical and the quantum winning probability of the GHZ game?"
+    back: "At most 0.75 classically, and exactly 1 quantumly. The GHZ game turns a statistical gap into a single-shot contradiction."
+    lesson: t1.m6.l3
+  - id: t1.m6.d9
+    front: "Why is the GHZ argument considered stronger than CHSH?"
+    back: "Because a quantum strategy wins with certainty, so a single round can contradict local realism rather than requiring statistics over many rounds."
+    lesson: t1.m6.l3
+  - id: t1.m6.d10
+    front: "What is the classical and the quantum success probability of the Mermin-Peres magic square?"
+    back: "At most 8/9 classically, and exactly 1 quantumly."
+    lesson: t1.m6.l4
+  - id: t1.m6.d11
+    front: "What does the Mermin-Peres magic square demonstrate beyond nonlocality?"
+    back: "Contextuality: no assignment of values independent of which commuting set is measured together can satisfy all six constraints."
+    lesson: t1.m6.l4
+  - id: t1.m6.d12
+    front: "In the basic Elitzur-Vaidman bomb tester, what is the probability of a conclusive live-bomb detection per run?"
+    back: "0.25. The bomb explodes with probability 0.5 and the run is inconclusive with probability 0.25."
+    lesson: t1.m6.l5
+  - id: t1.m6.d13
+    front: "What is interaction-free measurement?"
+    back: "Learning that an object is present without any photon being absorbed by it, made possible because the possibility of absorption changes the interference pattern."
+    lesson: t1.m6.l5
