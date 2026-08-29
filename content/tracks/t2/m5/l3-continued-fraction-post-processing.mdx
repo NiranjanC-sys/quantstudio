@@ -1,0 +1,175 @@
+---
+id: t2.m5.l3
+title: Continued-Fraction Post-Processing
+type: concept
+track: t2
+module: t2.m5
+level: L2
+minutes: 14
+objectives:
+  - "Expand a measured ratio s/2^t as a continued fraction and list its convergents"
+  - "Select the convergent whose denominator is the order, using the bound |s/2^t - k/r| < 1/(2*r^2)"
+  - Recover r = 4 from the measurement 4 with a four-bit counting register
+prerequisites:
+  - t2.m5.l1
+  - t2.m4.l3
+sources:
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: Watrous, Quantum Computation lecture notes
+    url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+tags: [shor, continued-fractions]
+---
+
+The quantum circuit does not return $r$. It returns an integer $s$ from which you
+must extract $r$, and the extraction is pure number theory: a two-hundred-year-old
+algorithm for finding the simplest fraction near a given real number. This is the
+step that turns an approximate phase into an exact integer, and it is the reason
+order finding tolerates a counting register whose readings are never quite right.
+
+## What the measurement means
+
+The order-finding circuit puts the counting register into a state peaked near the
+multiples of $2^t/r$. A measurement returns $s$ with
+
+$$
+\frac{s}{2^{t}} \approx \frac{k}{r}
+$$
+
+for some integer $k$ in $\{0, 1, \dots, r-1\}$, uniformly random. Both $k$ and $r$
+are unknown, and the approximation is good to about half a grid spacing:
+
+$$
+\left| \frac{s}{2^{t}} - \frac{k}{r} \right| \le \frac{1}{2^{t+1}} .
+$$
+
+Choose $t$ so that $2^{t} \ge N^{2}$, which since $r < N$ gives
+$2^{t+1} > 2r^{2}$ and therefore
+
+$$
+\left| \frac{s}{2^{t}} - \frac{k}{r} \right| < \frac{1}{2r^{2}} .
+$$
+
+That inequality is exactly the hypothesis of a classical theorem.
+
+<Margin label="Legendre's theorem">
+If $|x - k/r| < 1/(2r^2)$ with $\gcd(k, r) = 1$, then $k/r$ appears among the
+convergents of the continued-fraction expansion of $x$. There are at most
+$O(\log r)$ convergents, so you can simply try them all. The theorem is what makes
+$2n+1$ counting qubits the right number: fewer, and the bound fails; more, and you
+are paying for precision the post-processing cannot use.
+</Margin>
+
+## The expansion
+
+The continued fraction of $x$ is produced by repeatedly taking the integer part
+and inverting the remainder:
+
+$$
+x = a_0 + \cfrac{1}{a_1 + \cfrac{1}{a_2 + \cdots}} ,
+\qquad
+[a_0; a_1, a_2, \dots] .
+$$
+
+Truncating after $a_i$ and collapsing the fraction gives the $i$-th **convergent**
+$p_i/q_i$, always in lowest terms, and the $q_i$ increase strictly. The recipe for
+order finding is: expand $s/2^t$, list the convergents, and take the one with the
+largest denominator $q_i < N$. That $q_i$ is your candidate $r$.
+
+## The four-bit case
+
+Run order finding for $a = 7$, $N = 15$, with $t = 4$. The order is 4, which
+divides $16$ exactly, so the peaks are exact and the counting register takes only
+the values $0$, $4$, $8$ and $12$, each with probability $0.25$. The distribution
+is the Fourier transform of a period-4 comb, which you can see directly.
+
+<Circuit
+  caption="The Fourier transform of a period-4 comb on four qubits, which is the distribution the order-finding counting register produces for a = 7 mod 15. Four peaks at 0, 4, 8 and 12, each with probability 0.25."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "order-4-peaks",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "p0", gate: "h", targets: [0] },
+      { id: "p1", gate: "h", targets: [1] },
+      { id: "f0", gate: "h", targets: [0] },
+      { id: "f1", gate: "p", targets: [0], controls: [1], params: [1.5707963267948966] },
+      { id: "f2", gate: "p", targets: [0], controls: [2], params: [0.7853981633974483] },
+      { id: "f3", gate: "p", targets: [0], controls: [3], params: [0.39269908169872414] },
+      { id: "f4", gate: "h", targets: [1] },
+      { id: "f5", gate: "p", targets: [1], controls: [2], params: [1.5707963267948966] },
+      { id: "f6", gate: "p", targets: [1], controls: [3], params: [0.7853981633974483] },
+      { id: "f7", gate: "h", targets: [2] },
+      { id: "f8", gate: "p", targets: [2], controls: [3], params: [1.5707963267948966] },
+      { id: "f9", gate: "h", targets: [3] },
+      { id: "f10", gate: "swap", targets: [0, 3] },
+      { id: "f11", gate: "swap", targets: [1, 2] }
+    ]
+  }}
+/>
+
+Now post-process each outcome.
+
+| $s$ | $s/16$ | continued fraction | convergents | candidate $r$ | $7^r \bmod 15$ |
+| --- | --- | --- | --- | --- | --- |
+| $0$ | $0$ | $[0]$ | $0/1$ | $1$ | $7$, fails |
+| $4$ | $1/4$ | $[0; 4]$ | $0/1,\; 1/4$ | $4$ | $1$, correct |
+| $8$ | $1/2$ | $[0; 2]$ | $0/1,\; 1/2$ | $2$ | $4$, fails |
+| $12$ | $3/4$ | $[0; 1, 3]$ | $0/1,\; 1/1,\; 3/4$ | $4$ | $1$, correct |
+
+Two of the four outcomes give $r = 4$ immediately. $s = 8$ gives $r = 2$, which is
+a *divisor* of the true order: the fraction $2/4$ reduced to $1/2$ and lost the
+factor. $s = 0$ gives nothing at all. So a single run succeeds with probability
+$0.5$ here, and two runs push that to $0.75$.
+
+## A case where the fractions do work
+
+Order finding is more convincing when the answer is not a power of two. Take
+$N = 21$, $a = 2$, whose order is $r = 6$, with $t = 9$ so that $2^t = 512 \ge
+21^2$. The six peaks sit near $512k/6$.
+
+| $s$ | $s/512$ | continued fraction | convergents | largest $q_i < 21$ |
+| --- | --- | --- | --- | --- |
+| $85$ | $0.166016$ | $[0; 6, 42, 2]$ | $0/1,\; 1/6,\; 42/253,\; 85/512$ | $6$ |
+| $171$ | $0.333984$ | $[0; 2, 1, 170]$ | $0/1,\; 1/2,\; 1/3,\; 171/512$ | $3$ |
+| $256$ | $0.500000$ | $[0; 2]$ | $0/1,\; 1/2$ | $2$ |
+| $341$ | $0.666016$ | $[0; 1, 1, 1, 170]$ | $0/1,\; 1/1,\; 1/2,\; 2/3,\; 341/512$ | $3$ |
+| $427$ | $0.833984$ | $[0; 1, 5, 42, 2]$ | $0/1,\; 1/1,\; 5/6,\; 211/253,\; 427/512$ | $6$ |
+
+Look at $s = 85$: the true ratio is $1/6 = 0.166667$ and the measurement is
+$0.166016$, off by $0.00065$. The continued fraction snaps it back to exactly
+$1/6$, because $1/6$ is the only fraction with a small denominator that close. The
+later convergents $42/253$ and $85/512$ are better approximations to the
+*measurement* and worse answers, which is why the rule is "largest denominator
+below $N$", not "best approximation".
+
+Outcomes $171$ and $341$ return $3$, a proper divisor of $6$, because $k$ and $r$
+shared a factor. The standard repair is to test small multiples: $2^3 = 8
+\not\equiv 1 \pmod{21}$, but $2^6 = 64 \equiv 1$, so doubling the candidate works.
+
+<Callout tone="note" title="Always verify, never assume">
+Post-processing produces a *candidate*. Check $a^{r} \equiv 1 \pmod N$ with one
+classical modular exponentiation before doing anything else, and if it fails, try
+$2r$, $3r$ and so on up to a small bound, then take another sample. This costs
+microseconds and turns an algorithm that is right half the time into one that is
+right or silent, which is the only kind you can build a factoring service on.
+</Callout>
+
+<Check question="With $t = 9$ and $N = 21$, you measure $s = 0$. What do you learn, and how often should you expect it?">
+Nothing: $0/512 = 0$, whose only convergent is $0/1$, giving the useless candidate
+$r = 1$. You should expect it with probability about $1/r = 1/6$, since the $r$
+peaks are equally likely and one of them sits at $k = 0$. The all-zeros outcome is
+the phase-estimation signature of the eigenvalue 1, promised at the end of
+T2.M4.L1, and it is unavoidable: every order-finding run has a $1/r$ chance of
+learning nothing. Discard it and sample again.
+</Check>
+
+## Where this comes from
+
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 5.3.1 and Appendix 4.4, for the continued-fraction algorithm and
+  Legendre's theorem in the form used here.
+- [Watrous, Quantum Computation notes](https://cs.uwaterloo.ca/~watrous/QC-notes/),
+  for the $2^t \ge N^2$ sizing argument.

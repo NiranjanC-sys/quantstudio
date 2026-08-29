@@ -1,0 +1,199 @@
+---
+id: t2.m7.l1
+title: Coined Walks
+type: concept
+track: t2
+module: t2.m7
+level: L2
+minutes: 13
+objectives:
+  - Define the coin plus shift operator for a discrete-time walk on a regular graph
+  - Compare the linear spreading of a quantum walk on the line with the square-root spreading of the classical walk
+  - Show that measuring the coin at every step recovers the classical random walk exactly
+prerequisites:
+  - t2.m6.l3
+  - t0.m1.l3
+sources:
+  - label: Quantum Algorithm Zoo
+    url: https://quantumalgorithmzoo.org/
+  - label: Chuang, 8.370x / 8.371x Quantum Information Science I & II (MIT)
+    url: https://ocw.mit.edu/courses/8-371x-quantum-information-science-ii-spring-2018/
+tags: [quantum-walk]
+---
+
+Amplitude amplification is one algorithmic primitive. Quantum walks are the
+other, and unlike Grover they are not a single algorithm but a way of turning any
+classical Markov-chain algorithm into a quantum one with a square-root saving,
+plus, in one celebrated case, an exponential one. The place to start is the walk
+on a line, because the difference from a coin-flipping drunkard is visible after
+three steps.
+
+## Coin and shift
+
+A classical walker on a $d$-regular graph flips a $d$-sided coin and moves. A
+quantum walker cannot: the map "move in a random direction" is not unitary,
+because two different vertices can walk to the same place and unitaries do not
+merge. The fix is to keep the coin.
+
+The Hilbert space is $\mathcal{H}_C \otimes \mathcal{H}_P$, a $d$-dimensional coin
+register tensored with the position register. One step is
+
+$$
+U = S \, (C \otimes I) ,
+$$
+
+where $C$ is any $d \times d$ unitary on the coin, usually the Hadamard for $d=2$
+or the Grover diffusion operator for larger $d$, and $S$ is the **shift**
+
+$$
+S \ket{c}\ket{v} = \ket{c}\ket{v + \delta_c} ,
+$$
+
+moving the walker in the direction the coin names. $S$ is a permutation of basis
+states, hence unitary, and the whole step is unitary because both factors are.
+
+<Margin label="The coin is not overhead">
+Keeping the coin is what makes the walk reversible, and reversibility is what
+allows amplitudes arriving at the same vertex from different directions to
+*interfere*. The classical walk adds probabilities and always spreads; the quantum
+walk adds amplitudes, and where they cancel the walker never goes. The coin
+register is the memory that makes cancellation possible.
+</Margin>
+
+## Three steps on a cycle
+
+Eight positions on a cycle, held in qubits 1 to 3 with qubit 1 the most
+significant, and one coin qubit at index 0. The shift decrements the position when
+the coin reads 0 and increments it when the coin reads 1, both modulo 8, built from
+one three-controlled $X$, one Toffoli and one CNOT per direction.
+
+<Circuit
+  caption="One step of the coined walk from position 000. The walker is at 111, that is position -1, and at 001, each with probability 0.5."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "coined-walk-1-step",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "xa0", gate: "x", targets: [0] },
+      { id: "d04", gate: "x", targets: [3], controls: [0] },
+      { id: "d05", gate: "x", targets: [2], controls: [0, 3] },
+      { id: "d06", gate: "x", targets: [1], controls: [0, 2, 3] },
+      { id: "xb0", gate: "x", targets: [0] },
+      { id: "i01", gate: "x", targets: [1], controls: [0, 2, 3] },
+      { id: "i02", gate: "x", targets: [2], controls: [0, 3] },
+      { id: "i03", gate: "x", targets: [3], controls: [0] }
+    ]
+  }}
+/>
+
+After one step the two branches are at $\pm 1$ with weight $0.5$ each, exactly as a
+classical walker would be. Nothing has interfered yet. Now three steps.
+
+<Circuit
+  caption="Three steps of the same walk. The position distribution is 0.125 at -3, 0.625 at -1, 0.125 at +1 and 0.125 at +3: strongly asymmetric, unlike the binomial."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "coined-walk-3-steps",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "xa0", gate: "x", targets: [0] },
+      { id: "d04", gate: "x", targets: [3], controls: [0] },
+      { id: "d05", gate: "x", targets: [2], controls: [0, 3] },
+      { id: "d06", gate: "x", targets: [1], controls: [0, 2, 3] },
+      { id: "xb0", gate: "x", targets: [0] },
+      { id: "i01", gate: "x", targets: [1], controls: [0, 2, 3] },
+      { id: "i02", gate: "x", targets: [2], controls: [0, 3] },
+      { id: "i03", gate: "x", targets: [3], controls: [0] },
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "xa1", gate: "x", targets: [0] },
+      { id: "d14", gate: "x", targets: [3], controls: [0] },
+      { id: "d15", gate: "x", targets: [2], controls: [0, 3] },
+      { id: "d16", gate: "x", targets: [1], controls: [0, 2, 3] },
+      { id: "xb1", gate: "x", targets: [0] },
+      { id: "i11", gate: "x", targets: [1], controls: [0, 2, 3] },
+      { id: "i12", gate: "x", targets: [2], controls: [0, 3] },
+      { id: "i13", gate: "x", targets: [3], controls: [0] },
+      { id: "h2", gate: "h", targets: [0] },
+      { id: "xa2", gate: "x", targets: [0] },
+      { id: "d24", gate: "x", targets: [3], controls: [0] },
+      { id: "d25", gate: "x", targets: [2], controls: [0, 3] },
+      { id: "d26", gate: "x", targets: [1], controls: [0, 2, 3] },
+      { id: "xb2", gate: "x", targets: [0] },
+      { id: "i21", gate: "x", targets: [1], controls: [0, 2, 3] },
+      { id: "i22", gate: "x", targets: [2], controls: [0, 3] },
+      { id: "i23", gate: "x", targets: [3], controls: [0] }
+    ]
+  }}
+/>
+
+Sum the five surviving strings over the coin bit and the position distribution is
+
+| position | $-3$ | $-1$ | $+1$ | $+3$ |
+| --- | --- | --- | --- | --- |
+| quantum | $0.125$ | $0.625$ | $0.125$ | $0.125$ |
+| classical | $0.125$ | $0.375$ | $0.375$ | $0.125$ |
+
+The quantum walk has piled $0.625$ onto a single position and starved another. The
+asymmetry comes from the Hadamard coin, which treats $\ket0$ and $\ket1$
+differently: $H\ket1$ carries a minus sign and $H\ket0$ does not, so the
+left-moving and right-moving branches interfere with opposite signs. Starting the
+coin in $(\ket0 + i\ket1)/\sqrt2$ restores the symmetry, and the distribution
+becomes two symmetric peaks near the edges.
+
+## Linear versus square-root spreading
+
+That is the headline. A classical walker after $t$ steps has standard deviation
+$\sigma_{\mathrm{cl}} = \sqrt t$, the central limit theorem in its plainest form,
+and the distribution is a bell curve centred on the origin. A Hadamard-coin quantum
+walker after $t$ steps has
+
+$$
+\sigma_{\mathrm{qu}} = \Theta(t) ,
+$$
+
+with most of the weight in two peaks near $\pm t/\sqrt2$ and almost nothing in the
+middle. The walker moves ballistically rather than diffusively.
+
+| $t$ | classical $\sigma$ | quantum $\sigma$ |
+| --- | --- | --- |
+| $100$ | $10$ | $\approx 70$ |
+| $10^4$ | $100$ | $\approx 7000$ |
+| $10^6$ | $1000$ | $\approx 7 \times 10^5$ |
+
+The quadratic gap in spreading rate is where quantum-walk search gets its
+quadratic speedup: hitting a marked vertex takes $\sqrt{}$ times fewer steps when
+the walker covers distance linearly rather than as a square root.
+
+<Callout tone="gotcha" title="Measure the coin and the speedup evaporates">
+Insert a computational-basis measurement of the coin register after every step and
+the walk becomes *exactly* the classical random walk: measurement destroys the
+relative phase between the two branches, the interference terms vanish, and the
+update on the position distribution is the classical stochastic matrix. The
+distribution above collapses back to the binomial. This is the cleanest available
+demonstration that coherence, not superposition, is the resource: the walker is in
+a superposition of positions either way, and only the unmeasured version spreads
+linearly.
+</Callout>
+
+<Check question="A coined walk on a $d$-regular graph uses a $d$-dimensional coin. What happens if you choose $C = I$?">
+The walker never turns. $U = S(I \otimes I) = S$ just applies the same shift every
+step, so a walker starting with coin $\ket c$ marches in direction $c$ forever and
+the position distribution is a moving delta function. That is maximal ballistic
+spreading and zero exploration, which is useless for search. The coin has to mix
+the directions, and the standard choices are the Hadamard for $d = 2$ and the
+Grover diffusion operator $2\ketbra{s}{s} - I$ on the $d$ directions for larger
+$d$: the same operator as T2.M2.L2, now acting on the coin.
+</Check>
+
+## Where this comes from
+
+- [Quantum Algorithm Zoo](https://quantumalgorithmzoo.org/), for the quantum-walk
+  family and the spreading results quoted here.
+- [Chuang, 8.371x](https://ocw.mit.edu/courses/8-371x-quantum-information-science-ii-spring-2018/),
+  for the coin-and-shift formalism and the decoherence argument.

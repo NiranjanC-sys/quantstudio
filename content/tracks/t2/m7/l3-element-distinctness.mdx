@@ -1,0 +1,202 @@
+---
+id: t2.m7.l3
+title: Element Distinctness
+type: concept
+track: t2
+module: t2.m7
+level: L2
+minutes: 14
+objectives:
+  - Describe the Ambainis walk on the Johnson graph that solves element distinctness
+  - "Derive the O(N^(2/3)) query cost from the setup, update and checking costs"
+  - Explain why the bound is tight, citing the adversary lower bound
+prerequisites:
+  - t2.m7.l1
+  - t2.m2.l5
+sources:
+  - label: Quantum Algorithm Zoo
+    url: https://quantumalgorithmzoo.org/
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+tags: [quantum-walk, element-distinctness]
+---
+
+Are any two entries of a list equal? Classically this needs to look at everything,
+$\Theta(N)$ queries. Grover applied naively makes it *worse*. The right answer,
+$\Theta(N^{2/3})$, came from Ambainis in 2003 and is the flagship result of the
+quantum-walk framework: not a new interference trick, but a systematic way of
+turning a random walk over partial solutions into a quantum algorithm.
+
+## The problem and the obvious attacks
+
+Given oracle access to $f: [N] \to S$, decide whether there exist $i \ne j$ with
+$f(i) = f(j)$.
+
+**Classically** it takes $\Theta(N)$ queries: sort, or hash, and any algorithm
+that misses one index can be defeated by putting the collision there.
+
+**Grover over pairs** looks promising and is not. There are $\binom N2 \approx
+N^2/2$ pairs, and Grover over $N^2$ items costs $O(\sqrt{N^2}) = O(N)$ queries.
+Exactly the classical bound, with a large constant and a quantum computer.
+
+The reason Grover fails is that it treats each pair as an independent test,
+throwing away every query as soon as it is made. Checking whether the pair
+$(i, j)$ collides costs two queries even though you may have looked at $f(i)$ a
+moment ago while testing $(i, k)$. The walk fixes exactly this.
+
+<Margin label="Walking over partial solutions">
+The state of the walk is not a candidate answer, it is a *stored subset* of the
+data. Moving one step changes the subset a little and costs only the queries needed
+for the change. That is the general Szegedy and Ambainis pattern: pay a large
+setup cost once, then amortise it over many cheap updates, and use amplitude
+amplification to reach a marked state.
+</Margin>
+
+## The Johnson graph
+
+Fix $r$. The vertices of the Johnson graph $J(N, r)$ are the $\binom Nr$ subsets of
+$[N]$ of size exactly $r$, and two subsets are adjacent when they differ in a
+single element, one swapped out for one swapped in.
+
+The walk's state at vertex $R$ carries the stored data $\{(i, f(i)) : i \in R\}$.
+A vertex is **marked** when $R$ contains both indices of a collision. The algorithm
+is amplitude amplification with the walk in place of the diffuser: walk, check,
+amplify.
+
+## The cost formula
+
+Szegedy's framework gives the query cost of a walk-based search as
+
+$$
+S + \frac{1}{\sqrt{\varepsilon}}\left( \frac{1}{\sqrt{\delta}}\,U + C \right)
+$$
+
+with
+
+- $S$ the **setup** cost, to build the initial uniform superposition over vertices
+  with their data;
+- $U$ the **update** cost, one step of the walk;
+- $C$ the **checking** cost, testing whether a vertex is marked;
+- $\varepsilon$ the fraction of marked vertices;
+- $\delta$ the spectral gap of the walk.
+
+Fill in the four quantities for element distinctness.
+
+$S = r$: loading $r$ values takes $r$ queries.
+
+$U = O(1)$: a step removes one index and inserts another, so two queries.
+
+$C = 0$: the data is already stored, so checking for an internal collision is
+computation, not queries. Concretely it is an equality test on stored pairs, which
+in circuit form is a comparator into an ancilla:
+
+<Circuit
+  caption="Equality checking on two stored two-bit values, both 10. The CNOTs XOR the registers together, the X gates turn zeros into ones, and the Toffoli sets the ancilla; the register is then uncomputed. Output 10101: values intact, flag set."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "collision-check-equal",
+    qubits: 5,
+    clbits: 0,
+    ops: [
+      { id: "la0", gate: "x", targets: [0] },
+      { id: "lb0", gate: "x", targets: [2] },
+      { id: "c0", gate: "x", targets: [2], controls: [0] },
+      { id: "c1", gate: "x", targets: [3], controls: [1] },
+      { id: "n0", gate: "x", targets: [2] },
+      { id: "n1", gate: "x", targets: [3] },
+      { id: "and", gate: "ccx", targets: [2, 3, 4] },
+      { id: "u0", gate: "x", targets: [2] },
+      { id: "u1", gate: "x", targets: [3] },
+      { id: "d0", gate: "x", targets: [2], controls: [0] },
+      { id: "d1", gate: "x", targets: [3], controls: [1] }
+    ]
+  }}
+/>
+
+<Circuit
+  caption="The same comparator on values 10 and 01. Output 10010: the flag qubit stays 0 and both values are restored."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "collision-check-distinct",
+    qubits: 5,
+    clbits: 0,
+    ops: [
+      { id: "la0", gate: "x", targets: [0] },
+      { id: "lb1", gate: "x", targets: [3] },
+      { id: "c0", gate: "x", targets: [2], controls: [0] },
+      { id: "c1", gate: "x", targets: [3], controls: [1] },
+      { id: "n0", gate: "x", targets: [2] },
+      { id: "n1", gate: "x", targets: [3] },
+      { id: "and", gate: "ccx", targets: [2, 3, 4] },
+      { id: "u0", gate: "x", targets: [2] },
+      { id: "u1", gate: "x", targets: [3] },
+      { id: "d0", gate: "x", targets: [2], controls: [0] },
+      { id: "d1", gate: "x", targets: [3], controls: [1] }
+    ]
+  }}
+/>
+
+$\varepsilon = \Theta\big((r/N)^2\big)$: a random $r$-subset contains a given pair
+of indices with probability about $(r/N)^2$.
+
+$\delta = \Omega(1/r)$: the spectral gap of $J(N, r)$ for $r \ll N$.
+
+Substituting:
+
+$$
+r + \frac{N}{r}\left( \sqrt{r} \cdot 1 + 0 \right) = r + \frac{N}{\sqrt r} .
+$$
+
+Minimise over $r$. The two terms balance at $r^{3/2} = N$, giving
+$r = N^{2/3}$ and total cost
+
+$$
+O\!\left(N^{2/3}\right) .
+$$
+
+| $N$ | classical $N$ | Grover over pairs $N$ | walk $N^{2/3}$ |
+| --- | --- | --- | --- |
+| $10^{3}$ | $1000$ | $1000$ | $100$ |
+| $10^{6}$ | $10^{6}$ | $10^{6}$ | $10^{4}$ |
+| $10^{9}$ | $10^{9}$ | $10^{9}$ | $10^{6}$ |
+
+## Why the exponent is exactly $2/3$
+
+The upper bound is Ambainis. The matching lower bound is Aaronson and Shi, who
+proved $\Omega(N^{2/3})$ for element distinctness using the polynomial method of
+T2.M9.L1. So the exponent $2/3$ is not an artefact of the Johnson-graph choice; it
+is the truth, and no cleverer walk or different graph can beat it.
+
+<Callout tone="warning" title="The memory is the real cost">
+The walk stores $r = N^{2/3}$ input values *in superposition*, which means
+$N^{2/3}$ qubits of quantum-accessible memory, coherent for the whole run. For
+$N = 10^{9}$ that is a million qubits holding data, on top of the logic. Under any
+plausible error-correction overhead the walk is far more expensive than the
+classical linear scan it beats asymptotically. Element distinctness is the
+standard example of a real quantum speedup whose resource profile makes it
+unusable, and it is a useful check on any claim that a quadratic-or-better speedup
+implies practical value.
+</Callout>
+
+<Check question="Suppose the checking cost were $C = r$ instead of 0, because the data had to be re-read. What would the optimal $r$ and total cost become?">
+The formula becomes
+
+$$
+r + \frac{N}{r}\left(\sqrt r + r\right) = r + \frac{N}{\sqrt r} + N .
+$$
+
+The additive $N$ term now dominates everything, so the total is $\Theta(N)$
+and the walk gives no speedup at all. This is why storing the data at the vertices
+is the essential idea rather than an optimisation: the entire $N^{2/3}$ comes from
+$C = 0$, and a version of the algorithm that cannot hold the subset coherently is
+just a classical scan.
+</Check>
+
+## Where this comes from
+
+- [Quantum Algorithm Zoo](https://quantumalgorithmzoo.org/), for the element
+  distinctness entry, the Johnson-graph walk and the matching lower bound.
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), for the
+  Szegedy cost formula in the setup-update-check form used here.

@@ -1,0 +1,225 @@
+---
+id: t2.m5.l4
+title: Putting Shor Together
+type: lab
+track: t2
+module: t2.m5
+level: L2
+minutes: 45
+objectives:
+  - Assemble the order-finding circuit for a = 7 modulo 15 with a four-qubit counting register
+  - Skip the controlled powers whose exponent is a multiple of the order, since they act as the identity
+  - Recover the factors 3 and 5 from the measured phases by continued fractions
+prerequisites:
+  - t2.m5.l2
+  - t2.m5.l3
+  - t2.m4.l4
+sources:
+  - label: Quantum Algorithm Zoo
+    url: https://quantumalgorithmzoo.org/
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [shor, order-finding, lab]
+---
+
+Four modules of machinery arrive here at once: a classical reduction, a reversible
+arithmetic circuit, phase estimation, and continued fractions. The instance is the
+smallest one that is not a toy, $N = 15$ with $a = 7$, and it fits in eight qubits
+because the arithmetic collapses into permutations. Build it, measure it, and
+factor 15 from the histogram.
+
+## The register layout
+
+Qubits 0 to 3 are the counting register, qubit 0 most significant. Qubits 4 to 7
+are the work register, qubit 4 most significant, loaded with the value 1 by a
+single $X$ on qubit 7.
+
+The controlled powers use the classically precomputed multipliers
+
+$$
+7^{1} \equiv 7, \quad 7^{2} \equiv 4, \quad 7^{4} \equiv 1, \quad 7^{8} \equiv 1
+\pmod{15} ,
+$$
+
+so only two of the four controlled multiplications do anything. The powers
+controlled by counting qubits 0 and 1, which carry exponents 8 and 4, are
+multiplications by 1: the identity. Omit them.
+
+<Margin label="This is the whole reason it fits">
+Recognising that $7^4 \equiv 1$ removes half the controlled multiplications, and
+recognising that $\times 7$ and $\times 4$ are bit permutations removes every
+adder. Both shortcuts depend on knowing the answer, which makes this
+demonstration a circuit-assembly exercise rather than a factoring algorithm. Every
+published "factored 15 on a quantum computer" result uses at least one of these
+shortcuts, and the honest ones say so.
+</Margin>
+
+## What the finished circuit produces
+
+<Circuit
+  caption="Order finding for a = 7 mod 15 on eight qubits. Sixteen strings at 6.25% each; the counting register takes only 0000, 0100, 1000 and 1100, at 0.25 apiece once summed over the work register."
+  show={['amplitudes', 'probabilities']}
+  ir={{
+    version: 1,
+    name: "shor-7-mod-15",
+    qubits: 8,
+    clbits: 0,
+    ops: [
+      { id: "ld", gate: "x", targets: [7] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "h3", gate: "h", targets: [3] },
+      { id: "m7s0", gate: "swap", targets: [6, 7], controls: [3] },
+      { id: "m7s1", gate: "swap", targets: [5, 6], controls: [3] },
+      { id: "m7s2", gate: "swap", targets: [4, 5], controls: [3] },
+      { id: "m7x4", gate: "x", targets: [4], controls: [3] },
+      { id: "m7x5", gate: "x", targets: [5], controls: [3] },
+      { id: "m7x6", gate: "x", targets: [6], controls: [3] },
+      { id: "m7x7", gate: "x", targets: [7], controls: [3] },
+      { id: "m4a", gate: "swap", targets: [4, 6], controls: [2] },
+      { id: "m4b", gate: "swap", targets: [5, 7], controls: [2] },
+      { id: "iq0", gate: "swap", targets: [1, 2] },
+      { id: "iq1", gate: "swap", targets: [0, 3] },
+      { id: "iq2", gate: "h", targets: [3] },
+      { id: "iq3", gate: "p", targets: [2], controls: [3], params: [-1.5707963267948966] },
+      { id: "iq4", gate: "h", targets: [2] },
+      { id: "iq5", gate: "p", targets: [1], controls: [3], params: [-0.7853981633974483] },
+      { id: "iq6", gate: "p", targets: [1], controls: [2], params: [-1.5707963267948966] },
+      { id: "iq7", gate: "h", targets: [1] },
+      { id: "iq8", gate: "p", targets: [0], controls: [3], params: [-0.39269908169872414] },
+      { id: "iq9", gate: "p", targets: [0], controls: [2], params: [-0.7853981633974483] },
+      { id: "iq10", gate: "p", targets: [0], controls: [1], params: [-1.5707963267948966] },
+      { id: "iq11", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+Read the work register on the right of each label: the only values that appear are
+$0001$, $0100$, $0111$ and $1101$, which are $1$, $4$, $7$ and $13$, the orbit of
+$7$ modulo $15$. Read the counting register on the left and only $0000$, $0100$,
+$1000$ and $1100$ appear, four values with four work states each, so each has
+marginal probability $0.25$. Those are $s = 0, 4, 8, 12$, exactly the multiples of
+$2^4/r = 4$ that T2.M5.L3 predicted.
+
+## From the histogram to the factors
+
+Post-process with continued fractions, as in the previous lesson. $s = 4$ gives
+$4/16 = 1/4$ whose convergents are $0/1$ and $1/4$, so $r = 4$. Verify:
+$7^4 = 2401 = 160 \times 15 + 1 \equiv 1 \pmod{15}$. Then
+
+$$
+7^{r/2} = 49 \equiv 4, \qquad
+\gcd(3, 15) = 3, \qquad
+\gcd(5, 15) = 5 .
+$$
+
+$15 = 3 \times 5$.
+
+## Your task
+
+```python
+import cirq
+
+A, N, COUNT = 7, 15, 4
+
+def build() -> cirq.Circuit:
+    q = cirq.LineQubit.range(8)   # q[0:4] counting, q[4:8] work
+    c = cirq.Circuit()
+    # load |0001> into the work register, superpose the counting register,
+    # apply controlled multiplication by 7^(2^j) mod 15, invert the QFT,
+    # then measure q[0:4] only
+    return c
+
+order = 0
+factors: list[int] = []
+```
+
+Measure the counting register only, and set the module-level `order` and
+`factors` from your own post-processing rather than from the values printed above.
+
+The public tests check the counting distribution against a uniform quarter on
+$\{0000, 0100, 1000, 1100\}$ over 8192 shots and check `order == 4`. The hidden
+tests tighten the distribution to $0.02$ total variation at 16384 shots, check
+`factors == [3, 5]`, and cap the circuit at eight qubits and fifty gates. Skipping
+the two identity powers keeps the circuit at 26 operations before measurement;
+implementing them by repeating the multiply-by-7 gadget four and eight times would
+add over eighty gates and fail the resource test.
+
+<Callout tone="warning" title="Measure the counting register only">
+Measuring the work register as well does no harm to the distribution, because the
+two registers are already entangled and the counting marginal is unchanged. But
+the graded distribution is keyed on four bits, so a five-key or eight-key histogram
+fails the comparison outright. This is the most common way a correct Shor
+implementation fails its test.
+</Callout>
+
+<Check question="You accidentally load the work register with $\ket{0000}$ instead of $\ket{0001}$. What does the counting histogram look like?">
+Uniform over all sixteen counting values, or nearly so, depending on how your
+multiply gadget behaves on zero. The work register must start on a value whose
+orbit under multiplication by $a$ has length $r$; the value 0 is a fixed point of
+every multiplication, so the controlled powers do nothing, no phase is kicked back,
+and the inverse QFT returns the counting register to $\ket{0000}$. A flat or
+single-peaked histogram is the signature of a work register that is not moving.
+Print the work register's reachable values before debugging anything else.
+</Check>
+
+<Solution>
+Two controlled multiplications, an inverse QFT, and a classical tail.
+
+```python
+import cirq
+from math import gcd
+
+A, N, COUNT = 7, 15, 4
+
+def times7(c, ctrl, w):
+    # multiply by 8 (cyclic shift of the bits) then complement: 8x -> 15 - 8x = 7x
+    c.append(cirq.CSWAP(ctrl, w[2], w[3]))
+    c.append(cirq.CSWAP(ctrl, w[1], w[2]))
+    c.append(cirq.CSWAP(ctrl, w[0], w[1]))
+    for t in w:
+        c.append(cirq.CNOT(ctrl, t))
+
+def times4(c, ctrl, w):
+    c.append(cirq.CSWAP(ctrl, w[0], w[2]))
+    c.append(cirq.CSWAP(ctrl, w[1], w[3]))
+
+def build() -> cirq.Circuit:
+    q = cirq.LineQubit.range(8)
+    cnt, w = q[:4], q[4:]
+    c = cirq.Circuit([cirq.X(w[3])])
+    c.append(cirq.H(x) for x in cnt)
+    times7(c, cnt[3], w)   # exponent 1
+    times4(c, cnt[2], w)   # exponent 2, since 7^2 = 4 mod 15
+    # exponents 4 and 8 act as the identity because 7^4 = 1 mod 15
+    c.append(cirq.qft(*cnt, inverse=True))
+    c.append(cirq.measure(*cnt, key="m"))
+    return c
+
+order = 4
+factors = sorted({gcd(A ** (order // 2) - 1, N), gcd(A ** (order // 2) + 1, N)})
+```
+
+`cnt[3]` is the *least* significant counting qubit and carries exponent $2^0 = 1$;
+`cnt[2]` carries $2^1 = 2$. Getting that mapping backwards reverses the phase ramp
+and produces the same four peaks, so the distribution test passes and the order is
+still 4, which makes it a bug you will only catch on an instance whose peaks are
+not symmetric. Try $a = 2$ modulo 15, whose order is also 4, and then $a = 2$
+modulo 21, whose order is 6, to see the difference.
+
+For the classical tail, a real implementation would run the continued-fraction
+expansion of each measured $s/16$ and take the largest denominator below 15 rather
+than hard-coding 4; T2.M5.L3 gives the eight lines of code that does it.
+</Solution>
+
+## Where this comes from
+
+- [Quantum Algorithm Zoo](https://quantumalgorithmzoo.org/), for the order-finding
+  entry and its honest statement of what the small demonstrations prove.
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses), whose
+  Shor lab uses the same permutation shortcuts on $N = 15$.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 5.3.1, for the full circuit and its correctness proof.

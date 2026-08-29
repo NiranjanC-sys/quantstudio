@@ -1,0 +1,172 @@
+---
+id: t2.m6.l1
+title: The Abelian HSP Framework
+type: concept
+track: t2
+module: t2.m6
+level: L2
+minutes: 14
+objectives:
+  - State the hidden subgroup problem for a finite abelian group G and a function constant on cosets of H
+  - Show that coset-state sampling followed by the QFT over G yields a uniform sample from the annihilator of H
+  - Instantiate the framework to recover Simon, order finding and discrete log
+prerequisites:
+  - t2.m3.l6
+  - t2.m5.l5
+sources:
+  - label: Watrous, Quantum Computation lecture notes
+    url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+  - label: Quantum Algorithm Zoo
+    url: https://quantumalgorithmzoo.org/
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+tags: [hsp, group]
+---
+
+Simon hides an XOR mask, order finding hides a period, discrete log hides an
+exponent. Written out they look like three different tricks. Written in the right
+language they are one theorem with three groups substituted in, and once you can
+see the pattern you can also see exactly where it stops: the boundary of the
+abelian case is the boundary of everything the subject knows how to do
+exponentially fast.
+
+## The problem
+
+Let $G$ be a finite abelian group and let $f: G \to S$ be a function into some set,
+promised to satisfy
+
+$$
+f(g_1) = f(g_2) \iff g_1 g_2^{-1} \in H
+$$
+
+for some unknown subgroup $H \le G$. In words: $f$ is constant on each coset of
+$H$ and takes different values on different cosets. Given oracle access to $f$,
+output a generating set for $H$.
+
+The promise is the entire content. $f$ is otherwise arbitrary, so no classical
+algorithm can do anything but hunt for collisions, and collisions among $|G|/|H|$
+distinct values arrive after about $\sqrt{|G|/|H|}$ queries.
+
+<Margin label="Structure theorem">
+Every finite abelian group is a direct product of cyclic groups,
+$G \cong \Z_{N_1} \times \cdots \times \Z_{N_k}$. The Fourier transform of a
+product is the tensor product of the transforms, so
+$F_G = F_{\Z_{N_1}} \otimes \cdots \otimes F_{\Z_{N_k}}$ and everything reduces to
+the cyclic case of T2.M3.L3. That is why "abelian" and "efficient QFT" mean the
+same thing here.
+</Margin>
+
+## The algorithm, in four lines
+
+**Prepare** $\frac{1}{\sqrt{|G|}}\sum_{g \in G}\ket{g}\ket{0}$.
+
+**Query** $f$ to get $\frac{1}{\sqrt{|G|}}\sum_{g}\ket{g}\ket{f(g)}$, and measure
+the second register. The outcome is some value $f(g_0)$, and the first register
+collapses onto the uniform superposition over that value's preimage, which by the
+promise is exactly one coset:
+
+$$
+\ket{g_0 H} = \frac{1}{\sqrt{|H|}}\sum_{h \in H}\ket{g_0 h} .
+$$
+
+The offset $g_0$ is uniformly random and you never learn it.
+
+**Transform** with $F_G$. The characters of an abelian $G$ are the homomorphisms
+$\chi_y : G \to \C^\times$, indexed by $y \in \hat G \cong G$, and
+$F_G \ket{g} = \frac{1}{\sqrt{|G|}}\sum_y \chi_y(g)\ket{y}$. So
+
+$$
+F_G\ket{g_0 H}
+= \frac{1}{\sqrt{|G||H|}}\sum_{y}\chi_y(g_0)\left(\sum_{h \in H}\chi_y(h)\right)\ket{y} .
+$$
+
+The inner sum is a character sum over a subgroup: it is $|H|$ when $\chi_y$ is
+trivial on all of $H$, and 0 otherwise, because a non-trivial character sums to
+zero over any subgroup it does not kill.
+
+**Measure.** Writing the **annihilator**
+
+$$
+H^{\perp} = \{\, y \in \hat G : \chi_y(h) = 1 \text{ for all } h \in H \,\} ,
+$$
+
+the state is $\sqrt{|H|/|G|}\sum_{y \in H^\perp}\chi_y(g_0)\ket{y}$, so the outcome
+is a uniform element of $H^\perp$ and the unknown offset survives only as an
+unmeasurable phase.
+
+$H^\perp$ is a subgroup of order $|G|/|H|$, and $(H^\perp)^\perp = H$. So collect
+enough uniform samples from $H^\perp$ to generate it, then dualise. Each sample
+costs one query.
+
+## The smallest cyclic instance
+
+Take $G = \Z_4$, held in two qubits with qubit 0 the most significant, and
+$f(x) = x \bmod 2$, which is constant on the cosets of $H = \{0, 2\}$. Since
+$\chi_y(h) = e^{2\pi i y h/4}$, the annihilator is
+$\{y : 2y \equiv 0 \bmod 4\} = \{0, 2\}$: predict outcomes $0$ and $2$, each with
+probability $0.5$, and nothing else.
+
+<Circuit
+  caption="Hidden subgroup over Z_4 with H = {0,2}. One CNOT is the oracle f(x) = x mod 2; the QFT over Z_4 follows. The counting bits read 00 or 10, that is 0 or 2, with probability 0.5 each."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "hsp-over-z4",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "o", gate: "x", targets: [2], controls: [1] },
+      { id: "f0", gate: "h", targets: [0] },
+      { id: "f1", gate: "p", targets: [0], controls: [1], params: [1.5707963267948966] },
+      { id: "f2", gate: "h", targets: [1] },
+      { id: "f3", gate: "swap", targets: [0, 1] }
+    ]
+  }}
+/>
+
+Four strings at $0.25$ each. The first two bits are $00$ in two of them and $10$ in
+the other two, so $y = 0$ and $y = 2$ each carry $0.5$, exactly $H^\perp$. One
+non-zero sample, $y = 2$, generates $H^\perp$, and dualising gives
+$H = \{x : 2x \equiv 0\} = \{0, 2\}$.
+
+## The three algorithms you already know
+
+| algorithm | $G$ | $H$ | $H^\perp$ | what a sample is |
+| --- | --- | --- | --- | --- |
+| Simon | $\Z_2^{\,n}$ | $\{0, s\}$ | $\{y : y \cdot s = 0\}$ | one linear equation on $s$ |
+| order finding | $\Z_{2^t}$ approximating $\Z$ | $r\Z$ | multiples of $2^t/r$ | one approximate multiple of $1/r$ |
+| discrete log | $\Z_r \times \Z_r$ | $\langle (m,1)\rangle$ | $\{(\alpha,\beta): \alpha m + \beta = 0\}$ | one congruence on $m$ |
+
+Deutsch-Jozsa and Bernstein-Vazirani fit too, with $G = \Z_2^n$ and $H$ the kernel
+of a linear form. Every exponential speedup in this track other than the quantum
+walks of T2.M7 is a row of that table.
+
+<Callout tone="gotcha" title="Order finding is the row that does not quite fit">
+$\Z$ is infinite, so there is no finite uniform superposition over it and no exact
+QFT. Order finding truncates to $\Z_{2^t}$, which is not a subgroup of $\Z$ in any
+useful sense, and pays for the mismatch with the leakage of T2.M3.L3 and the
+continued-fraction repair of T2.M5.L3. The framework is exact for finite $G$ and
+approximate for the infinite case, and every complication in Shor comes from that
+one substitution.
+</Callout>
+
+<Check question="Suppose $H = G$, so $f$ is constant. What does the algorithm return, and how many queries does it take to be sure?">
+$H^\perp$ is trivial, containing only the identity character, so every sample
+returns $y = 0$. That is the correct answer and it is indistinguishable from a
+broken oracle after one query. You become confident by counting: a proper subgroup
+$H < G$ has $|H^\perp| \ge 2$, so a uniform sample from it is non-zero with
+probability at least $1/2$, and $k$ consecutive zero samples make
+$H \ne G$ at most $2^{-k}$ likely. Twenty samples settle it, which is the same
+"the all-zeros outcome is uninformative" phenomenon as in T2.M3.L5.
+</Check>
+
+## Where this comes from
+
+- [Watrous, Quantum Computation notes](https://cs.uwaterloo.ca/~watrous/QC-notes/),
+  for the character-sum derivation and the annihilator duality.
+- [Quantum Algorithm Zoo](https://quantumalgorithmzoo.org/), for the catalogue of
+  problems that reduce to abelian HSP.
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), for the
+  coset-state framing used in T2.M3.L5 and generalised here.
