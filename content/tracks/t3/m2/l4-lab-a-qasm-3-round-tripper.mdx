@@ -1,0 +1,24 @@
+---
+id: t3.m2.l4
+title: "Lab: A QASM 3 Round-Tripper"
+type: lab
+track: t3
+module: t3.m2
+level: L1
+minutes: 35
+objectives:
+  - Write emit(ir) producing OpenQASM 3 text that preserves gate, controls, targets and operation identifier
+  - Write parse(text) reconstructing the identical IR dictionary
+  - Show that parse(emit(ir)) is the identity on the reference circuit and on randomly generated circuits
+prerequisites:
+  - t3.m2.l3
+  - t3.m1.l5
+sources:
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+  - label: CS269Q Elements of Quantum Computer Programming (Stanford)
+    url: https://cs269q.stanford.edu/
+  - label: qBraid documentation
+    url: https://docs.qbraid.com/
+tags: [qasm, round-trip, lab]
+---

@@ -1,0 +1,219 @@
+---
+id: t4.m1.l1
+title: Density Matrices
+type: concept
+track: t4
+module: t4.m1
+level: L2
+minutes: 14
+objectives:
+  - Write the density matrix of a pure state as the outer product |psi><psi|
+  - Verify that a matrix is a valid state by checking Hermiticity, unit trace and positive semidefiniteness
+  - Compute an observable expectation as tr(rho A) and match it to the Born rule
+prerequisites:
+  - t0.m4.l3
+  - t1.m5.l3
+sources:
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: Preskill, Ph219/CS219 Quantum Computation lecture notes (Caltech)
+    url: http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+tags: [density-matrix, open-systems]
+---
+
+What is the state of one qubit of a Bell pair? Every tool T1 gave you says a
+state is a vector, and there is no vector that answers the question. Half of
+$\ket{\Phi^+}$ is not $\ket{0}$, not $\ket{1}$, not $\ket{+}$, and not any
+superposition of them, yet the qubit exists and you can measure it. The object
+that answers the question is the density matrix, and this module is built on it
+because every statement about noise, every syndrome, and every fidelity in T4 is
+a statement about density matrices.
+
+## From a vector to a matrix
+
+Start where you already are. A pure state $\ket{\psi}$ has a density matrix
+
+$$
+\rho = \ketbra{\psi}{\psi},
+$$
+
+the outer product of the vector with itself. For $\ket{+} = \isqrt(\ket 0 + \ket 1)$
+that is
+
+$$
+\rho_+ = \frac12\begin{pmatrix} 1 & 1 \\ 1 & 1 \end{pmatrix}.
+$$
+
+Nothing has been gained yet: $\rho_+$ carries exactly the information $\ket{+}$
+carried, minus the global phase, which was never physical anyway. That last
+clause is the first small win. Replacing $\ket\psi$ by $e^{i\varphi}\ket\psi$
+leaves $\rho$ untouched, because the phase multiplies the ket and its conjugate
+cancels it in the bra. The density matrix is the state with the unphysical
+degree of freedom already quotiented out.
+
+<Margin label="Outer versus inner">
+$\braket{\psi}{\psi}$ is a number, the norm squared. $\ketbra{\psi}{\psi}$ is a
+matrix, and for a normalised state it is the projector onto the line spanned by
+$\ket\psi$. Both are written with the same two symbols in the opposite order,
+which is why misreading one for the other is the standard first mistake.
+</Margin>
+
+The real win comes from what else the formalism can hold. A density matrix does
+not have to be a single outer product. Any convex combination
+
+$$
+\rho = \sum_i p_i \ketbra{\psi_i}{\psi_i},
+\qquad p_i \ge 0, \quad \sum_i p_i = 1,
+$$
+
+is also a legitimate state, and it describes a situation the vector formalism
+cannot: an ensemble in which the system is $\ket{\psi_i}$ with probability $p_i$
+and you do not know which. Reduced states of entangled systems, outputs of noisy
+channels and the halves of Bell pairs all live here.
+
+## The three conditions
+
+A square matrix $\rho$ on $\C^d$ is a density matrix exactly when it satisfies
+three conditions. They are the whole definition, and checking them is a
+mechanical task you should be able to do on a $2 \times 2$ matrix in your head.
+
+**Hermitian**: $\rho\dg = \rho$. This makes the eigenvalues real, which they must
+be because they are going to be probabilities.
+
+**Unit trace**: $\tr\rho = 1$. The probabilities in the ensemble sum to one.
+
+**Positive semidefinite**: $\bra{\phi}\rho\ket{\phi} \ge 0$ for every $\ket\phi$,
+equivalently every eigenvalue is at least zero. Without this you could produce a
+negative probability for some measurement outcome.
+
+The third is the one people skip and the one that actually bites. Consider
+
+$$
+B = \begin{pmatrix} 0.5 & 0.8 \\ 0.8 & 0.5 \end{pmatrix}.
+$$
+
+It is Hermitian and its trace is $1$, so two of three conditions hold. Its
+eigenvalues are $1.3$ and $-0.3$, so it is not a state. Measuring the observable
+whose eigenvector is $\ket{-}$ would return probability $-0.3$. Matrices like
+this come out of real tomography fits, which is why T4.M2.L4 spends a section on
+what to do when your reconstruction lands outside the set of states.
+
+## Expectations without the Born rule
+
+Given an observable $A$, the expected value in state $\rho$ is
+
+$$
+\expect{A}_\rho = \tr(\rho A).
+$$
+
+One formula, valid for pure and mixed states alike. Check it against what you
+already know. For a pure state $\rho = \ketbra{\psi}{\psi}$,
+
+$$
+\tr\big(\ketbra{\psi}{\psi} A\big) = \bra{\psi} A \ket{\psi},
+$$
+
+using cyclicity of the trace. That is the T1 expression, recovered exactly.
+
+Run the numbers on two states. For $\rho_+ = \ketbra{+}{+}$,
+
+$$
+\expect{X} = 1, \qquad \expect{Y} = 0, \qquad \expect{Z} = 0.
+$$
+
+For the classical mixture $\rho_m = 0.75\,\ketbra{0}{0} + 0.25\,\ketbra{1}{1}$,
+which is the diagonal matrix $\mathrm{diag}(0.75, 0.25)$,
+
+$$
+\expect{Z} = 0.75 - 0.25 = 0.5, \qquad \expect{X} = 0, \qquad \expect{Y} = 0.
+$$
+
+Outcome probabilities are the special case where $A$ is a projector. The chance
+of outcome $m$ under a projective measurement $\{P_m\}$ is $\tr(P_m \rho)$, and
+the post-measurement state is $P_m \rho P_m / \tr(P_m\rho)$. Every Born-rule
+computation you did in T1 is this expression with $\rho$ a rank-one projector.
+
+## Purity, in one number
+
+The diagonal of $\rho_m$ above looks like a probability distribution over
+$\ket 0$ and $\ket 1$, and it is. But $\rho_+$ also has diagonal entries that
+look like a distribution, $(0.5, 0.5)$, and $\rho_+$ is a pure state. The
+diagonal alone cannot tell them apart. The invariant that can is
+
+$$
+\gamma = \tr(\rho^2),
+$$
+
+the purity. It equals $1$ if and only if $\rho$ is a pure state, and it drops to
+a minimum of $1/d$ for the maximally mixed state $I/d$.
+
+| state | $\rho$ | $\tr(\rho^2)$ | pure? |
+| --- | --- | --- | --- |
+| $\ket{+}$ | $\frac12\big(\begin{smallmatrix}1&1\\1&1\end{smallmatrix}\big)$ | $1.000000$ | yes |
+| $\mathrm{diag}(0.75, 0.25)$ | $\frac14\big(\begin{smallmatrix}3&0\\0&1\end{smallmatrix}\big)$ | $0.625000$ | no |
+| $I/2$ | $\frac12\big(\begin{smallmatrix}1&0\\0&1\end{smallmatrix}\big)$ | $0.500000$ | no |
+
+The two states with identical diagonals, $\rho_+$ and $I/2$, are separated by
+purity $1$ against $0.5$. The off-diagonal entries are what distinguishes them,
+and those entries are called coherences for exactly that reason. The next lesson
+makes their disappearance the definition of decoherence.
+
+<Callout tone="gotcha" title="The trace is not the norm">
+For a pure state $\tr\rho = \braket{\psi}{\psi} = 1$, so trace and norm agree and
+it is easy to conflate them. They come apart on mixed states: $\tr\rho = 1$
+always, while $\tr(\rho^2) < 1$. If a calculation gives $\tr\rho \ne 1$ you have
+lost normalisation; if it gives $\tr(\rho^2) > 1$ you have made an arithmetic
+error, because no state can exceed one.
+</Callout>
+
+## The Bloch parametrisation, previewed
+
+On one qubit the three conditions have a geometric solution. Any Hermitian
+$2\times 2$ matrix with unit trace can be written
+
+$$
+\rho = \frac{1}{2}\big(I + r_x X + r_y Y + r_z Z\big),
+$$
+
+and positivity is exactly the condition $\lvert \vec r\rvert \le 1$. The three
+components are the three expectations, $r_k = \tr(\rho \sigma_k)$, so the vector
+is not an abstraction: it is what you measure. T4.M1.L3 works in this picture
+throughout. For now note the two entries in the table: $\ket{+}$ has
+$\vec r = (1,0,0)$, on the surface, and $I/2$ has $\vec r = (0,0,0)$, at the
+centre.
+
+<Check question="A one-qubit state has $\expect{X} = 0.3$, $\expect{Y} = 0$ and $\expect{Z} = 0.4$. Write its density matrix, give its eigenvalues and purity, and say whether it is pure.">
+Substituting into the Bloch form,
+
+$$
+\rho = \frac12\begin{pmatrix} 1 + 0.4 & 0.3 \\ 0.3 & 1 - 0.4 \end{pmatrix}
+= \begin{pmatrix} 0.7 & 0.15 \\ 0.15 & 0.3 \end{pmatrix}.
+$$
+
+The Bloch radius is $\lvert \vec r\rvert = \sqrt{0.09 + 0.16} = 0.5$, which is
+inside the ball, so the state is legitimate and mixed. The eigenvalues are
+$(1 \pm \lvert \vec r \rvert)/2 = 0.75$ and $0.25$, both non-negative as
+required, and the purity is
+
+$$
+\tr(\rho^2) = \frac{1 + \lvert\vec r\rvert^2}{2} = \frac{1 + 0.25}{2} = 0.625,
+$$
+
+below $1$, so not pure. Notice this is the same purity as
+$\mathrm{diag}(0.75,0.25)$ in the table, and the same eigenvalues: the two states
+differ only by a rotation, which purity cannot see.
+</Check>
+
+## Where this comes from
+
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  chapter 2.4, for the three-condition characterisation and the ensemble
+  interpretation used above.
+- [Preskill, Ph219](http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html),
+  chapter 2, which introduces the density operator by asking exactly the
+  question this lesson opens with.
+- [PennyLane Codebook](https://pennylane.ai/codebook), for the numerical habit of
+  checking Hermiticity, trace and eigenvalues before trusting any matrix you
+  built.
