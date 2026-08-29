@@ -68,7 +68,14 @@ const envSchema = z.object({
   SERVICE_JWT_PRIVATE_KEY: z.string().optional(),
   SERVICE_JWT_PUBLIC_KEY: z.string().optional(),
   SERVICE_JWT_ISSUER: z.string().default('https://api.redquant.io'),
+  // Audiences the gateway MINTS for, i.e. the services it calls out to.
   SERVICE_JWT_AUDIENCE: csv.default('quantum-kernel,grader,ai-tutor'),
+  // The audience the gateway ACCEPTS on the way back in, and deliberately not
+  // one of the above. A token minted for `ai-tutor` is handed to a third party
+  // over the wire; if the gateway also accepted it inbound, whoever read it out
+  // of the tutor's logs could replay it here as that user. Outbound and inbound
+  // are different directions and must not share a credential.
+  SERVICE_JWT_INBOUND_AUDIENCE: z.string().min(1).default('api-gateway'),
   SERVICE_JWT_TTL_SECONDS: z.coerce.number().int().positive().max(900).default(300),
 
   MAGIC_LINK_TTL_SECONDS: z.coerce.number().int().positive().default(900),
@@ -127,12 +134,67 @@ const envSchema = z.object({
   DEGRADE_MAX_QUBITS: z.coerce.number().int().positive().optional(),
 });
 
+/**
+ * The development placeholders that ship in `.env.example`.
+ *
+ * They exist so a checkout boots with one command. They are also in the public
+ * repository, so a production process that fell back to one of them would be
+ * signing CSRF tokens and encrypting TOTP seeds with a published key. The
+ * refinement below turns that from a silent default into a startup failure.
+ */
+const DEV_PLACEHOLDER_SECRETS: Record<string, string> = {
+  CSRF_SECRET: 'dev-only-csrf-secret-change-me-0000000000',
+  PII_HASH_SECRET: 'dev-only-pii-hash-secret-change-me-000000',
+  MFA_ENCRYPTION_KEY: 'dev-only-mfa-encryption-key-change-me-000',
+};
+
+/** Configuration that is optional in development but must be present in production. */
+const REQUIRED_IN_PRODUCTION = ['SERVICE_JWT_PRIVATE_KEY', 'SERVICE_JWT_PUBLIC_KEY'] as const;
+
+const productionSafe = <T extends z.ZodTypeAny>(schema: T) =>
+  schema.superRefine((value: unknown, ctx: z.RefinementCtx) => {
+    const env = value as Record<string, unknown>;
+    if (env.NODE_ENV !== 'production') return;
+
+    for (const [key, placeholder] of Object.entries(DEV_PLACEHOLDER_SECRETS)) {
+      if (env[key] === placeholder) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message:
+            'is still the development placeholder from .env.example. Generate a unique value ' +
+            '(for example `openssl rand -base64 48`) before running in production.',
+        });
+      }
+    }
+
+    for (const key of REQUIRED_IN_PRODUCTION) {
+      if (!env[key]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: 'is required in production; an ephemeral key pair is a development-only convenience.',
+        });
+      }
+    }
+
+    if (env.SESSION_COOKIE_SECURE !== true) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SESSION_COOKIE_SECURE'],
+        message: 'must be true in production; a session cookie without Secure travels over plain HTTP.',
+      });
+    }
+  });
+
+const validatedEnvSchema = productionSafe(envSchema);
+
 export type Env = z.infer<typeof envSchema>;
 
 let cached: Env | null = null;
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  const parsed = envSchema.safeParse(source);
+  const parsed = validatedEnvSchema.safeParse(source);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  ${i.path.join('.') || '(root)'}: ${i.message}`)

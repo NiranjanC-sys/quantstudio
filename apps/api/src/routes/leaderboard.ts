@@ -188,6 +188,8 @@ export const leaderboardRoutes: FastifyPluginAsync = async (app) => {
       .select({
         id: contests.id,
         slug: contests.slug,
+        kind: contests.kind,
+        orgId: contests.orgId,
         status: contests.status,
         startsAt: contests.startsAt,
         endsAt: contests.endsAt,
@@ -200,6 +202,25 @@ export const leaderboardRoutes: FastifyPluginAsync = async (app) => {
 
     const contest = rows[0];
     if (!contest) throw problem.notFound('Contest');
+
+    /**
+     * A private contest is an organisation's internal event: its board names
+     * that organisation's members and what they scored. The contests module
+     * hides private contests from its own listing, and this one — reachable
+     * with nothing but the contest id, and `Cache-Control: public` — has to
+     * apply the same rule or it becomes the way around it.
+     */
+    if (contest.kind === 'private') {
+      const auth = request.auth;
+      if (!auth) throw problem.unauthorized();
+      if (auth.role !== 'admin' && (!contest.orgId || auth.orgId !== contest.orgId)) {
+        throw problem.forbidden('This contest is private to another organisation.');
+      }
+    }
+
+    // A private board must never sit in a shared cache, whatever it says below.
+    const cacheFor = (seconds: number): string =>
+      contest.kind === 'private' ? 'private, no-store' : cachePublic(seconds);
 
     const now = new Date();
     const frozen = isFrozen(contest as ContestWindow, now);
@@ -219,7 +240,7 @@ export const leaderboardRoutes: FastifyPluginAsync = async (app) => {
             score: entry.points,
           })),
         );
-        return reply.header('cache-control', cachePublic(30)).send({
+        return reply.header('cache-control', cacheFor(30)).send({
           frozen,
           final: contest.status === 'finalised',
           source: 'snapshot',
@@ -249,7 +270,7 @@ export const leaderboardRoutes: FastifyPluginAsync = async (app) => {
       })),
     );
 
-    return reply.header('cache-control', cachePublic(10)).send({
+    return reply.header('cache-control', cacheFor(10)).send({
       frozen,
       final: false,
       source: 'live',

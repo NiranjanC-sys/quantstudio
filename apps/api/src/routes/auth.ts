@@ -44,6 +44,24 @@ import { authed, rateLimit, readBody, readParams, readQuery, useIdempotency } fr
 const mfaChallengeKey = (id: string): string => `mfa:chal:${id}`;
 const MFA_CHALLENGE_TTL_SECONDS = 300;
 
+/**
+ * A step-up challenge is burned after this many wrong codes. Without a ceiling
+ * the challenge is a 300-second window in which a six-digit code can be guessed
+ * as often as the per-IP bucket allows, which a botnet turns into a certainty.
+ */
+const MFA_CHALLENGE_MAX_ATTEMPTS = 5;
+
+/**
+ * Replay cache for TOTP codes. RFC 6238 §5.2: "the verifier MUST NOT accept the
+ * second attempt of the OTP after the successful validation". `verifyTotp`
+ * returns the counter that matched precisely so the caller can spend it; this is
+ * where it is spent. Two extra periods of TTL covers the whole skew window.
+ */
+const totpUsedKey = (methodId: string, counter: number): string =>
+  `mfa:totp:used:${methodId}:${counter}`;
+const TOTP_REPLAY_TTL_SECONDS =
+  DEFAULT_TOTP.periodSeconds * (DEFAULT_TOTP.window * 2 + 2);
+
 const emailSchema = z.string().trim().toLowerCase().email().max(320);
 const handleSchema = z
   .string()
@@ -153,6 +171,53 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     keyBy: (request) => `ip:${request.clientIpHash ?? 'unknown'}`,
   });
 
+  /**
+   * Every sign-in flow ends in a browser redirect whose target arrives from the
+   * caller. An unchecked target is an open redirect: it turns the gateway into a
+   * credible-looking hop into a phishing page, arriving immediately after the
+   * user has been told they signed in successfully. Only our own origins — and
+   * relative paths, which are ours by construction — survive this.
+   */
+  function safeRedirect(candidate: string | null | undefined): string {
+    const fallback = env.WEB_PUBLIC_URL;
+    if (!candidate) return fallback;
+
+    // `//evil.example` is protocol-relative, not a path.
+    if (candidate.startsWith('/') && !candidate.startsWith('//')) {
+      return new URL(candidate, env.WEB_PUBLIC_URL).href;
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(candidate);
+    } catch {
+      return fallback;
+    }
+
+    const allowed = new Set<string>([
+      new URL(env.WEB_PUBLIC_URL).origin,
+      new URL(env.API_PUBLIC_URL).origin,
+      ...env.CORS_ALLOWED_ORIGINS,
+    ]);
+    return allowed.has(parsed.origin) ? parsed.href : fallback;
+  }
+
+  /**
+   * Spends the counter a TOTP code matched. Returns false when the same code has
+   * already been accepted, which is what makes a shoulder-surfed or phished code
+   * useless for the remainder of its 90-second window.
+   */
+  async function claimTotpCounter(methodId: string, counter: number): Promise<boolean> {
+    const fresh = await redis.client.set(
+      totpUsedKey(methodId, counter),
+      '1',
+      'EX',
+      TOTP_REPLAY_TTL_SECONDS,
+      'NX',
+    );
+    return fresh === 'OK';
+  }
+
   async function record(
     userId: string | null,
     kind: string,
@@ -219,6 +284,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     amr: Amr[],
     mfaSatisfied: boolean,
   ): Promise<{ userId: string; role: UserRole; mfaSatisfied: boolean }> {
+    // §8, session fixation: the identifier the browser arrived with never
+    // survives an authentication. A fresh one is minted below; the presented one
+    // is destroyed rather than left alive in Redis with its cookie overwritten.
+    const presented = request.cookies[env.SESSION_COOKIE_NAME];
+    if (presented) {
+      await sessions.destroy(presented, 'superseded_by_login').catch(() => undefined);
+    }
+
     const resolved = await entitlementService.resolve(user.id);
     const issued = await sessions.create({
       userId: user.id,
@@ -581,7 +654,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     );
     const { expiresAt } = await magicLinks.issue({
       email: input.email,
-      redirectTo: input.redirectTo ?? env.WEB_PUBLIC_URL,
+      redirectTo: safeRedirect(input.redirectTo),
     });
     // Always 202, whether or not the address is registered.
     return reply.status(202).send({ sent: true, expiresAt: expiresAt.toISOString() });
@@ -624,7 +697,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     await record(user.id, 'login', true, request, { method: 'magic_link' });
     await establishSession(request, reply, user, ['link'], false);
-    return reply.redirect(consumed.redirectTo, 303);
+    return reply.redirect(safeRedirect(consumed.redirectTo), 303);
   });
 
   // -------------------------------------------------------------- OIDC/OAuth
@@ -652,7 +725,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     const started = await oidc.begin({
       provider,
-      redirectTo: redirectTo ?? env.WEB_PUBLIC_URL,
+      redirectTo: safeRedirect(redirectTo),
       linkUserId,
     });
 
@@ -749,7 +822,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     await record(user.id, 'login', true, request, { method: 'oidc', provider });
     await establishSession(request, reply, user, ['oidc'], false);
-    return reply.redirect(stateRecord.redirectTo, 303);
+    return reply.redirect(safeRedirect(stateRecord.redirectTo), 303);
   });
 
   // ------------------------------------------------------------------- SAML
@@ -785,7 +858,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const relayState = generateOpaqueToken(24);
     await redis.client.set(
       `saml:relay:${relayState}`,
-      redirectTo ?? env.WEB_PUBLIC_URL,
+      safeRedirect(redirectTo),
       'EX',
       600,
     );
@@ -816,24 +889,82 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       throw new ApiError('unauthorized', 'The SAML assertion released no email address.');
     }
 
+    /**
+     * A SAML connection is a signing authority, so the only thing keeping one
+     * institution's IdP from speaking for another institution's — or a
+     * consumer — account is this check. §8 scopes an org to an email domain
+     * "verified by DNS TXT"; an assertion is confined to that domain, plus the
+     * accounts this org already legitimately owns.
+     *
+     * Without it, any customer with a working connection can assert
+     * `victim@gmail.com` and be handed that account, or pre-create it so a
+     * future sign-up lands in their tenant.
+     */
+    const ownerOrg = await db.primary
+      .select({ emailDomain: orgs.emailDomain, domainVerified: orgs.domainVerified })
+      .from(orgs)
+      .where(eq(orgs.id, connection.orgId))
+      .limit(1);
+
+    const claimedDomain = ownerOrg[0]?.domainVerified
+      ? (ownerOrg[0].emailDomain?.toLowerCase() ?? null)
+      : null;
+    const assertedDomain = email.split('@')[1]?.toLowerCase() ?? null;
+    const insideOwnDomain = claimedDomain !== null && assertedDomain === claimedDomain;
+
+    // The NameID lookup is scoped to this connection's org: a globally unique
+    // `(provider, provider_account_id)` would otherwise let one IdP claim a
+    // NameID another IdP had already registered.
     const linked = await db.primary
       .select({ userId: accounts.userId })
       .from(accounts)
       .where(
-        and(eq(accounts.provider, 'saml'), eq(accounts.providerAccountId, profile.nameId)),
+        and(
+          eq(accounts.provider, 'saml'),
+          eq(accounts.providerAccountId, profile.nameId),
+          eq(accounts.orgId, connection.orgId),
+        ),
       )
       .limit(1);
 
     let user = linked[0] ? await loadUserById(db.primary, linked[0].userId) : null;
-    user ??= await loadUserByEmail(email);
 
     if (!user) {
+      const byEmail = await loadUserByEmail(email);
+      if (byEmail) {
+        // Matching an existing account by email is only safe when this org owns
+        // the domain, or the account is already a member of this org.
+        if (!insideOwnDomain && byEmail.orgId !== connection.orgId) {
+          await record(byEmail.id, 'login', false, request, {
+            method: 'saml',
+            org,
+            reason: 'domain_not_owned',
+          });
+          throw problem.forbidden(
+            'This identity provider is not authorised for that email domain.',
+          );
+        }
+        user = byEmail;
+      }
+    }
+
+    if (!user) {
+      if (!insideOwnDomain) {
+        await record(null, 'login', false, request, {
+          method: 'saml',
+          org,
+          reason: 'domain_not_owned',
+        });
+        throw problem.forbidden(
+          'This identity provider is not authorised for that email domain.',
+        );
+      }
       user = await createUser({
         email,
         displayName: profile.displayName ?? email.split('@')[0] ?? 'Learner',
         handle: await allocateHandle(email.split('@')[0] ?? 'learner'),
         passwordHash: null,
-        // The IdP is authoritative for its own domain.
+        // The IdP is authoritative for its own verified domain, and only that.
         emailVerified: true,
         orgId: connection.orgId,
       });
@@ -873,7 +1004,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     await record(user.id, 'login', true, request, { method: 'saml', org });
     await establishSession(request, reply, user, ['saml'], false);
-    return reply.redirect(relay ?? env.WEB_PUBLIC_URL, 303);
+    return reply.redirect(safeRedirect(relay), 303);
   });
 
   // --------------------------------------------------------------- passkeys
@@ -940,10 +1071,40 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       throw problem.forbidden('This account is not active.');
     }
 
-    await record(user.id, 'login', true, request, { method: 'webauthn' });
-    // A passkey is inherently multi-factor (possession + user verification), so
-    // it satisfies the §8 MFA requirement on its own.
-    const session = await establishSession(request, reply, user, ['webauthn'], true);
+    /**
+     * A passkey is multi-factor only when the authenticator actually verified
+     * the user — possession *plus* a PIN or biometric. `userVerification` is
+     * requested as "preferred", so an authenticator is free to skip it, and a
+     * silent `mfaSatisfied: true` would hand an instructor session to whoever
+     * holds the key. When it was skipped, the §8 roles fall back to the ordinary
+     * second-factor challenge.
+     */
+    if (
+      !verified.userVerified &&
+      roleRequiresMfa(user.role) &&
+      (await needsSecondFactor(user))
+    ) {
+      const challengeId = await issueMfaChallenge(user, ['webauthn']);
+      await record(user.id, 'login', true, request, { method: 'webauthn', mfa: 'required' });
+      return reply.status(200).send({
+        mfaRequired: true,
+        challengeId,
+        methods: ['totp', 'recovery_code'],
+        expiresInSeconds: MFA_CHALLENGE_TTL_SECONDS,
+      });
+    }
+
+    await record(user.id, 'login', true, request, {
+      method: 'webauthn',
+      userVerified: verified.userVerified,
+    });
+    const session = await establishSession(
+      request,
+      reply,
+      user,
+      ['webauthn'],
+      verified.userVerified,
+    );
     return reply.send({ session });
   });
 
@@ -1031,7 +1192,8 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const secret = decryptSecret(env.MFA_ENCRYPTION_KEY, method.secret);
     if (!secret) throw problem.internal('Stored TOTP secret could not be decrypted.');
 
-    if (!verifyTotp(secret, code).valid) {
+    const attempt = verifyTotp(secret, code);
+    if (!attempt.valid || !(await claimTotpCounter(method.id, attempt.counter as number))) {
       await record(auth.userId, 'mfa_confirm', false, request);
       throw problem.unauthorized('That code is not valid.');
     }
@@ -1053,8 +1215,31 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         .where(eq(users.id, auth.userId));
     });
 
-    await sessions.destroyAllForUser(auth.userId, 'mfa_enrolled', auth.sessionKey);
-    await sessions.patch(auth.sessionKey, { mfaSatisfied: true, amr: [...auth.amr, 'otp'] });
+    /**
+     * §8: rotate on privilege change. This request *is* a privilege change —
+     * `mfaSatisfied` goes false → true, which is what unlocks the instructor and
+     * org_admin surface — so the identifier is replaced rather than patched in
+     * place. Patching would leave a token that was captured before the step-up
+     * silently holding the elevated authority.
+     */
+    const presented = request.cookies[env.SESSION_COOKIE_NAME];
+    const rotated = presented
+      ? await sessions.rotate(presented, {
+          mfaSatisfied: true,
+          amr: [...auth.amr, 'otp'],
+          privilegeVersion: auth.privilegeVersion + 1,
+        })
+      : null;
+
+    if (rotated) setSessionCookie(env, reply, rotated.token);
+
+    // Every *other* session the account holds predates the new factor and is
+    // invalidated; the one we just minted is the exception.
+    await sessions.destroyAllForUser(
+      auth.userId,
+      'mfa_enrolled',
+      rotated?.sessionKey ?? auth.sessionKey,
+    );
     await record(auth.userId, 'mfa_confirm', true, request);
 
     return reply.send({ enrolled: true });
@@ -1090,10 +1275,21 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       }),
     );
 
+    // §9's exponential backoff is recorded by this endpoint on failure; it has
+    // to be honoured here too, or the second factor is the one step of the login
+    // that a bot may retry freely.
+    const ipHash = request.clientIpHash ?? 'unknown';
+    const backoff = await limiter.authBackoffRemainingSeconds(ipHash);
+    if (backoff > 0) {
+      throw new ApiError('rate-limited', 'Too many failed sign-in attempts from this network.', {
+        retryAfterSeconds: backoff,
+      });
+    }
+
     const raw = await redis.client.get(mfaChallengeKey(input.challengeId));
     if (!raw) throw problem.unauthorized('That challenge has expired. Sign in again.');
 
-    const challenge = JSON.parse(raw) as { userId: string; amr: Amr[] };
+    const challenge = JSON.parse(raw) as { userId: string; amr: Amr[]; attempts?: number };
     const user = await loadUserById(db.primary, challenge.userId);
     if (!user || user.status !== 'active') {
       throw problem.forbidden('This account is not active.');
@@ -1109,7 +1305,12 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     if (totp && /^\d{6}$/.test(input.code)) {
       const secret = decryptSecret(env.MFA_ENCRYPTION_KEY, totp.secret);
-      if (secret && verifyTotp(secret, input.code).valid) satisfiedWith = 'otp';
+      const attempt = secret ? verifyTotp(secret, input.code) : null;
+      // A code is spent the moment it is accepted: the same six digits must not
+      // buy a second session inside the skew window.
+      if (attempt?.valid && (await claimTotpCounter(totp.id, attempt.counter as number))) {
+        satisfiedWith = 'otp';
+      }
     }
 
     if (!satisfiedWith) {
@@ -1127,13 +1328,28 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     }
 
     if (!satisfiedWith) {
-      await limiter.recordAuthFailure(request.clientIpHash ?? 'unknown');
-      await record(user.id, 'mfa_challenge', false, request);
+      // A wrong code costs an attempt. A challenge that survived every wrong
+      // code would be a 300-second window in which six digits can be guessed
+      // exhaustively; burning it after `MFA_CHALLENGE_MAX_ATTEMPTS` leaves room
+      // for a typo and nothing else.
+      const attempts = (challenge.attempts ?? 0) + 1;
+      if (attempts >= MFA_CHALLENGE_MAX_ATTEMPTS) {
+        await redis.client.del(mfaChallengeKey(input.challengeId));
+      } else {
+        // KEEPTTL: the retry budget must not extend the challenge's lifetime.
+        await redis.client.set(
+          mfaChallengeKey(input.challengeId),
+          JSON.stringify({ ...challenge, attempts }),
+          'KEEPTTL',
+        );
+      }
+
+      await limiter.recordAuthFailure(ipHash);
+      await record(user.id, 'mfa_challenge', false, request, { attempts });
       throw problem.unauthorized('That code is not valid.');
     }
 
-    // Single-use: the challenge is destroyed whether or not the code was right,
-    // but only after a success is it exchanged for a session.
+    // Single-use: a challenge is exchanged for a session exactly once.
     await redis.client.del(mfaChallengeKey(input.challengeId));
     await record(user.id, 'mfa_challenge', true, request, { method: satisfiedWith });
 

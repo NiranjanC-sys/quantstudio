@@ -18,39 +18,192 @@ export class ParseError extends Error {
   }
 }
 
-const CONSTANTS: Record<string, number> = { pi: Math.PI, tau: 2 * Math.PI, euler: Math.E, e: Math.E };
+/**
+ * Angle constants the subset understands.
+ *
+ * Null-prototyped on purpose: a plain object literal would answer `'constructor'
+ * in CONSTANTS` with `true`, which is exactly how a name-whitelist over an
+ * object literal leaks the whole `Object.prototype` chain to a caller.
+ */
+const CONSTANTS: Record<string, number> = Object.assign(Object.create(null) as Record<string, number>, {
+  pi: Math.PI,
+  tau: 2 * Math.PI,
+  euler: Math.E,
+  e: Math.E,
+});
 
-/** Evaluate an arithmetic expression over numbers, pi, and declared symbols. */
+/** Longest expression we will even tokenise. Angles are short; anything longer is not one. */
+const MAX_EXPR_LENGTH = 512;
+
+type Tok =
+  | { kind: 'num'; value: number }
+  | { kind: 'ident'; value: string }
+  | { kind: 'op'; value: '+' | '-' | '*' | '/' | '(' | ')' };
+
+/**
+ * Tokenise an angle expression.
+ *
+ * The grammar is closed: decimal numbers (with an optional exponent),
+ * identifiers, the four arithmetic operators and parentheses. There is no
+ * escape hatch — no strings, no property access, no call syntax — so nothing a
+ * learner types can be interpreted as anything but arithmetic.
+ */
+function tokenise(src: string, line: number, col: number): Tok[] {
+  const toks: Tok[] = [];
+  let i = 0;
+  while (i < src.length) {
+    const ch = src[i]!;
+    if (ch === ' ' || ch === '\t') {
+      i++;
+      continue;
+    }
+    if (ch === '+' || ch === '-' || ch === '*' || ch === '/' || ch === '(' || ch === ')') {
+      toks.push({ kind: 'op', value: ch });
+      i++;
+      continue;
+    }
+    if ((ch >= '0' && ch <= '9') || (ch === '.' && src[i + 1] !== undefined && src[i + 1]! >= '0' && src[i + 1]! <= '9')) {
+      const start = i;
+      while (i < src.length && src[i]! >= '0' && src[i]! <= '9') i++;
+      if (src[i] === '.') {
+        i++;
+        while (i < src.length && src[i]! >= '0' && src[i]! <= '9') i++;
+      }
+      // An exponent only counts as part of the number when it is well formed;
+      // otherwise `e` is the Euler constant and `2*e` still means what it says.
+      if (src[i] === 'e' || src[i] === 'E') {
+        let j = i + 1;
+        if (src[j] === '+' || src[j] === '-') j++;
+        if (src[j] !== undefined && src[j]! >= '0' && src[j]! <= '9') {
+          j++;
+          while (j < src.length && src[j]! >= '0' && src[j]! <= '9') j++;
+          i = j;
+        }
+      }
+      const text = src.slice(start, i);
+      const value = Number(text);
+      if (!Number.isFinite(value)) throw new ParseError(`unsupported expression '${src}'`, line, col);
+      toks.push({ kind: 'num', value });
+      continue;
+    }
+    if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch === '_') {
+      const start = i;
+      while (
+        i < src.length &&
+        ((src[i]! >= 'a' && src[i]! <= 'z') ||
+          (src[i]! >= 'A' && src[i]! <= 'Z') ||
+          (src[i]! >= '0' && src[i]! <= '9') ||
+          src[i] === '_')
+      ) {
+        i++;
+      }
+      toks.push({ kind: 'ident', value: src.slice(start, i) });
+      continue;
+    }
+    throw new ParseError(`unsupported expression '${src}'`, line, col);
+  }
+  return toks;
+}
+
+/**
+ * Evaluate an arithmetic expression over numbers, pi, and declared symbols.
+ *
+ * A recursive-descent evaluator rather than `new Function`: the parser can only
+ * ever produce a number, so a crafted angle has no reachable path to the JS
+ * engine no matter what the surrounding statement parser lets through.
+ *
+ *   expr    := term (('+' | '-') term)*
+ *   term    := unary (('*' | '/') unary)*
+ *   unary   := ('+' | '-') unary | primary
+ *   primary := number | identifier | '(' expr ')'
+ */
 export function evalExpr(src: string, symbols: Set<string>, line: number, col: number): Param {
   const trimmed = src.trim();
   if (symbols.has(trimmed)) return { symbol: trimmed };
-  // Reject anything that is not a safe arithmetic expression before evaluating.
-  if (!/^[0-9a-zA-Z_+\-*/(). ]*$/.test(trimmed)) {
-    throw new ParseError(`unsupported expression '${trimmed}'`, line, col);
+  if (trimmed.length > MAX_EXPR_LENGTH) {
+    throw new ParseError(`expression is too long (${trimmed.length} characters)`, line, col);
   }
-  const identifiers = trimmed.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) ?? [];
-  for (const id of identifiers) {
-    if (!(id in CONSTANTS) && !symbols.has(id)) {
-      throw new ParseError(`unknown identifier '${id}'`, line, col);
-    }
-    if (symbols.has(id)) {
-      throw new ParseError(`parameter '${id}' cannot be combined with arithmetic here`, line, col);
-    }
-  }
-  const scope = Object.keys(CONSTANTS);
-  const values = scope.map((k) => CONSTANTS[k]!);
-  try {
-    // eslint-disable-next-line no-new-func
-    const fn = new Function(...scope, `"use strict"; return (${trimmed});`) as (...a: number[]) => number;
-    const v = fn(...values);
-    if (typeof v !== 'number' || !Number.isFinite(v)) {
-      throw new ParseError(`expression '${trimmed}' is not a finite number`, line, col);
-    }
-    return v;
-  } catch (e) {
-    if (e instanceof ParseError) throw e;
+
+  const toks = tokenise(trimmed, line, col);
+  let pos = 0;
+  const peek = (): Tok | undefined => toks[pos];
+  const fail: () => never = () => {
     throw new ParseError(`cannot evaluate '${trimmed}'`, line, col);
+  };
+
+  const lookup = (name: string): number => {
+    if (symbols.has(name)) {
+      throw new ParseError(`parameter '${name}' cannot be combined with arithmetic here`, line, col);
+    }
+    if (!Object.prototype.hasOwnProperty.call(CONSTANTS, name)) {
+      throw new ParseError(`unknown identifier '${name}'`, line, col);
+    }
+    return CONSTANTS[name]!;
+  };
+
+  const parseExpr = (depth: number): number => {
+    if (depth > 32) fail();
+    let value = parseTerm(depth);
+    for (;;) {
+      const t = peek();
+      if (t?.kind === 'op' && (t.value === '+' || t.value === '-')) {
+        pos++;
+        const rhs = parseTerm(depth);
+        value = t.value === '+' ? value + rhs : value - rhs;
+      } else return value;
+    }
+  };
+
+  const parseTerm = (depth: number): number => {
+    let value = parseUnary(depth);
+    for (;;) {
+      const t = peek();
+      if (t?.kind === 'op' && (t.value === '*' || t.value === '/')) {
+        pos++;
+        const rhs = parseUnary(depth);
+        value = t.value === '*' ? value * rhs : value / rhs;
+      } else return value;
+    }
+  };
+
+  const parseUnary = (depth: number): number => {
+    const t = peek();
+    if (t?.kind === 'op' && (t.value === '+' || t.value === '-')) {
+      pos++;
+      const v = parseUnary(depth + 1);
+      return t.value === '-' ? -v : v;
+    }
+    return parsePrimary(depth);
+  };
+
+  const parsePrimary = (depth: number): number => {
+    const t = peek();
+    if (t === undefined) fail();
+    if (t.kind === 'num') {
+      pos++;
+      return t.value;
+    }
+    if (t.kind === 'ident') {
+      pos++;
+      return lookup(t.value);
+    }
+    if (t.value === '(') {
+      pos++;
+      const v = parseExpr(depth + 1);
+      const close = peek();
+      if (close?.kind !== 'op' || close.value !== ')') fail();
+      pos++;
+      return v;
+    }
+    return fail();
+  };
+
+  const value = parseExpr(0);
+  if (pos !== toks.length) fail();
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new ParseError(`expression '${trimmed}' is not a finite number`, line, col);
   }
+  return value;
 }
 
 function splitTopLevel(s: string, sep: string): string[] {

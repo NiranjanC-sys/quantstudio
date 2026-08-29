@@ -64,7 +64,10 @@ export async function createServiceTokenIssuer(env: Env): Promise<ServiceTokenIs
     publicKey = await importSPKI(publicPem, ALG);
   }
 
-  const allowedAudiences = new Set(env.SERVICE_JWT_AUDIENCE);
+  const allowedAudiences = new Set([
+    ...env.SERVICE_JWT_AUDIENCE,
+    env.SERVICE_JWT_INBOUND_AUDIENCE,
+  ]);
 
   return {
     async mint({ audience, subject, scope, extra }) {

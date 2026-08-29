@@ -15,7 +15,7 @@
 
 import { useMemo, useRef } from 'react';
 import { Canvas, useFrame, type ThreeElements } from '@react-three/fiber';
-import { OrbitControls, Text } from '@react-three/drei';
+import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { useThemeColors, usePrefersReducedMotion } from '@/hooks/useThemeColors';
 
@@ -74,42 +74,25 @@ function Wireframe({ color }: { color: string }) {
   );
 }
 
-function Axes({ color, textColor }: { color: string; textColor: string }) {
-  const axes: { dir: THREE.Vector3; label: string; ket: string }[] = [
-    { dir: new THREE.Vector3(1.3, 0, 0), label: 'x', ket: '|+⟩' },
-    { dir: new THREE.Vector3(0, 0, -1.3), label: 'y', ket: '|i⟩' },
-    { dir: new THREE.Vector3(0, 1.3, 0), label: 'z', ket: '|0⟩' },
-  ];
+function Axes({ color }: { color: string }) {
+  // Axis labels used to be drei <Text>, which is troika, which loads a font
+  // inside a web worker. Under our CSP that fetch fails, and the resulting
+  // uncaught TypeError broke hydration for the whole page: the sphere is not
+  // worth taking the document down for. The labels are DOM now, which also
+  // makes them readable by a screen reader, something WebGL text never was.
   const geometry = useMemo(() => {
-    const pts: THREE.Vector3[] = [];
-    for (const a of axes) {
-      pts.push(a.dir.clone().multiplyScalar(-1), a.dir.clone());
-    }
+    const pts: THREE.Vector3[] = [
+      new THREE.Vector3(-1.3, 0, 0), new THREE.Vector3(1.3, 0, 0),
+      new THREE.Vector3(0, 0, 1.3), new THREE.Vector3(0, 0, -1.3),
+      new THREE.Vector3(0, -1.3, 0), new THREE.Vector3(0, 1.3, 0),
+    ];
     return new THREE.BufferGeometry().setFromPoints(pts);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <group>
-      <lineSegments geometry={geometry}>
-        <lineBasicMaterial color={color} transparent opacity={0.8} />
-      </lineSegments>
-      {axes.map((a) => (
-        <Text
-          key={a.label}
-          position={a.dir.clone().multiplyScalar(1.16).toArray()}
-          fontSize={0.13}
-          color={textColor}
-          anchorX="center"
-          anchorY="middle"
-        >
-          {a.ket}
-        </Text>
-      ))}
-      <Text position={[0, -1.5, 0]} fontSize={0.13} color={textColor} anchorX="center" anchorY="middle">
-        |1⟩
-      </Text>
-    </group>
+    <lineSegments geometry={geometry}>
+      <lineBasicMaterial color={color} transparent opacity={0.8} />
+    </lineSegments>
   );
 }
 
@@ -196,7 +179,7 @@ export function BlochSphere({ vector, trace = [], label, size = 260, purity = 1 
         frameloop={reduced ? 'demand' : 'always'}
       >
         <Wireframe color={c['hairline-strong']} />
-        <Axes color={c['ink-faint']} textColor={c['ink-subtle']} />
+        <Axes color={c['ink-faint']} />
         <Trace points={tracePoints} color={c['accent-hover']} />
         <StateArrow vector={v} color={c.accent} purity={purity} />
         <OrbitControls
@@ -208,6 +191,12 @@ export function BlochSphere({ vector, trace = [], label, size = 260, purity = 1 
           autoRotate={false}
         />
       </Canvas>
+      <div className="rq-bloch-axes" aria-hidden="true">
+        <span className="rq-bloch-axis rq-bloch-axis-z">|0⟩</span>
+        <span className="rq-bloch-axis rq-bloch-axis-zneg">|1⟩</span>
+        <span className="rq-bloch-axis rq-bloch-axis-x">|+⟩</span>
+        <span className="rq-bloch-axis rq-bloch-axis-y">|i⟩</span>
+      </div>
       {label ? <div className="rq-bloch-label">{label}</div> : null}
     </div>
   );

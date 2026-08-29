@@ -8,6 +8,30 @@ import { Check } from './Check';
 import { Solution } from './Solution';
 import { Callout } from './Callout';
 
+/**
+ * Link protocols a lesson may point at.
+ *
+ * MDX compiles to JSX, so a lesson's `[text](javascript:...)` becomes a real
+ * anchor with a real href. Curriculum files are written by people who never
+ * touch application code and reviewed as prose, so the renderer refuses the
+ * script-bearing schemes rather than trusting review to catch them.
+ */
+const SAFE_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
+
+function safeHref(href: string | undefined): string | undefined {
+  if (href === undefined) return undefined;
+  const trimmed = href.trim();
+  // Relative, absolute-path, and same-page links have no protocol at all.
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+    try {
+      if (!SAFE_PROTOCOLS.has(new URL(trimmed).protocol)) return undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return trimmed;
+}
+
 export const mdxComponents: MDXComponents = {
   Circuit: LessonCircuit,
   Simulate: LessonCircuit,
@@ -28,5 +52,5 @@ export const mdxComponents: MDXComponents = {
   ),
   pre: (p: P<'pre'>) => <pre className="rq-lesson-pre" {...p} />,
   code: (p: P<'code'>) => <code className="rq-lesson-code" {...p} />,
-  a: (p: P<'a'>) => <a className="rq-lesson-a" {...p} />,
+  a: ({ href, ...p }: P<'a'>) => <a className="rq-lesson-a" href={safeHref(href)} {...p} />,
 };

@@ -113,6 +113,24 @@ export const securityPlugin = fp(async (app: FastifyInstance) => {
     if (SAFE_METHODS.has(request.method)) return;
     if (CSRF_EXEMPT.some((re) => re.test(request.url.split('?')[0] ?? ''))) return;
 
+    /**
+     * Origin check, before the token check, because it also covers the requests
+     * the token check cannot: the ones with no session yet. `/auth/login` and
+     * `/auth/mfa/challenge` accept `application/x-www-form-urlencoded` (the SAML
+     * binding needs a form parser in this scope), which makes a cross-site form
+     * POST to them a *simple* request — no preflight, so CORS never gets a vote.
+     * That is login CSRF: an attacker silently signs the victim's browser into
+     * an account the attacker controls and then reads what the victim does in it.
+     *
+     * A missing Origin is left alone: server-to-server callers and same-origin
+     * navigations legitimately omit it, and those paths are Bearer- or
+     * signature-authenticated rather than cookie-authenticated.
+     */
+    const origin = request.headers.origin;
+    if (typeof origin === 'string' && origin !== 'null' && !allowed.has(origin)) {
+      throw new ApiError('forbidden', 'Cross-origin state-changing request rejected.');
+    }
+
     const sessionCookie = request.cookies[env.SESSION_COOKIE_NAME];
     // Bearer-authenticated calls (API keys, service tokens) are not
     // cookie-driven and therefore not forgeable cross-site.
@@ -121,7 +139,7 @@ export const securityPlugin = fp(async (app: FastifyInstance) => {
     const header = request.headers['x-csrf-token'];
     const cookieToken = request.cookies[env.CSRF_COOKIE_NAME];
 
-    if (typeof header !== 'string' || !cookieToken || header !== cookieToken) {
+    if (typeof header !== 'string' || !cookieToken || !safeEqual(header, cookieToken)) {
       throw new ApiError('forbidden', 'CSRF token missing or does not match.');
     }
 

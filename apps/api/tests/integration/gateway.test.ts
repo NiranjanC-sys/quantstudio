@@ -839,7 +839,9 @@ describe.skipIf(skip)('gateway', () => {
 
       // A grader calls back with an internal service token (§8) — never a session.
       const serviceToken = await built.services.serviceTokens.mint({
-        audience: 'grader',
+        // The gateway's *inbound* audience. `grader` is what the gateway mints
+        // when it calls out; it is not a credential for calling back in.
+        audience: 'api-gateway',
         subject: session.userId,
         scope: ['contest:verdict'],
       });

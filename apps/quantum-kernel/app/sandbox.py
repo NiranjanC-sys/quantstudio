@@ -64,7 +64,7 @@ import threading
 import time
 import traceback
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Iterator, Literal, Sequence
+from typing import Any, Iterable, Iterator, Literal, Sequence, get_args
 
 # --------------------------------------------------------------------------
 # Policy constants (section 10)
@@ -127,12 +127,59 @@ STRIPPED_BUILTINS: tuple[str, ...] = (
     "help", "license", "credits", "copyright", "memoryview",
 )
 
-#: The module name learner code runs as. ``_guarded_import`` keys off it.
+#: The module name learner code runs as. Advisory only: it lives in the
+#: learner's own globals, so learner code can rebind it. Nothing security
+#: relevant may key off it -- see :func:`_raised_by_learner_code`.
 SANDBOX_MODULE = "__redquant_submission__"
 
+#: The ``co_filename`` every frame of learner code carries, fixed by the
+#: ``compile()`` call in :func:`_child_main`. This *is* the thing the guards key
+#: off, because unlike ``__name__`` it is not a name in a dict the learner owns,
+#: and learner code has no ``compile`` with which to mint another one.
+SUBMISSION_FILENAME = "<submission>"
+
+#: PEP 578 audit events refused when the innermost Python frame raising them is
+#: the learner's own. Prefix-matched, so a whole module's surface goes at once.
+#: This is what makes the import policy bite even when learner code has reached
+#: the *real* ``__import__`` or ``open`` through object introspection -- the
+#: allowlist is then enforced by the interpreter at the point of effect, rather
+#: than by a builtin the learner has routed around.
+AUDIT_DENIED_PREFIXES: tuple[str, ...] = (
+    "os.", "shutil.", "subprocess.", "socket.", "ctypes.", "importlib.",
+    "pickle.", "marshal.", "urllib.", "ftplib.", "http.client.", "smtplib.",
+    "webbrowser.", "glob.", "fcntl.", "mmap.", "pty.", "tempfile.", "code.",
+    "signal.", "msvcrt.", "winreg.", "sys.set", "sys.add",
+)
+
+#: Deliberately *not* denied: ``sys._getframe``. It is introspection, not an
+#: effect -- it reaches no file, socket or process -- and denying it broke
+#: ``import numpy`` outright, because ``collections.namedtuple`` and half a
+#: dozen other stdlib helpers call it while a learner's ``import`` statement is
+#: still on the stack. Refusing harmless introspection to look thorough, at the
+#: cost of the one import every lab needs, would be a bad trade.
+
+#: Audit events refused outright, by exact name, from a learner frame.
+AUDIT_DENIED_EXACT: frozenset[str] = frozenset(
+    {
+        "open", "exec", "compile", "builtins.input", "setopencodehook",
+        "ensurepip.bootstrap", "cpython.run_file", "cpython.run_module",
+        "cpython.run_command", "cpython.run_string", "cpython.run_stdin",
+    }
+)
+
 Status = Literal[
-    "ok", "error", "denied_import", "cpu_limit", "timeout", "memory", "killed"
+    "ok",
+    "error",
+    "denied_import",
+    "denied_operation",
+    "cpu_limit",
+    "timeout",
+    "memory",
+    "killed",
 ]
+
+#: Every legal :data:`Status`, used to validate what comes back over the pipe.
+_STATUS_VALUES: frozenset[str] = frozenset(get_args(Status))
 
 
 class SandboxError(RuntimeError):
@@ -286,21 +333,197 @@ class _DeniedImport(ImportError):
     not."""
 
 
+#: See the re-entrancy guard in :func:`_audit_hook`.
+_HOOK_REENTRY = threading.local()
+
+
+class _DeniedOperation(PermissionError):
+    """Raised by the audit hook for a non-import operation -- opening a file,
+    creating a socket, forking -- attempted directly by learner code."""
+
+
+#: Frames belonging to the import machinery. An event raised from inside one of
+#: these is the interpreter loading a module the policy has *already* passed --
+#: reading ``numpy/__init__.py`` off disk, for instance -- not learner code
+#: reaching for a file.
+_IMPORT_MACHINERY_PREFIXES: tuple[str, ...] = (
+    "<frozen importlib", "<frozen zipimport", "<frozen runpy",
+)
+
+#: ``co_filename`` -> "is this file part of an allowed library?", memoised
+#: because the audit hook asks the question thousands of times during a single
+#: ``import qiskit``.
+_LIBRARY_FILE_CACHE: dict[str, bool] = {}
+
+
+def _is_allowed_library_frame(filename: str, allowed: frozenset[str]) -> bool:
+    """True when ``filename`` lives inside a package the policy allows.
+
+    Decided on the *path*, not on the frame's ``__name__``: a module's
+    ``__name__`` is a writable attribute, so learner code that has reached
+    ``shutil`` could set ``shutil.__name__ = "numpy"`` and launder every call it
+    makes through it. Learner code cannot move a file into NumPy's directory,
+    and cannot get code loaded from a path of its choosing without an import the
+    policy already vetted.
+    """
+    cached = _LIBRARY_FILE_CACHE.get(filename)
+    if cached is not None:
+        return cached
+    parts = filename.replace("\\", "/").split("/")
+    verdict = any(
+        part in allowed or part.split(".", 1)[0] in allowed for part in parts
+    )
+    if len(_LIBRARY_FILE_CACHE) < 4096:
+        _LIBRARY_FILE_CACHE[filename] = verdict
+    return verdict
+
+
+def _learner_initiated(depth: int, allowed: frozenset[str]) -> bool:
+    """True when learner code caused this operation with nothing allowed between.
+
+    Walking the stack, rather than looking only at the innermost frame, is what
+    makes the check survive contact with the standard library. Half of it is a
+    thin Python wrapper over a C call, and the audit event fires from inside the
+    wrapper: ``shutil.copy`` raises ``open`` from ``shutil.py``'s frame and
+    ``socket.socket()`` raises ``socket.__new__`` from ``socket.py``'s, so a
+    check that asked only "is the innermost frame the learner's?" answered no to
+    both and let them through. Measured, not reasoned about: both of those were
+    live escapes against the first version of this function.
+
+    So the walk goes outward from the raising frame and stops at the first frame
+    that settles the question:
+
+    * ``<submission>`` -- learner code, with only transparent stdlib plumbing in
+      between. Apply the policy.
+    * a file inside an allowed library -- NumPy opening its own data files, and
+      not something to refuse. Allow.
+    * the import machinery -- the interpreter loading a module whose name the
+      policy already passed. Allow.
+
+    Anything else (a stdlib wrapper) is transparent and the walk continues
+    through it, which is exactly what closes the ``shutil.copy`` hole.
+
+    The residual gap is deliberate and unclosable here: learner code can still
+    ask an allowed library to touch the filesystem on its behalf --
+    ``numpy.fromfile("/etc/passwd")`` resolves to a NumPy frame and is allowed.
+    That is gVisor's read-only rootfs to refuse, not this function's.
+    """
+    try:
+        frame: Any = sys._getframe(depth)
+    except (ValueError, AttributeError):  # pragma: no cover - not CPython
+        return False
+    while frame is not None:
+        filename = frame.f_code.co_filename
+        if filename == SUBMISSION_FILENAME:
+            return True
+        if filename.startswith(_IMPORT_MACHINERY_PREFIXES):
+            return False
+        if _is_allowed_library_frame(filename, allowed):
+            return False
+        frame = frame.f_back
+    return False
+
+
+def _raised_by_learner_code(depth: int) -> bool:
+    """True when the Python frame ``depth`` levels below us is the learner's.
+
+    This replaces the obvious-looking check, which was to read ``__name__`` out
+    of the ``globals`` CPython hands ``__import__``. That check was spoofable in
+    one line: ``__name__`` is an ordinary entry in the learner's own globals
+    dict, so ``__name__ = "numpy"`` followed by ``import os`` made every
+    subsequent import look to the guard like NumPy importing its own
+    dependencies. Calling ``__import__("os", {"__name__": "numpy"})`` directly
+    spoofed it just as cheaply, without even rebinding anything.
+
+    A frame's ``co_filename`` is not spoofable that way. It is stamped onto the
+    code object by the ``compile()`` call in :func:`_child_main`, learner code
+    has no ``compile`` or ``exec`` with which to mint another code object
+    carrying that name, and the frame stack is not a namespace the learner can
+    assign into.
+
+    Frames are the right question in both directions: an import performed *by*
+    NumPy has a NumPy frame here and passes, which is the whole reason the
+    allowlist can coexist with libraries that import ``os`` themselves.
+    """
+    try:
+        frame = sys._getframe(depth)
+    except (ValueError, AttributeError):  # pragma: no cover - not CPython
+        return False
+    return frame.f_code.co_filename == SUBMISSION_FILENAME
+
+
+def _audit_hook(policy: SandboxPolicy) -> Any:
+    """Build the PEP 578 hook that enforces the policy at the point of effect.
+
+    The import allowlist alone only governs the ``__import__`` *this module
+    installs*. Learner code that reaches CPython's real builtins through object
+    introspection -- ``typing.__builtins__["open"]``, or the classic walk over
+    ``object.__subclasses__()`` -- bypasses that builtin entirely and always
+    will; it is a property of ``exec``-based sandboxes, not a bug that can be
+    patched out. An audit hook is enforced by the interpreter itself, cannot be
+    removed once installed (CPython provides no API to do so), and fires on the
+    *operation* rather than on the name used to reach it, so the same policy
+    now covers both routes.
+
+    Like the import guard it acts only on events raised from a learner frame,
+    for exactly the same reason: NumPy opens files, and must go on being able
+    to. That leaves a real gap -- learner code can still ask an allowed library
+    to touch the filesystem on its behalf, ``numpy.fromfile`` being the obvious
+    one -- and closing that gap is not this layer's job. gVisor's empty network
+    namespace and read-only rootfs are.
+    """
+
+    def hook(event: str, args: tuple[Any, ...]) -> None:
+        # Re-entrancy guard, and it is load-bearing rather than an
+        # optimisation: `sys._getframe` itself raises the `sys._getframe` audit
+        # event, so a hook that looks at frames re-enters itself once per frame
+        # lookup and recurses until the interpreter dies -- silently, since the
+        # crash is a stack overflow rather than a Python exception. Thread-local
+        # rather than a module global so a second thread's events are still
+        # examined while this one is inside the hook.
+        if getattr(_HOOK_REENTRY, "busy", False):
+            return
+        _HOOK_REENTRY.busy = True
+        try:
+            # 0 is `_learner_initiated`, 1 is this hook, 2 is the raiser.
+            if not _learner_initiated(2, policy.allowed):
+                return
+            if event == "import":
+                name = args[0] if args else ""
+                reason = policy.verdict(str(name))
+                if reason is not None:
+                    raise _DeniedImport(reason, name=str(name))
+                return
+            if event in AUDIT_DENIED_EXACT or event.startswith(
+                AUDIT_DENIED_PREFIXES
+            ):
+                raise _DeniedOperation(
+                    f"{event!r} is not permitted in this sandbox: learner code "
+                    f"may not reach the filesystem, the network or other "
+                    f"processes"
+                )
+        finally:
+            _HOOK_REENTRY.busy = False
+
+    return hook
+
+
 def _guarded_import(policy: SandboxPolicy, real_import: Any) -> Any:
     """Build the ``__import__`` replacement installed for learner code.
 
     The subtlety that makes an allowlist work at all: NumPy itself imports
     ``os``, ``sys``, ``ctypes`` and a dozen other denied names. Enforcing the
     list unconditionally would make ``import numpy`` -- the one import every
-    lab needs -- fail. So the check applies **only when the importing module is
-    the learner's**, which CPython hands us as the caller's ``__name__`` in the
-    ``globals`` argument. Imports performed from inside an already-loaded
-    library pass through untouched.
+    lab needs -- fail. So the check applies **only when the importing code is
+    the learner's own**, decided by :func:`_raised_by_learner_code`. Imports
+    performed from inside an already-loaded library pass through untouched.
 
     This is a correctness mechanism, not a containment one: learner code can
     reach a denied module through an allowed one's attributes
     (``numpy.core.os``, say). Containment is gVisor's job. What this buys is a
-    clear, immediate, attributable error for the overwhelmingly common case.
+    clear, immediate, attributable error for the overwhelmingly common case,
+    and -- with the audit hook of :func:`_audit_hook` behind it -- a policy that
+    still applies when the learner has gone around this function entirely.
     """
 
     def guarded(
@@ -310,8 +533,8 @@ def _guarded_import(policy: SandboxPolicy, real_import: Any) -> Any:
         fromlist: Sequence[str] = (),
         level: int = 0,
     ) -> Any:
-        importer = (globals or {}).get("__name__")
-        if importer == SANDBOX_MODULE:
+        # Frame 0 is `guarded`; frame 1 is the code performing the import.
+        if _raised_by_learner_code(2):
             reason = policy.verdict(name)
             if reason is not None:
                 raise _DeniedImport(reason, name=name)
@@ -449,10 +672,18 @@ def _child_main(
     error = error_type = tb_text = None
     started = time.perf_counter()
     try:
-        code = compile(source, "<submission>", "exec")
+        code = compile(source, SUBMISSION_FILENAME, "exec")
+        # Last thing before learner code runs, and deliberately after the
+        # compile above: an audit hook cannot be uninstalled, so everything the
+        # sandbox itself still needs to do must either already have happened or
+        # run from a frame the hook lets through.
+        sys.addaudithook(_audit_hook(policy))
         exec(code, glb)  # noqa: S102 -- the entire point of this module
     except _DeniedImport as exc:
         status, error_type = "denied_import", "ImportError"
+        error = str(exc)
+    except _DeniedOperation as exc:
+        status, error_type = "denied_operation", "PermissionError"
         error = str(exc)
     except TimeoutError as exc:
         status, error_type = "cpu_limit", "TimeoutError"
@@ -492,18 +723,29 @@ def _child_main(
 
     sys.stdout, sys.stderr = real_stdout, real_stderr
     try:
-        conn.send(
-            {
-                "status": status,
-                "stdout": out.getvalue(),
-                "stdout_truncated": out.truncated,
-                "error": error,
-                "error_type": error_type,
-                "traceback": tb_text,
-                "captured": captured,
-                "duration_ms": duration_ms,
-                "cpu_seconds": cpu,
-            }
+        # `send_bytes`, not `send`. `Connection.send` pickles, and
+        # `Connection.recv` on the other end unpickles -- which would mean the
+        # trusted parent running `pickle.loads` on bytes produced inside the
+        # process whose entire purpose is to host hostile code. Anything that
+        # escaped far enough to write to this pipe would then have arbitrary
+        # code execution in the worker, outside every limit this module
+        # applies. JSON has no such reduction step, and the parent validates
+        # the shape besides (see `_decode_payload`).
+        conn.send_bytes(
+            json.dumps(
+                {
+                    "status": status,
+                    "stdout": out.getvalue(),
+                    "stdout_truncated": out.truncated,
+                    "error": error,
+                    "error_type": error_type,
+                    "traceback": tb_text,
+                    "captured": captured,
+                    "duration_ms": duration_ms,
+                    "cpu_seconds": cpu,
+                },
+                default=repr,
+            ).encode("utf-8", "replace")
         )
     except Exception:  # pragma: no cover - parent already gone
         pass
@@ -540,6 +782,11 @@ def _context() -> Any:
     which defeats both the memory limit and the isolation."""
     return multiprocessing.get_context("spawn")
 
+
+#: Ceiling on the child's report: the stdout cap, the capture cap, and room for
+#: the JSON framing and a traceback. ``recv_bytes`` refuses anything larger
+#: rather than letting the child dictate an allocation in the worker.
+_MAX_PAYLOAD_BYTES = STDOUT_LIMIT_BYTES + VALUE_LIMIT_BYTES + 1024 * 1024
 
 #: ``os.chdir`` and the ``__main__`` blanking below are both process-global, and
 #: FastAPI runs synchronous endpoints on a thread pool. One launch at a time.
@@ -663,6 +910,54 @@ def run_untrusted(
         _rmtree(workdir)
 
 
+def _decode_payload(raw: Any) -> dict[str, Any] | None:
+    """Parse and validate the child's report. Never trusts its shape.
+
+    The child is the untrusted side of this pipe, so every field is checked and
+    coerced rather than used as it arrives: a status that is not a real
+    :data:`Status`, a stdout that is not a string, a captured value that is not
+    a mapping. A hostile child can still *lie* -- it owns the file descriptor
+    and can say "ok" whatever happened -- and no amount of validation here
+    changes that, which is why grading integrity rests on gVisor rather than on
+    this. What validation buys is that a lie cannot become anything worse than
+    a wrong answer: not an exception in the worker, and not a type the caller
+    did not expect.
+    """
+    if not isinstance(raw, (bytes, bytearray)):  # pragma: no cover
+        return None
+    try:
+        data = json.loads(bytes(raw).decode("utf-8", "replace"))
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    if data.get("status") not in _STATUS_VALUES:
+        return None
+
+    def text(key: str) -> str | None:
+        value = data.get(key)
+        return value if isinstance(value, str) else None
+
+    captured = data.get("captured")
+    return {
+        "status": data["status"],
+        "stdout": text("stdout") or "",
+        "stdout_truncated": bool(data.get("stdout_truncated")),
+        "error": text("error"),
+        "error_type": text("error_type"),
+        "traceback": text("traceback"),
+        "captured": {str(k): v for k, v in captured.items()}
+        if isinstance(captured, dict)
+        else {},
+        "duration_ms": float(data.get("duration_ms") or 0.0)
+        if isinstance(data.get("duration_ms"), (int, float))
+        else 0.0,
+        "cpu_seconds": float(data.get("cpu_seconds") or 0.0)
+        if isinstance(data.get("cpu_seconds"), (int, float))
+        else 0.0,
+    }
+
+
 def _await_payload(conn: Any, proc: Any, wall_clock: float) -> dict[str, Any] | None:
     """Poll for the child's single message until it arrives, dies or times out.
 
@@ -679,8 +974,8 @@ def _await_payload(conn: Any, proc: Any, wall_clock: float) -> dict[str, Any] | 
             return None
         if conn.poll(min(remaining, 0.05)):
             try:
-                return conn.recv()  # type: ignore[no-any-return]
-            except EOFError:  # pragma: no cover - child died mid-send
+                return _decode_payload(conn.recv_bytes(_MAX_PAYLOAD_BYTES))
+            except (EOFError, OSError):  # pragma: no cover - child died mid-send
                 return None
         if not proc.is_alive():
             # It exited without sending: killed by the hard CPU limit, the OOM
@@ -688,8 +983,8 @@ def _await_payload(conn: Any, proc: Any, wall_clock: float) -> dict[str, Any] | 
             # in the same instant the process ended.
             if conn.poll(0):
                 try:
-                    return conn.recv()  # type: ignore[no-any-return]
-                except EOFError:
+                    return _decode_payload(conn.recv_bytes(_MAX_PAYLOAD_BYTES))
+                except (EOFError, OSError):
                     return None
             return None
 
@@ -713,6 +1008,25 @@ def _post_mortem(proc: Any, limits: SandboxLimits, elapsed_ms: float) -> Sandbox
             status="timeout",
             error=f"killed after exceeding the {limits.wall_clock:g}s wall-clock limit",
             error_type="WallClockExceeded",
+            duration_ms=elapsed_ms,
+            exit_code=code,
+        )
+    if sig == getattr(signal, "SIGKILL", None) and elapsed_ms >= (
+        limits.cpu_seconds * 1000.0
+    ):
+        # The hard CPU limit is one second past the soft one and lands as
+        # SIGKILL, which is indistinguishable from an OOM kill by signal alone.
+        # Elapsed time separates them: code that ran at least as long as its
+        # CPU budget before dying ran out of CPU, and saying "memory limit"
+        # there sent people off optimising allocations for a timeout.
+        return SandboxResult(
+            status="cpu_limit",
+            error=(
+                f"killed after exceeding the {limits.cpu_seconds}s CPU limit "
+                f"(the hard limit, one second past the soft one, so no handler "
+                f"could report)"
+            ),
+            error_type="CPUTimeExceeded",
             duration_ms=elapsed_ms,
             exit_code=code,
         )

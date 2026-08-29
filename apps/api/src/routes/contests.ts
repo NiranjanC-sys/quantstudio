@@ -11,7 +11,7 @@
  * at-least-once delivery from BullMQ safe.
  */
 import { and, asc, desc, eq, gte, inArray, ne, or, sql } from 'drizzle-orm';
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
   contests,
@@ -85,6 +85,9 @@ const verdictSchema = z.object({
 /** §6 anti-cheat: a submission within 4 s of a problem opening is impossible. */
 const IMPOSSIBLY_FAST_SECONDS = 4;
 
+/** A contest row carrying the owning organisation, which visibility needs. */
+type VisibleContest = ContestRow & { orgId: string | null };
+
 export const contestRoutes: FastifyPluginAsync = async (app) => {
   const { db, redis, scripts, metrics, queues, limiter, env } = app.services;
   const degradation = createDegradationController(env, redis.client);
@@ -101,13 +104,14 @@ export const contestRoutes: FastifyPluginAsync = async (app) => {
   const writeLimit = rateLimit(app, 'write');
   const submitLimit = rateLimit(app, 'contest_submission');
 
-  async function loadContest(ref: string): Promise<ContestRow> {
+  async function loadContest(ref: string): Promise<VisibleContest> {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ref);
     const rows = await db.primary
       .select({
         id: contests.id,
         slug: contests.slug,
         kind: contests.kind,
+        orgId: contests.orgId,
         status: contests.status,
         startsAt: contests.startsAt,
         endsAt: contests.endsAt,
@@ -120,7 +124,24 @@ export const contestRoutes: FastifyPluginAsync = async (app) => {
 
     const row = rows[0];
     if (!row) throw problem.notFound('Contest');
-    return row as ContestRow;
+    return row as VisibleContest;
+  }
+
+  /**
+   * §7 makes a private contest an organisation's own event, and the listing
+   * above already hides one from everybody else. Fetching by slug or id has to
+   * apply the same rule, or the listing filter is decoration: without this a
+   * learner in any organisation could read a rival's problem set (and, once the
+   * contest ended, its whole statement text) by naming the slug.
+   */
+  function assertContestVisible(request: FastifyRequest, contest: VisibleContest): void {
+    if (contest.kind !== 'private') return;
+    const auth = request.auth;
+    if (!auth) throw problem.unauthorized();
+    if (auth.role === 'admin') return;
+    if (!contest.orgId || auth.orgId !== contest.orgId) {
+      throw problem.forbidden('This contest is private to another organisation.');
+    }
   }
 
   async function loadRegistration(contestId: string, userId: string) {
@@ -228,6 +249,7 @@ export const contestRoutes: FastifyPluginAsync = async (app) => {
   app.get('/:contest', { preHandler: [readLimit] }, async (request, reply) => {
     const { contest: ref } = readParams(request, contestRefSchema);
     const contest = await loadContest(ref);
+    assertContestVisible(request, contest);
     const now = new Date();
 
     const registration = request.auth
@@ -284,6 +306,7 @@ export const contestRoutes: FastifyPluginAsync = async (app) => {
     );
 
     const contest = await loadContest(ref);
+    assertContestVisible(request, contest);
     const entitlements = request.entitlements ?? auth.entitlements;
 
     if (contest.kind === 'private') assertFeature(entitlements, 'contests.private');
@@ -327,6 +350,7 @@ export const contestRoutes: FastifyPluginAsync = async (app) => {
     );
 
     const contest = await loadContest(ref);
+    assertContestVisible(request, contest);
     const now = new Date();
 
     const virtualAllowed = await db.primary
@@ -391,6 +415,7 @@ export const contestRoutes: FastifyPluginAsync = async (app) => {
     const auth = authed(request);
     const { contest: ref } = readParams(request, contestRefSchema);
     const contest = await loadContest(ref);
+    assertContestVisible(request, contest);
     const now = new Date();
 
     const registration = await loadRegistration(contest.id, auth.userId);
@@ -442,6 +467,7 @@ export const contestRoutes: FastifyPluginAsync = async (app) => {
     );
 
     const contest = await loadContest(ref);
+    assertContestVisible(request, contest);
     const now = new Date();
     const registration = await loadRegistration(contest.id, auth.userId);
     const open =
@@ -451,8 +477,25 @@ export const contestRoutes: FastifyPluginAsync = async (app) => {
 
     if (!open) throw new ApiError('contest-closed', 'This problem is not open for you yet.');
 
+    // Explicit columns rather than `select()`: the row also carries
+    // `grader_key`, which names the sandbox image that holds the hidden tests
+    // and is not something a competitor should be handed.
     const rows = await db.read(request.readFromPrimary)
-      .select()
+      .select({
+        id: problems.id,
+        contestId: problems.contestId,
+        label: problems.label,
+        slug: problems.slug,
+        title: problems.title,
+        statement: problems.statement,
+        points: problems.points,
+        timeLimitMs: problems.timeLimitMs,
+        memoryMb: problems.memoryMb,
+        maxQubits: problems.maxQubits,
+        lessonId: problems.lessonId,
+        opensAt: problems.opensAt,
+        position: problems.position,
+      })
       .from(problems)
       .where(and(eq(problems.contestId, contest.id), eq(problems.label, label)))
       .limit(1);
@@ -474,6 +517,7 @@ export const contestRoutes: FastifyPluginAsync = async (app) => {
     assertWritesEnabled(state.writesDisabled);
 
     const contest = await loadContest(ref);
+    assertContestVisible(request, contest);
     const now = new Date();
 
     const registration = await loadRegistration(contest.id, auth.userId);
@@ -604,6 +648,7 @@ export const contestRoutes: FastifyPluginAsync = async (app) => {
     const { contest: ref } = readParams(request, contestRefSchema);
     const query = readQuery(request, paginationSchema);
     const contest = await loadContest(ref);
+    assertContestVisible(request, contest);
 
     const filters = [
       eq(contestSubmissions.contestId, contest.id),
@@ -664,6 +709,7 @@ export const contestRoutes: FastifyPluginAsync = async (app) => {
     );
 
     const contest = await loadContest(ref);
+    assertContestVisible(request, contest);
     const now = new Date();
     const frozen = isFrozen(contest, now);
     const wantsLive = query.live && request.auth?.role === 'admin';
@@ -739,6 +785,7 @@ export const contestRoutes: FastifyPluginAsync = async (app) => {
     if (auth.role !== 'admin') throw problem.forbidden('Only an admin can freeze a contest.');
     const { contest: ref } = readParams(request, contestRefSchema);
     const contest = await loadContest(ref);
+    assertContestVisible(request, contest);
     const result = await freezeContest(db, scoring, contest);
     return reply.send(result);
   });
@@ -748,6 +795,7 @@ export const contestRoutes: FastifyPluginAsync = async (app) => {
     if (auth.role !== 'admin') throw problem.forbidden('Only an admin can finalise a contest.');
     const { contest: ref } = readParams(request, contestRefSchema);
     const contest = await loadContest(ref);
+    assertContestVisible(request, contest);
 
     if (new Date() < contest.endsAt) {
       throw new ApiError('conflict', 'A contest cannot be finalised before it ends.');
@@ -775,10 +823,12 @@ export const contestRoutes: FastifyPluginAsync = async (app) => {
    * contest has ended, and none of those change the board.
    */
   app.post('/:contest/verdict', async (request, reply) => {
-    requireServiceToken(request);
+    requireServiceToken(request, 'contest:verdict');
     const { contest: ref } = readParams(request, contestRefSchema);
     const input = readBody(request, verdictSchema);
 
+    // No visibility guard here on purpose: this is the grader callback, and the
+    // caller is a service token, not a member of the contest's organisation.
     const contest = await loadContest(ref);
     const now = new Date();
 
@@ -905,6 +955,7 @@ export const contestRoutes: FastifyPluginAsync = async (app) => {
     const auth = authed(request);
     const { contest: ref } = readParams(request, contestRefSchema);
     const contest = await loadContest(ref);
+    assertContestVisible(request, contest);
 
     const registration = await loadRegistration(contest.id, auth.userId);
     const boardId = registration?.kind === 'virtual' ? `${contest.id}:virtual` : contest.id;

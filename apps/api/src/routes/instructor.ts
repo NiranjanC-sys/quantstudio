@@ -233,7 +233,14 @@ export const instructorRoutes: FastifyPluginAsync = async (app) => {
       paginationSchema.extend({ includeArchived: z.coerce.boolean().default(false) }),
     );
 
-    const filters = auth.role === 'admin' ? [] : [eq(cohorts.orgId, auth.orgId ?? '')];
+    // An instructor who belongs to no organisation owns no cohorts. Comparing
+    // the uuid column against `''` would be a 500, not an empty page.
+    if (auth.role !== 'admin' && !auth.orgId) {
+      return reply.send({ items: [] });
+    }
+
+    const filters =
+      auth.role === 'admin' ? [] : [eq(cohorts.orgId, auth.orgId as string)];
     if (!query.includeArchived) filters.push(eq(cohorts.archived, false));
 
     const rows = await db.primary
@@ -285,7 +292,7 @@ export const instructorRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/cohorts/:cohortId/members', { preHandler: [writeLimit] }, async (request, reply) => {
     const { cohortId } = readParams(request, cohortIdSchema);
-    await authoriseCohort(request, cohortId);
+    const cohort = await authoriseCohort(request, cohortId);
 
     const input = readBody(
       request,
@@ -296,10 +303,23 @@ export const instructorRoutes: FastifyPluginAsync = async (app) => {
     );
 
     const normalised = input.emails.map((email) => email.toLowerCase());
+    /**
+     * Tenant isolation: an address is only resolvable inside the cohort's own
+     * organisation. Without the `orgId` predicate an instructor could name any
+     * account on the platform and then read that learner's email and per-concept
+     * mastery out of the gradebook and the heatmap. A learner who is not (yet) a
+     * member of the organisation enrols themselves with the join code instead,
+     * which is the path where they consent.
+     */
     const found = await db.primary
       .select({ id: users.id, email: users.email })
       .from(users)
-      .where(sql`lower(${users.email}) = any(${normalised})`);
+      .where(
+        and(
+          eq(users.orgId, cohort.orgId),
+          inArray(sql`lower(${users.email})`, normalised),
+        ),
+      );
 
     const foundEmails = new Set(found.map((row) => row.email.toLowerCase()));
     const missing = normalised.filter((email) => !foundEmails.has(email));
@@ -432,6 +452,22 @@ export const instructorRoutes: FastifyPluginAsync = async (app) => {
       const owner = rows[0];
       if (!owner) throw problem.notFound('Assignment');
       await authoriseCohort(request, owner.cohortId);
+
+      // The graded user is an identifier from the caller, so it is constrained
+      // to the cohort rather than merely being a valid uuid: without this an
+      // instructor could write a grade row against any account on the platform.
+      const member = await db.primary
+        .select({ userId: cohortMembers.userId })
+        .from(cohortMembers)
+        .where(
+          and(
+            eq(cohortMembers.cohortId, owner.cohortId),
+            eq(cohortMembers.userId, userId),
+            isNull(cohortMembers.removedAt),
+          ),
+        )
+        .limit(1);
+      if (member.length === 0) throw problem.notFound('Cohort member');
 
       if (input.status === 'graded' && input.score === null) {
         throw new ApiError('validation-failed', 'A graded assignment needs a score.');

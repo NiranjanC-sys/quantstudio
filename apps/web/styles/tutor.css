@@ -1,0 +1,316 @@
+/*
+ * Tutor surface. Instrument register: near-black ground, hairlines, one
+ * vermilion accent, numbers in IBM Plex Mono.
+ *
+ * Every colour here is a token from styles/tokens.css, which the design
+ * package derives from DESIGN.md and contrast-tests in both themes. Status is
+ * carried by a 3px left rule, a non-text indicator, and never by coloured body
+ * text, so the contrast floor holds on paper as well as on black. This file is
+ * imported by the tutor components rather than added to globals.css.
+ */
+
+.rq-tutor {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.rq-tutor-page-shell { max-width: 980px; }
+.rq-tutor-page { margin-top: var(--space-6); }
+.rq-tutor-dock .rq-tutor { height: 100%; border: none; border-radius: 0; }
+
+/* ------------------------------------------------------------------ head -- */
+
+.rq-tutor-head { flex: none; }
+.rq-tutor-head-end { align-items: center; }
+
+.rq-tutor-budget {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-subtle);
+  white-space: nowrap;
+}
+.rq-tutor-budget-sep { margin: 0 6px; }
+
+/* --------------------------------------------------------------- notices -- */
+
+.rq-tutor-notices:not(:empty) {
+  padding: var(--space-4) var(--space-4) 0;
+}
+.rq-tutor-notices .rq-remote { margin: 0 0 var(--space-3); }
+
+.rq-tutor-banner {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--ink);
+  max-width: 72ch;
+}
+.rq-tutor-banner p { margin: 0; }
+.rq-tutor-banner p + p { margin-top: var(--space-3); }
+.rq-tutor-banner-info { border-left-color: var(--info); }
+.rq-tutor-banner-warn { border-left-color: var(--warning); }
+
+.rq-tutor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+/* ----------------------------------------------------------------- modes -- */
+
+.rq-tutor-modes {
+  flex: none;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: var(--space-3) var(--space-4) 0;
+}
+.rq-tutor-modes .rq-tab { height: 28px; }
+
+.rq-tutor-blurb {
+  flex: none;
+  margin: var(--space-2) 0 0;
+  padding: 0 var(--space-4) var(--space-3);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-subtle);
+  max-width: 78ch;
+}
+
+/* ------------------------------------------------------------------- log -- */
+
+.rq-tutor-log {
+  flex: 1 1 auto;
+  min-height: 220px;
+  overflow-y: auto;
+  padding: var(--space-4);
+  background: var(--surface-inset);
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+.rq-tutor-page .rq-tutor-log { max-height: 56vh; }
+.rq-tutor-dock .rq-tutor-log { min-height: 140px; }
+
+/* A focusable scroll region gets a ring for keyboard users and nothing for a
+   pointer, matching the lab's panels. */
+.rq-tutor-log:focus-visible,
+.rq-tutor-pre:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.rq-tutor-log .rq-empty { padding: var(--space-4) 0; max-width: 62ch; }
+
+.rq-tutor-turn { padding: var(--space-3) 0; }
+.rq-tutor-turn + .rq-tutor-turn { border-top: 1px solid var(--hairline); }
+.rq-tutor-turn[data-role='user'] {
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--accent-wash);
+}
+
+.rq-tutor-role {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-size: 12px;
+  font-weight: 550;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-subtle);
+}
+.rq-tutor-mode { text-transform: none; letter-spacing: 0; color: var(--ink-muted); font-weight: 450; }
+.rq-tutor-flag { padding: 1px 8px; font-size: 11px; text-transform: none; letter-spacing: 0; }
+
+.rq-tutor-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 72ch;
+}
+
+.rq-tutor-attached,
+.rq-tutor-waiting,
+.rq-tutor-turn-usage {
+  margin: var(--space-2) 0 0;
+  font-size: 12px;
+  color: var(--ink-subtle);
+}
+
+.rq-tutor-warn {
+  margin: var(--space-2) 0 0;
+  font-size: 13px;
+  color: var(--ink-muted);
+  max-width: 72ch;
+}
+
+.rq-tutor-failure {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-left: 3px solid var(--danger);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--ink);
+  max-width: 72ch;
+}
+.rq-tutor-failure p { margin: 0; }
+.rq-tutor-failure p + p { margin-top: var(--space-2); }
+.rq-tutor-failure .rq-tutor-actions:empty { display: none; }
+
+/* ------------------------------------------------------------- citations -- */
+
+.rq-tutor-cite-head { margin: var(--space-4) 0 var(--space-2); }
+
+.rq-tutor-cites {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+  max-width: 72ch;
+}
+.rq-tutor-cites li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: 13px;
+}
+.rq-tutor-cite-note,
+.rq-tutor-cite-score,
+.rq-tutor-cite-quote { color: var(--ink-subtle); }
+.rq-tutor-cite-quote { flex-basis: 100%; font-size: 12px; line-height: 1.5; }
+.rq-tutor-cite-flat { color: var(--ink-muted); }
+
+.rq-tutor-nocite {
+  margin: var(--space-3) 0 0;
+  font-size: 12px;
+  color: var(--ink-subtle);
+  max-width: 72ch;
+}
+
+/* -------------------------------------------------------------- composer -- */
+
+.rq-tutor-composer {
+  flex: none;
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+}
+
+.rq-tutor-label { font-size: 13px; color: var(--ink-muted); }
+
+.rq-tutor-input {
+  width: 100%;
+  padding: 10px;
+  background: var(--surface-2);
+  color: var(--ink);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.rq-tutor-input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.rq-tutor-composer-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.rq-tutor-composer-row .rq-panel-actions { margin-left: auto; }
+
+.rq-tutor-attach {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+.rq-tutor-attach input { accent-color: var(--accent-strong); }
+
+.rq-tutor-chars { color: var(--ink-subtle); }
+
+.rq-tutor-preview { font-size: 13px; }
+.rq-tutor-preview summary { color: var(--ink-muted); cursor: pointer; }
+.rq-tutor-preview summary:hover { color: var(--ink); }
+
+.rq-tutor-pre {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3);
+  max-height: 260px;
+  overflow: auto;
+  background: var(--surface-inset);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------------ dock -- */
+
+.rq-tutor-dock-launch {
+  position: fixed;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  z-index: 41;
+}
+
+.rq-tutor-dock {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.rq-tutor-dock-root[data-side='right'] .rq-tutor-dock {
+  right: var(--space-5);
+  bottom: calc(var(--space-5) + 44px);
+  width: min(440px, calc(100vw - 48px));
+  height: min(640px, calc(100vh - 140px));
+}
+
+.rq-tutor-dock-root[data-side='bottom'] .rq-tutor-dock {
+  left: var(--space-5);
+  right: var(--space-5);
+  bottom: calc(var(--space-5) + 44px);
+  height: min(420px, 55vh);
+}
+
+@media (max-width: 620px) {
+  .rq-tutor-dock-root .rq-tutor-dock {
+    left: var(--space-3);
+    right: var(--space-3);
+    width: auto;
+    height: min(70vh, 560px);
+  }
+  .rq-tutor-budget { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rq-tutor * { transition: none !important; animation: none !important; }
+}

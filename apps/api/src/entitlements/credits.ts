@@ -111,28 +111,20 @@ export interface LedgerResult {
   ledgerId: number | null;
 }
 
-async function loadBalanceForUpdate(
+/**
+ * Reads the balance row for an error message. Never used to *decide* a debit:
+ * the decision is made by the conditional UPDATE below, in one statement.
+ */
+async function loadBalance(
   tx: Queryable,
   userId: string,
-): Promise<{ balance: number; granted: number; consumed: number }> {
+): Promise<{ balance: number } | null> {
   const rows = await tx
-    .select({
-      balance: creditBalances.balance,
-      granted: creditBalances.grantedThisPeriod,
-      consumed: creditBalances.consumedThisPeriod,
-    })
+    .select({ balance: creditBalances.balance })
     .from(creditBalances)
     .where(eq(creditBalances.userId, userId))
-    .for('update');
-
-  const row = rows[0];
-  if (!row) {
-    throw new ApiError(
-      'internal-error',
-      'Credit balance row is missing for this user; it is created at signup.',
-    );
-  }
-  return row;
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 async function findExistingEntry(
@@ -148,13 +140,36 @@ async function findExistingEntry(
   return rows[0] ?? null;
 }
 
+interface LedgerRow {
+  id: string | number;
+  balance_after: string | number;
+}
+
+/** `db.execute` hands back a pg QueryResult here and a bare array elsewhere. */
+function rowsOf(result: unknown): LedgerRow[] {
+  if (Array.isArray(result)) return result as LedgerRow[];
+  const rows = (result as { rows?: unknown }).rows;
+  return Array.isArray(rows) ? (rows as LedgerRow[]) : [];
+}
+
+function asInt(value: string | number): number {
+  return typeof value === 'number' ? value : Number.parseInt(value, 10);
+}
+
 /**
- * Debits `credits` from a user, inside the caller's transaction.
+ * Debits `credits` from a user.
  *
- * The row lock on `credit_balances` serialises concurrent debits for one user,
- * so the materialised balance and the append-only ledger cannot diverge. Call
- * this in the same transaction that writes the submission row and enqueues the
- * job — that is the whole point of the design.
+ * The balance guard, the balance write and the ledger append are ONE statement.
+ * That matters because callers hand us either an open transaction (the lab
+ * submit path) or the pool handle (the synchronous simulate path); on a pool
+ * handle every statement autocommits on its own connection, so a
+ * read-then-write — even one holding `SELECT ... FOR UPDATE` — releases the lock
+ * before it writes and loses concurrent updates. A single data-modifying CTE is
+ * atomic on both, and Postgres re-evaluates `balance >= n` against the winning
+ * row version under READ COMMITTED, so N concurrent debits cannot overdraw.
+ *
+ * The ledger row is written from the value the UPDATE actually produced, never
+ * from a value read earlier, so `balance_after` cannot drift from the balance.
  */
 export async function debitCredits(
   tx: Queryable,
@@ -171,9 +186,40 @@ export async function debitCredits(
     }
   }
 
-  const current = await loadBalanceForUpdate(tx, input.userId);
+  const result = await tx.execute(sql`
+    with deducted as (
+      update "billing"."credit_balances"
+         set "balance" = "balance" - ${input.credits},
+             "consumed_this_period" = "consumed_this_period" + ${input.credits},
+             "updated_at" = now()
+       where "user_id" = ${input.userId}::uuid
+         and "balance" >= ${input.credits}
+      returning "balance"
+    )
+    insert into "billing"."credit_ledger"
+      ("user_id", "org_id", "delta", "reason", "ref_type", "ref_id", "idempotency_key", "balance_after")
+    select ${input.userId}::uuid,
+           ${input.orgId ?? null}::uuid,
+           ${-input.credits},
+           ${input.reason}::"billing"."credit_reason",
+           ${input.refType ?? null}::text,
+           ${input.refId ?? null}::text,
+           ${input.idempotencyKey ?? null}::text,
+           deducted."balance"
+      from deducted
+    returning "id", "balance_after"
+  `);
 
-  if (current.balance < input.credits) {
+  const row = rowsOf(result)[0];
+  if (!row) {
+    // Nothing was written: either the balance row is missing or the guard held.
+    const current = await loadBalance(tx, input.userId);
+    if (!current) {
+      throw new ApiError(
+        'internal-error',
+        'Credit balance row is missing for this user; it is created at signup.',
+      );
+    }
     throw new ApiError(
       'credits-exhausted',
       `This job costs ${input.credits} credits and your balance is ${current.balance}.`,
@@ -181,35 +227,19 @@ export async function debitCredits(
     );
   }
 
-  const balanceAfter = current.balance - input.credits;
-
-  const inserted = await tx
-    .insert(creditLedger)
-    .values({
-      userId: input.userId,
-      orgId: input.orgId ?? null,
-      delta: -input.credits,
-      reason: input.reason,
-      refType: input.refType ?? null,
-      refId: input.refId ?? null,
-      idempotencyKey: input.idempotencyKey ?? null,
-      balanceAfter,
-    })
-    .returning({ id: creditLedger.id });
-
-  await tx
-    .update(creditBalances)
-    .set({
-      balance: balanceAfter,
-      consumedThisPeriod: current.consumed + input.credits,
-      updatedAt: new Date(),
-    })
-    .where(eq(creditBalances.userId, input.userId));
-
-  return { balance: balanceAfter, applied: true, ledgerId: inserted[0]?.id ?? null };
+  return {
+    balance: asInt(row.balance_after),
+    applied: true,
+    ledgerId: asInt(row.id),
+  };
 }
 
-/** Credits a user: the monthly grant, a plan change, or a refund of a failed job. */
+/**
+ * Credits a user: the monthly grant, a plan change, or a refund of a failed job.
+ *
+ * Atomic for the same reason `debitCredits` is — a refund racing a debit on the
+ * pool handle would otherwise overwrite one of the two balances.
+ */
 export async function grantCredits(
   tx: Queryable,
   input: LedgerEntryInput & { credits: number },
@@ -225,38 +255,49 @@ export async function grantCredits(
     }
   }
 
-  const current = await loadBalanceForUpdate(tx, input.userId);
-  const balanceAfter = current.balance + input.credits;
-
-  const inserted = await tx
-    .insert(creditLedger)
-    .values({
-      userId: input.userId,
-      orgId: input.orgId ?? null,
-      delta: input.credits,
-      reason: input.reason,
-      refType: input.refType ?? null,
-      refId: input.refId ?? null,
-      idempotencyKey: input.idempotencyKey ?? null,
-      balanceAfter,
-    })
-    .returning({ id: creditLedger.id });
-
+  // A plan/monthly/promotional grant adds to the period allowance; a refund or
+  // an adjustment gives back what was consumed.
   const isGrant = input.reason.endsWith('_grant');
+  const grantDelta = isGrant ? input.credits : 0;
+  const consumedDelta = isGrant ? 0 : input.credits;
 
-  await tx
-    .update(creditBalances)
-    .set({
-      balance: balanceAfter,
-      grantedThisPeriod: isGrant ? current.granted + input.credits : current.granted,
-      consumedThisPeriod: isGrant
-        ? current.consumed
-        : Math.max(0, current.consumed - input.credits),
-      updatedAt: new Date(),
-    })
-    .where(eq(creditBalances.userId, input.userId));
+  const result = await tx.execute(sql`
+    with credited as (
+      update "billing"."credit_balances"
+         set "balance" = "balance" + ${input.credits},
+             "granted_this_period" = "granted_this_period" + ${grantDelta},
+             "consumed_this_period" = greatest(0, "consumed_this_period" - ${consumedDelta}),
+             "updated_at" = now()
+       where "user_id" = ${input.userId}::uuid
+      returning "balance"
+    )
+    insert into "billing"."credit_ledger"
+      ("user_id", "org_id", "delta", "reason", "ref_type", "ref_id", "idempotency_key", "balance_after")
+    select ${input.userId}::uuid,
+           ${input.orgId ?? null}::uuid,
+           ${input.credits},
+           ${input.reason}::"billing"."credit_reason",
+           ${input.refType ?? null}::text,
+           ${input.refId ?? null}::text,
+           ${input.idempotencyKey ?? null}::text,
+           credited."balance"
+      from credited
+    returning "id", "balance_after"
+  `);
 
-  return { balance: balanceAfter, applied: true, ledgerId: inserted[0]?.id ?? null };
+  const row = rowsOf(result)[0];
+  if (!row) {
+    throw new ApiError(
+      'internal-error',
+      'Credit balance row is missing for this user; it is created at signup.',
+    );
+  }
+
+  return {
+    balance: asInt(row.balance_after),
+    applied: true,
+    ledgerId: asInt(row.id),
+  };
 }
 
 export async function currentBalance(db: Queryable, userId: string): Promise<number> {
@@ -295,7 +336,31 @@ export async function startCreditPeriod(
     return { balance: existing.balanceAfter, applied: false, ledgerId: existing.id };
   }
 
-  await loadBalanceForUpdate(tx, input.userId);
+  // The three writes below must land together, so this needs a real
+  // transaction; `provisionNewUser` and the period job both supply one.
+  const current = await loadBalance(tx, input.userId);
+  if (!current) {
+    throw new ApiError(
+      'internal-error',
+      'Credit balance row is missing for this user; it is created at signup.',
+    );
+  }
+
+  // Unused credits do not roll over (§7). Forfeiting them is a *ledger event*,
+  // not a silent overwrite: without this row, replaying the ledger no longer
+  // reproduces the materialised balance and the nightly self-audit — the only
+  // thing that would catch a fraudulent grant — is permanently broken.
+  if (current.balance > 0) {
+    await tx.insert(creditLedger).values({
+      userId: input.userId,
+      delta: -current.balance,
+      reason: 'expiry',
+      refType: 'period',
+      refId: input.periodStart.toISOString(),
+      idempotencyKey: `${input.idempotencyKey}:expiry`,
+      balanceAfter: 0,
+    });
+  }
 
   const inserted = await tx
     .insert(creditLedger)

@@ -18,7 +18,7 @@ import { creditCost, debitCredits, grantCredits } from '../entitlements/credits.
 import { ApiError } from '../errors.js';
 import { randomUUID } from '../lib/crypto.js';
 import { createDegradationController, effectiveQubitCap } from '../lib/degradation.js';
-import { authed, rateLimit, readBody } from './helpers.js';
+import { authed, rateLimit, readBody, useIdempotency } from './helpers.js';
 
 const opSchema = z.object({
   id: z.string().min(1).max(64),
@@ -72,6 +72,13 @@ export const simulateRoutes: FastifyPluginAsync = async (app) => {
   // hardcoding a number.
   const limit = rateLimit(app, 'simulation');
 
+  // §9 says every mutating endpoint accepts `Idempotency-Key`, and this one
+  // mutates the credit ledger. Without the hook a client that retried after a
+  // dropped response -- exactly what a flaky mobile connection produces -- was
+  // debited twice for one simulation, because the debit key below was a fresh
+  // uuid per request rather than anything derived from the caller's intent.
+  useIdempotency(app);
+
   app.post('/', { preHandler: [limit] }, async (request, reply) => {
     const auth = authed(request);
     const input = readBody(request, bodySchema);
@@ -120,7 +127,13 @@ export const simulateRoutes: FastifyPluginAsync = async (app) => {
 
     // Debit before running. A job that runs uncharged is a billing hole; a
     // charge for a job that then fails is refunded by the catch below.
-    const debitKey = randomUUID();
+    // Derived from the caller's key when they sent one, so a retry lands on
+    // the same ledger row instead of a second charge. `debitCredits`
+    // short-circuits on a repeated key, and the namespace keeps a
+    // simulation key from colliding with a lab or contest one.
+    const debitKey = request.idempotency?.key
+      ? `sim:${auth.userId}:${request.idempotency.key}`
+      : randomUUID();
     await debitCredits(db.primary, {
       userId: auth.userId,
       credits: quote.credits,

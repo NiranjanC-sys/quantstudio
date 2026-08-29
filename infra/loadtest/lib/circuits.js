@@ -1,43 +1,43 @@
 // lib/circuits.js
 //
-// A small, deterministic library of circuit-IR payloads used to exercise the
-// three simulation tiers from system-design.md §4:
+// Circuit-IR payloads for POST /simulate, in the shape the gateway actually
+// accepts (apps/api/src/routes/simulate.ts `bodySchema`):
 //
-//   T-A  client statevector   <= 14 qubits   ~92% of "editing circuit" sims
-//   T-B  server statevector   15-30 qubits   ~7.5%
-//   T-C  heavy / async queue  31-40 qubits   ~0.5% (or noisy density-matrix)
+//   { circuit: { version: 1, name, qubits, clbits, ops: [{id, gate, targets,
+//     controls?, params?}] }, backend, shots, seed, bindings, noise?, includeVisual }
 //
-// We ship five qubit counts chosen to sit exactly on or straddle those
-// boundaries and the §7 per-plan qubit ceilings, so a mixed-qubit workload
-// naturally crosses every tier transition instead of clustering in one:
+// The previous version of this file sent `{qubits, backend:'statevector-wasm',
+// gates:[{layer, op, qubits}]}`, which the gateway rejects with a 400 before it
+// ever reaches the kernel, and used a two-qubit `cx` with one target, which the
+// kernel rejects with 422 ("cx expects 2 target(s), got 1"). Both are fixed here.
 //
-//   8   - comfortably T-A. Also the Free-plan "typical" circuit size.
-//   14  - the T-A/T-B boundary itself (T-A is defined as "<= 14 qubits").
-//   22  - mid T-B. Above Free's 16-qubit ceiling -> exercises entitlement
-//         checks for Free-plan synthetic users; within Pro/Teams/Campus.
-//   28  - top of T-B, and exactly the Pro-plan ceiling (§7) - the circuit a
-//         Pro user is allowed to run but a Teams/Campus user still isn't
-//         capped by.
-//   32  - T-C territory (31-40) and the Campus-plan ceiling (§7), i.e. the
-//         single largest circuit anyone on the platform can legally submit.
-//         2^32 * 16 bytes = 64 GiB statevector - this is exactly why T-C
-//         lives on the memory-optimised quantum-kernel-heavy pool (96-120Gi
-//         request/limit per infra SPEC.md), not the general kernel fleet.
+// TIER MODEL (§4) VERSUS WHAT THE KERNEL ACTUALLY DOES
+// ---------------------------------------------------
+// §4 claims T-B ("server statevector, 15-30 qubits") runs in 40-900 ms. Measured
+// cold, single request, idle machine, this build of the kernel:
 //
-// Canonicalisation (§4): "sorts commuting gates within a layer, so
-// semantically identical circuits collide [cache-key-wise] intentionally."
-// We reproduce that ordering here (gates within a layer sorted by target
-// qubit index) so that repeated calls with the same seed are guaranteed to
-// hit the Redis sim cache (`sim:{hash}`) - which is itself something this
-// suite measures (see `sim_cache_hit_rate` in main.js).
+//   8q 11 ms | 12q 23 ms | 14q 72 ms | 16q 336 ms | 18q 1,037 ms
+//   20q 1,929 ms | 22q 5,666 ms | 24q 20,706 ms
 //
-// Determinism matters beyond caching: contest-burst.js needs every VU to be
-// able to independently regenerate "what should have happened" without
-// sharing memory across VUs (k6 VUs do not share JS heap state), so every
-// generator here is a pure function of (qubits, seed).
+// The gateway aborts the upstream call at QUANTUM_KERNEL_TIMEOUT_MS * 4 =
+// 3,600 ms, so anything above ~20 qubits returns 503 on a cache miss no matter
+// how lightly loaded the box is. That is measured, not modelled — see
+// docs/architecture/load-test-report.md.
+//
+// Consequently there are two qubit distributions here, and the run says which
+// one it used:
+//
+//   SIM_MIX=spec      — uniform over §4's stated T-B band (15-30 qubits).
+//                       Reproduces what §4 says the server tier handles.
+//   SIM_MIX=feasible  — the sub-band that fits inside the gateway's own
+//                       timeout (8-18 qubits). Used for the mixed workload so
+//                       that the other four cohorts can be measured instead of
+//                       being buried behind kernel timeouts.
+//
+// Nothing here is tuned for a nicer number: `spec` is run and reported too, and
+// its failure rate is the point.
 
-/** Mulberry32 PRNG - tiny, deterministic, seeded. Good enough for synthetic
- * gate placement; this is a load generator, not a physics engine. */
+/** Deterministic PRNG so a (qubits, seed) pair always yields identical IR. */
 function mulberry32(seed) {
   let a = seed >>> 0;
   return function () {
@@ -49,131 +49,98 @@ function mulberry32(seed) {
   };
 }
 
-const ONE_QUBIT_GATES = ['h', 'x', 'y', 'z', 's', 't', 'rz', 'rx', 'ry'];
+const ONE_QUBIT = ['h', 'x', 'y', 'z', 's', 't', 'rz', 'rx', 'ry'];
+const SEED_BASE = 424242;
+const DEPTH = 3;
 
 /**
- * Build a deterministic, layered circuit: an initial Hadamard wall (to make
- * every simulation touch the full 2^n amplitude space instead of trivially
- * collapsing), followed by `depth` layers alternating single-qubit rotations
- * and a brick-wall of two-qubit CX gates, all seeded off `seed` so the same
- * (qubits, seed) pair always yields byte-identical IR.
- *
- * @param {number} qubits
- * @param {number} seed
- * @returns {{ qubits: number, gates: Array<object>, depth: number }}
+ * Hadamard wall, then alternating brick-wall CX layers and rotation layers.
+ * Gates within a layer are emitted in ascending target order, matching §4's
+ * canonicalisation ("sorts commuting gates within a layer"), so identical
+ * circuits hash identically and hit the Redis `sim:{hash}` cache on purpose.
  */
-export function generateCircuit(qubits, seed) {
+export function buildCircuit(qubits, seed) {
   const rand = mulberry32(seed);
-  const depth = Math.max(4, Math.round(Math.log2(qubits + 1) * 6));
-  const gates = [];
-
-  // Layer 0: Hadamard wall, canonical order = ascending qubit index.
-  for (let q = 0; q < qubits; q++) {
-    gates.push({ layer: 0, op: 'h', qubits: [q] });
-  }
-
-  for (let layer = 1; layer <= depth; layer++) {
-    const layerGates = [];
-    if (layer % 2 === 1) {
-      // Odd layers: brick-wall CX, offset alternates so entanglement spreads.
-      const offset = ((layer - 1) / 2) % 2;
-      for (let q = offset; q + 1 < qubits; q += 2) {
-        layerGates.push({ layer, op: 'cx', qubits: [q, q + 1] });
-      }
-    } else {
-      // Even layers: single-qubit rotations, angle seeded per gate.
-      for (let q = 0; q < qubits; q++) {
-        const op = ONE_QUBIT_GATES[Math.floor(rand() * ONE_QUBIT_GATES.length)];
-        const params = op.startsWith('r') ? [Number((rand() * Math.PI * 2).toFixed(6))] : [];
-        layerGates.push({ layer, op, qubits: [q], params });
-      }
+  const ops = [];
+  let k = 0;
+  for (let q = 0; q < qubits; q++) ops.push({ id: `h${k++}`, gate: 'h', targets: [q] });
+  for (let d = 0; d < DEPTH; d++) {
+    for (let q = d % 2; q + 1 < qubits; q += 2) {
+      ops.push({ id: `c${k++}`, gate: 'cx', targets: [q, q + 1] });
     }
-    // Canonicalisation: sort commuting gates within a layer by qubit index.
-    layerGates.sort((a, b) => a.qubits[0] - b.qubits[0]);
-    gates.push(...layerGates);
+    for (let q = 0; q < qubits; q++) {
+      const gate = ONE_QUBIT[Math.floor(rand() * ONE_QUBIT.length)];
+      const op = { id: `g${k++}`, gate, targets: [q] };
+      if (gate[0] === 'r') op.params = [Number((rand() * Math.PI * 2).toFixed(6))];
+      ops.push(op);
+    }
   }
-
-  return { qubits, gates, depth };
+  return { version: 1, name: `lt-${qubits}`, qubits, clbits: 0, ops };
 }
 
-/**
- * @param {number} qubits
- * @returns {'T-A'|'T-B'|'T-C'}
- */
 export function tierFor(qubits) {
   if (qubits <= 14) return 'T-A';
   if (qubits <= 30) return 'T-B';
   return 'T-C';
 }
 
-const SEED_BASE = 424242;
+const SPEC_QUBITS = [15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30];
+const FEASIBLE_QUBITS = [8, 10, 12, 14, 16, 18];
 
-/**
- * The five boundary payloads, pre-built once at module load (VU init
- * context) so every VU/iteration reuses identical, cache-friendly IR instead
- * of paying generation cost per iteration.
- */
-export const CIRCUITS = {
-  8: buildPayload(8),
-  14: buildPayload(14),
-  22: buildPayload(22),
-  28: buildPayload(28),
-  32: buildPayload(32),
-};
-
-function buildPayload(qubits) {
-  const circuit = generateCircuit(qubits, SEED_BASE + qubits);
-  return {
-    qubits,
-    tier: tierFor(qubits),
-    seed: SEED_BASE + qubits,
-    backend: qubits <= 14 ? 'statevector-wasm' : 'statevector',
-    shots: 1024,
-    noise_model: null,
-    circuit,
-  };
+/** Pre-built payload bodies, one per qubit count, built once in init context. */
+const CACHE = {};
+function payloadFor(qubits) {
+  if (!CACHE[qubits]) {
+    CACHE[qubits] = {
+      circuit: buildCircuit(qubits, SEED_BASE + qubits),
+      backend: 'native',
+      shots: 1024,
+      seed: SEED_BASE + qubits,
+      bindings: {},
+      includeVisual: false,
+    };
+  }
+  return CACHE[qubits];
 }
 
-/**
- * §4 cache key: sha256(canonical_ir || backend || shots || noise_model || seed).
- * We don't need to *compute* sha256 client-side (the server owns that), but
- * we do need a stable request body so repeated calls are byte-identical -
- * which `CIRCUITS` above already guarantees since it's built once.
- *
- * @param {8|14|22|28|32} qubits
- * @returns {object}
- */
-export function circuitRequestBody(qubits) {
-  const c = CIRCUITS[qubits];
-  if (!c) throw new Error(`no canned circuit for ${qubits} qubits`);
-  return {
-    qubits: c.qubits,
-    backend: c.backend,
-    shots: c.shots,
-    noise_model: c.noise_model,
-    seed: c.seed,
-    gates: c.circuit.gates,
-  };
-}
+export const SIM_MIX = __ENV.SIM_MIX || 'feasible';
 
 /**
- * Weighted picker for the "editing circuits" scenario. Weights approximate:
- * most server-visible edits are mid-size T-B circuits (the ones too big for
- * the client WASM engine to keep at frame rate but still "just editing"),
- * a meaningful top-of-T-B slice, a rare T-C circuit, and a thin sliver of
- * circuits that are nominally T-A size but still hit the server (e.g. a
- * low-power/mobile client that disables the local WASM engine, or an
- * explicit "verify on server" action) - see main.js for how this composes
- * with CLIENT_SIM_SHARE.
+ * Weighted pick over the active mix.
  *
- * @param {() => number} rand - a [0,1) RNG, e.g. Math.random
- * @returns {8|14|22|28|32}
+ * `feasible` weights toward the small end, which is what a product whose client
+ * engine owns everything <= 14 qubits (§4 T-A) would actually push to the
+ * server: mostly "just above the client ceiling" circuits.
  */
-export function pickServerCircuitQubits(rand = Math.random) {
+export function pickQubits(rand = Math.random) {
+  if (SIM_MIX === 'spec') {
+    return SPEC_QUBITS[Math.floor(rand() * SPEC_QUBITS.length)];
+  }
   const r = rand();
-  if (r < 0.05) return 8;
-  if (r < 0.15) return 14;
-  if (r < 0.65) return 22;
-  if (r < 0.9) return 28;
-  return 32;
+  if (r < 0.15) return 8;
+  if (r < 0.3) return 10;
+  if (r < 0.5) return 12;
+  if (r < 0.75) return 14;
+  if (r < 0.92) return 16;
+  return 18;
+}
+
+export function simBody(qubits) {
+  return payloadFor(qubits);
+}
+
+/**
+ * A cache-missing variant: §4's cache key includes the seed, so bumping the
+ * seed forces a cold run. Used by sim-capacity.js to separate "the kernel is
+ * fast" from "Redis remembered the answer".
+ */
+export function simBodyCold(qubits, nonce) {
+  return {
+    circuit: buildCircuit(qubits, SEED_BASE + qubits),
+    backend: 'native',
+    shots: 1024,
+    seed: (SEED_BASE + nonce) % 2147483647,
+    bindings: {},
+    includeVisual: false,
+  };
 }

@@ -34,7 +34,7 @@ export const WS_URL = (__ENV.WS_URL || BASE_URL.replace(/^http/, 'ws')).replace(
 
 // quantum-kernel FastAPI service, for the soak scenario's /metrics scrape.
 // Not reachable through the api-gateway path, so it needs its own base.
-export const KERNEL_URL = (__ENV.KERNEL_URL || 'http://localhost:8100').replace(/\/+$/, '');
+export const KERNEL_URL = (__ENV.KERNEL_URL || 'http://127.0.0.1:8100').replace(/\/+$/, '');
 
 // api-gateway's Prometheus metrics port (SPEC.md: "api ... 9464 /metrics"),
 // separate from BASE_URL's application port (3001) - used by soak.js's

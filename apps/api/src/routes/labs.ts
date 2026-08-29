@@ -400,7 +400,7 @@ export const labRoutes: FastifyPluginAsync = async (app) => {
    * recompute — in one implementation.
    */
   app.post('/internal/:submissionId/result', async (request, reply) => {
-    requireServiceToken(request);
+    requireServiceToken(request, 'lab:result');
     const { submissionId } = readParams(request, submissionIdSchema);
     const input = readBody(request, resultSchema);
 

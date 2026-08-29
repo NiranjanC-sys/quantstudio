@@ -19,6 +19,28 @@ import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
 import matter from 'gray-matter';
+import { parse as parseYaml } from 'yaml';
+
+/**
+ * gray-matter's default engines include one that *runs* `---js` front matter
+ * through eval. This validator walks every authored file in CI, so a lesson
+ * with a JS front-matter block would execute on the runner. Only YAML and JSON
+ * are accepted; everything else is a validation failure, not an execution.
+ */
+const denied = (language) => () => {
+  throw new Error(`front matter language '${language}' is not allowed`);
+};
+const MATTER_OPTIONS = {
+  language: 'yaml',
+  engines: {
+    yaml: { parse: (str) => parseYaml(str) ?? {}, stringify: () => '' },
+    json: { parse: (str) => JSON.parse(str), stringify: (obj) => JSON.stringify(obj) },
+    javascript: denied('javascript'),
+    js: denied('js'),
+    coffee: denied('coffee'),
+    toml: denied('toml'),
+  },
+};
 
 const ROOT = path.resolve(process.argv[2] ?? 'content/tracks');
 
@@ -59,7 +81,7 @@ async function check(file) {
 
   let parsed;
   try {
-    parsed = matter(raw);
+    parsed = matter(raw, MATTER_OPTIONS);
   } catch (e) {
     problems.push({ file: rel, line: 1, rule: 'frontmatter', detail: e.message });
     return;

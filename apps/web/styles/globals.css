@@ -896,3 +896,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
+
+/* Bloch axis kets, in DOM rather than WebGL. The sphere orbits under them, so
+   they mark the axis directions at rest rather than tracking the camera. The
+   accessible description on the canvas wrapper carries the real vector. */
+.rq-bloch-axes { position: absolute; inset: 0; pointer-events: none; }
+.rq-bloch-axis {
+  position: absolute; font-family: var(--font-mono); font-size: 11px;
+  color: var(--ink-subtle);
+}
+.rq-bloch-axis-z { top: 4px; left: 50%; transform: translateX(-50%); }
+.rq-bloch-axis-zneg { bottom: 18px; left: 50%; transform: translateX(-50%); }
+.rq-bloch-axis-x { right: 6px; top: 58%; }
+.rq-bloch-axis-y { left: 6px; top: 42%; }

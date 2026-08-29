@@ -49,6 +49,33 @@ const checkoutSchema = z.object({
   cancelUrl: z.string().url().max(2048).optional(),
 });
 
+/**
+ * Stripe's hosted checkout will send the browser anywhere these point, from a
+ * page the learner reached by clicking "upgrade" on our own domain. Left open,
+ * that is a payment-flavoured open redirect and a ready-made phishing landing
+ * ("your card was declined, re-enter it"), so the return legs are pinned to the
+ * origin we publish.
+ */
+function sameOriginReturnUrl(candidate: string | undefined, publicUrl: string): string | null {
+  if (candidate === undefined) return null;
+  let parsed: URL;
+  let expected: URL;
+  try {
+    parsed = new URL(candidate);
+    expected = new URL(publicUrl);
+  } catch {
+    throw new ApiError('validation-failed', 'Return URLs must be absolute URLs.');
+  }
+  if (parsed.origin !== expected.origin) {
+    throw new ApiError(
+      'validation-failed',
+      'Checkout return URLs must point at this application.',
+      { extensions: { allowedOrigin: expected.origin } },
+    );
+  }
+  return parsed.href;
+}
+
 /** Events we act on. Everything else is recorded and marked `ignored`. */
 const HANDLED_EVENTS = new Set([
   'checkout.session.completed',
@@ -181,6 +208,12 @@ export const billingRoutes: FastifyPluginAsync = async (app) => {
   app.post('/checkout', { preHandler: [writeLimit] }, async (request, reply) => {
     const auth = authed(request);
     const input = readBody(request, checkoutSchema);
+
+    // Validated before anything else so a hostile return URL never reaches
+    // Stripe, whatever the plan lookup does.
+    const successUrl = sameOriginReturnUrl(input.successUrl, env.WEB_PUBLIC_URL);
+    const cancelUrl = sameOriginReturnUrl(input.cancelUrl, env.WEB_PUBLIC_URL);
+
     const client = requireStripe();
 
     const planRows = await db.primary
@@ -212,8 +245,8 @@ export const billingRoutes: FastifyPluginAsync = async (app) => {
         { price: plan.stripePriceId, quantity: plan.seatBased ? input.seats : 1 },
       ],
       ...(customerId ? { customer: customerId } : { customer_email: auth.email }),
-      success_url: input.successUrl ?? `${env.WEB_PUBLIC_URL}/billing/success?session={CHECKOUT_SESSION_ID}`,
-      cancel_url: input.cancelUrl ?? `${env.WEB_PUBLIC_URL}/billing/cancelled`,
+      success_url: successUrl ?? `${env.WEB_PUBLIC_URL}/billing/success?session={CHECKOUT_SESSION_ID}`,
+      cancel_url: cancelUrl ?? `${env.WEB_PUBLIC_URL}/billing/cancelled`,
       // Carried through to the webhook, which is the only place that is allowed
       // to grant a plan.
       client_reference_id: auth.userId,
@@ -346,11 +379,33 @@ export const billingRoutes: FastifyPluginAsync = async (app) => {
         .onConflictDoNothing({ target: stripeEvents.stripeEventId })
         .returning({ id: stripeEvents.id });
 
-      if (claimed.length === 0) {
-        return reply.send({ received: true, duplicate: true });
-      }
+      let recordId = claimed[0]?.id as string | undefined;
 
-      const recordId = claimed[0]?.id as string;
+      if (recordId === undefined) {
+        // Someone got here first. That is usually a genuine redelivery of an
+        // event we already handled — but it is also what a *retry of a failed
+        // event* looks like, and answering that with 200 would dead-end Stripe's
+        // retry schedule forever: the customer has paid, the upgrade threw once,
+        // and no delivery can ever repair it. Re-claim a `failed` row instead.
+        // The conditional UPDATE is the lock, exactly as the INSERT was: only
+        // one concurrent retry can move the row out of `failed`.
+        const reclaimed = await db.primary
+          .update(stripeEvents)
+          .set({
+            status: 'received',
+            error: null,
+            attempts: sql`${stripeEvents.attempts} + 1`,
+          })
+          .where(
+            and(eq(stripeEvents.stripeEventId, event.id), eq(stripeEvents.status, 'failed')),
+          )
+          .returning({ id: stripeEvents.id });
+
+        if (reclaimed.length === 0) {
+          return reply.send({ received: true, duplicate: true });
+        }
+        recordId = reclaimed[0]?.id as string;
+      }
 
       if (!HANDLED_EVENTS.has(event.type)) {
         await db.primary
@@ -386,6 +441,26 @@ export const billingRoutes: FastifyPluginAsync = async (app) => {
   ): Promise<void> {
     const projection = await projectSubscription(db.primary, subscription);
     if (!projection) return;
+
+    // A Stripe subscription belongs to exactly one subject. If this one is
+    // already attached to a different user (or to an org), an event naming
+    // someone else must not rewrite that row's plan or status — the
+    // `client_reference_id` / metadata this userId came from is data we put
+    // there, but the handler should not depend on that being true forever.
+    const owner = await db.primary
+      .select({ userId: subscriptions.userId, orgId: subscriptions.orgId })
+      .from(subscriptions)
+      .where(eq(subscriptions.stripeSubscriptionId, projection.stripeSubscriptionId))
+      .limit(1);
+
+    const existingOwner = owner[0];
+    if (existingOwner && (existingOwner.orgId !== null || existingOwner.userId !== userId)) {
+      throw new ApiError(
+        'conflict',
+        'This Stripe subscription is already attached to a different subject.',
+        { extensions: { stripeSubscriptionId: projection.stripeSubscriptionId } },
+      );
+    }
 
     await db.primary
       .insert(subscriptions)
@@ -465,6 +540,11 @@ export const billingRoutes: FastifyPluginAsync = async (app) => {
       case 'invoice.paid':
       case 'invoice.payment_failed': {
         const invoice = event.data.object;
+        // Draft/preview invoices arrive without an id. Inserting `null` into a
+        // NOT NULL column throws, and a webhook that throws is a webhook Stripe
+        // retries forever; there is nothing to record, so record nothing.
+        if (typeof invoice.id !== 'string' || invoice.id.length === 0) return;
+
         const customerId =
           typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id ?? null;
 

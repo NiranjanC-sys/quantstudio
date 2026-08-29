@@ -45,7 +45,16 @@ export interface PasskeyService {
   finishAuthentication(input: {
     ceremonyId: string;
     response: AuthenticationResponseJSON;
-  }): Promise<{ userId: string; credentialId: string }>;
+  }): Promise<{
+    userId: string;
+    credentialId: string;
+    /**
+     * Whether the authenticator actually performed user verification (PIN,
+     * biometric). `false` means possession alone, which is one factor, not two —
+     * the caller decides what that is worth.
+     */
+    userVerified: boolean;
+  }>;
   list(userId: string): Promise<Array<{ id: string; label: string | null; createdAt: Date; lastUsedAt: Date | null }>>;
   remove(userId: string, credentialId: string): Promise<boolean>;
 }
@@ -210,7 +219,11 @@ export function createPasskeyService(
         .set({ counter: newCounter, lastUsedAt: new Date() })
         .where(eq(webauthnCredentials.id, record.id));
 
-      return { userId: record.userId, credentialId: record.credentialId };
+      return {
+        userId: record.userId,
+        credentialId: record.credentialId,
+        userVerified: verification.authenticationInfo.userVerified,
+      };
     },
 
     async list(userId) {

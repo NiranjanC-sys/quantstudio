@@ -1,0 +1,133 @@
+
+         /\      Grafana   /‾‾/  
+    /\  /  \     |\  __   /  /   
+   /  \/    \    | |/ /  /   ‾‾\ 
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/ 
+
+     execution: local
+        script: sim-capacity.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 1 max VUs, 10m30s max duration (incl. graceful stop):
+              * sweep: 9 iterations for each of 1 VUs (maxDuration: 10m0s, exec: sweep, gracefulStop: 30s)
+
+time="2026-08-29T20:06:55Z" level=info msg="qubits=8 status=200 ms=7 bytes=19535 cached=false" source=console
+time="2026-08-29T20:06:55Z" level=info msg="qubits=10 status=200 ms=9 bytes=72119 cached=false" source=console
+time="2026-08-29T20:06:55Z" level=info msg="qubits=12 status=200 ms=20 bytes=283150 cached=false" source=console
+time="2026-08-29T20:06:55Z" level=info msg="qubits=14 status=200 ms=62 bytes=1108510 cached=false" source=console
+time="2026-08-29T20:06:55Z" level=info msg="qubits=16 status=200 ms=296 bytes=4437430 cached=false" source=console
+
+running (00m00.8s), 1/1 VUs, 5 complete and 0 interrupted iterations
+sweep   [  56% ] 1 VUs  00m00.8s/10m0s  5/9 iters, 9 per VU
+time="2026-08-29T20:06:56Z" level=info msg="qubits=18 status=200 ms=844 bytes=11879075 cached=false" source=console
+
+running (00m01.8s), 1/1 VUs, 6 complete and 0 interrupted iterations
+sweep   [  67% ] 1 VUs  00m01.8s/10m0s  6/9 iters, 9 per VU
+
+running (00m02.8s), 1/1 VUs, 6 complete and 0 interrupted iterations
+sweep   [  67% ] 1 VUs  00m02.8s/10m0s  6/9 iters, 9 per VU
+time="2026-08-29T20:06:58Z" level=info msg="qubits=20 status=200 ms=1646 bytes=30480 cached=false" source=console
+
+running (00m03.8s), 1/1 VUs, 7 complete and 0 interrupted iterations
+sweep   [  78% ] 1 VUs  00m03.8s/10m0s  7/9 iters, 9 per VU
+
+running (00m04.8s), 1/1 VUs, 7 complete and 0 interrupted iterations
+sweep   [  78% ] 1 VUs  00m04.8s/10m0s  7/9 iters, 9 per VU
+
+running (00m05.8s), 1/1 VUs, 7 complete and 0 interrupted iterations
+sweep   [  78% ] 1 VUs  00m05.8s/10m0s  7/9 iters, 9 per VU
+
+running (00m06.8s), 1/1 VUs, 7 complete and 0 interrupted iterations
+sweep   [  78% ] 1 VUs  00m06.8s/10m0s  7/9 iters, 9 per VU
+
+running (00m07.8s), 1/1 VUs, 7 complete and 0 interrupted iterations
+sweep   [  78% ] 1 VUs  00m07.8s/10m0s  7/9 iters, 9 per VU
+time="2026-08-29T20:07:03Z" level=info msg="qubits=22 status=200 ms=5445 bytes=32600 cached=false" source=console
+
+running (00m08.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m08.8s/10m0s  8/9 iters, 9 per VU
+
+running (00m09.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m09.8s/10m0s  8/9 iters, 9 per VU
+
+running (00m10.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m10.8s/10m0s  8/9 iters, 9 per VU
+
+running (00m11.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m11.8s/10m0s  8/9 iters, 9 per VU
+
+running (00m12.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m12.8s/10m0s  8/9 iters, 9 per VU
+
+running (00m13.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m13.8s/10m0s  8/9 iters, 9 per VU
+
+running (00m14.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m14.8s/10m0s  8/9 iters, 9 per VU
+
+running (00m15.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m15.8s/10m0s  8/9 iters, 9 per VU
+
+running (00m16.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m16.8s/10m0s  8/9 iters, 9 per VU
+
+running (00m17.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m17.8s/10m0s  8/9 iters, 9 per VU
+
+running (00m18.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m18.8s/10m0s  8/9 iters, 9 per VU
+
+running (00m19.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m19.8s/10m0s  8/9 iters, 9 per VU
+
+running (00m20.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m20.8s/10m0s  8/9 iters, 9 per VU
+
+running (00m21.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m21.8s/10m0s  8/9 iters, 9 per VU
+
+running (00m22.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m22.8s/10m0s  8/9 iters, 9 per VU
+
+running (00m23.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m23.8s/10m0s  8/9 iters, 9 per VU
+
+running (00m24.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m24.8s/10m0s  8/9 iters, 9 per VU
+
+running (00m25.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m25.8s/10m0s  8/9 iters, 9 per VU
+
+running (00m26.8s), 1/1 VUs, 8 complete and 0 interrupted iterations
+sweep   [  89% ] 1 VUs  00m26.8s/10m0s  8/9 iters, 9 per VU
+time="2026-08-29T20:07:22Z" level=info msg="qubits=24 status=200 ms=19173 bytes=35191 cached=false" source=console
+     data_received[2m..................:[0m [36m18 MB[0m   [36;2m650 kB/s[0m
+     data_sent[2m......................:[0m [36m38 kB[0m   [36;2m1.4 kB/s[0m
+     http_req_blocked[2m...............:[0m min=[36m4.3µs[0m    med=[36m4.64µs[0m   p(95)=[36m217.1µs[0m  p(99)=[36m329.69µs[0m max=[36m357.84µs[0m avg=[36m44.24µs[0m 
+     http_req_connecting[2m............:[0m min=[36m0s[0m       med=[36m0s[0m       p(95)=[36m156.88µs[0m p(99)=[36m240.56µs[0m max=[36m261.48µs[0m avg=[36m29.05µs[0m 
+     http_req_duration[2m..............:[0m min=[36m7.06ms[0m   med=[36m296.49ms[0m p(95)=[36m13.68s[0m   p(99)=[36m18.07s[0m   max=[36m19.17s[0m   avg=[36m3.05s[0m   
+       { expected_response:true }[2m...:[0m min=[36m7.06ms[0m   med=[36m296.49ms[0m p(95)=[36m13.68s[0m   p(99)=[36m18.07s[0m   max=[36m19.17s[0m   avg=[36m3.05s[0m   
+     http_req_failed[2m................:[0m [36m0.00%[0m   [36;2m✓ 0[0m        [36;2m✗ 9[0m  
+     http_req_receiving[2m.............:[0m min=[36m153.95µs[0m med=[36m363.2µs[0m  p(95)=[36m35.83ms[0m  p(99)=[36m48.53ms[0m  max=[36m51.71ms[0m  avg=[36m8.01ms[0m  
+     http_req_sending[2m...............:[0m min=[36m30.42µs[0m  med=[36m110.51µs[0m p(95)=[36m171.15µs[0m p(99)=[36m187.08µs[0m max=[36m191.06µs[0m avg=[36m97.08µs[0m 
+     http_req_tls_handshaking[2m.......:[0m min=[36m0s[0m       med=[36m0s[0m       p(95)=[36m0s[0m       p(99)=[36m0s[0m       max=[36m0s[0m       avg=[36m0s[0m      
+     http_req_waiting[2m...............:[0m min=[36m6.79ms[0m   med=[36m284.36ms[0m p(95)=[36m13.68s[0m   p(99)=[36m18.07s[0m   max=[36m19.17s[0m   avg=[36m3.04s[0m   
+     http_reqs[2m......................:[0m [36m9[0m       [36;2m0.326663/s[0m
+     iteration_duration[2m.............:[0m min=[36m8.26ms[0m   med=[36m306.97ms[0m p(95)=[36m13.68s[0m   p(99)=[36m18.07s[0m   max=[36m19.17s[0m   avg=[36m3.06s[0m   
+     iterations[2m.....................:[0m [36m9[0m       [36;2m0.326663/s[0m
+     sim_latency[2m....................:[0m min=[36m7.06ms[0m   med=[36m296.49ms[0m p(95)=[36m13.68s[0m   p(99)=[36m18.07s[0m   max=[36m19.17s[0m   avg=[36m3.05s[0m   
+     sim_ok[2m.........................:[0m [36m100.00%[0m [36;2m✓ 9[0m        [36;2m✗ 0[0m  
+     sim_q10[2m........................:[0m min=[36m9.17ms[0m   med=[36m9.17ms[0m   p(95)=[36m9.17ms[0m   p(99)=[36m9.17ms[0m   max=[36m9.17ms[0m   avg=[36m9.17ms[0m  
+     sim_q12[2m........................:[0m min=[36m20.27ms[0m  med=[36m20.27ms[0m  p(95)=[36m20.27ms[0m  p(99)=[36m20.27ms[0m  max=[36m20.27ms[0m  avg=[36m20.27ms[0m 
+     sim_q14[2m........................:[0m min=[36m62.31ms[0m  med=[36m62.31ms[0m  p(95)=[36m62.31ms[0m  p(99)=[36m62.31ms[0m  max=[36m62.31ms[0m  avg=[36m62.31ms[0m 
+     sim_q16[2m........................:[0m min=[36m296.49ms[0m med=[36m296.49ms[0m p(95)=[36m296.49ms[0m p(99)=[36m296.49ms[0m max=[36m296.49ms[0m avg=[36m296.49ms[0m
+     sim_q18[2m........................:[0m min=[36m844.47ms[0m med=[36m844.47ms[0m p(95)=[36m844.47ms[0m p(99)=[36m844.47ms[0m max=[36m844.47ms[0m avg=[36m844.47ms[0m
+     sim_q20[2m........................:[0m min=[36m1.64s[0m    med=[36m1.64s[0m    p(95)=[36m1.64s[0m    p(99)=[36m1.64s[0m    max=[36m1.64s[0m    avg=[36m1.64s[0m   
+     sim_q22[2m........................:[0m min=[36m5.44s[0m    med=[36m5.44s[0m    p(95)=[36m5.44s[0m    p(99)=[36m5.44s[0m    max=[36m5.44s[0m    avg=[36m5.44s[0m   
+     sim_q24[2m........................:[0m min=[36m19.17s[0m   med=[36m19.17s[0m   p(95)=[36m19.17s[0m   p(99)=[36m19.17s[0m   max=[36m19.17s[0m   avg=[36m19.17s[0m  
+     sim_q8[2m.........................:[0m min=[36m7.06ms[0m   med=[36m7.06ms[0m   p(95)=[36m7.06ms[0m   p(99)=[36m7.06ms[0m   max=[36m7.06ms[0m   avg=[36m7.06ms[0m  
+     vus[2m............................:[0m [36m1[0m       [36;2mmin=1[0m      [36;2mmax=1[0m
+     vus_max[2m........................:[0m [36m1[0m       [36;2mmin=1[0m      [36;2mmax=1[0m
+running (00m27.6s), 0/1 VUs, 9 complete and 0 interrupted iterations
+sweep ✓ [ 100% ] 1 VUs  00m27.6s/10m0s  9/9 iters, 9 per VU

@@ -31,6 +31,12 @@ export interface SessionRecord {
 export interface AuthContext extends SessionRecord {
   /** SHA-256 of the presented token; the Redis and Postgres key. */
   sessionKey: string;
+  /**
+   * Scopes from an internal service token, when that is what authenticated the
+   * request. `undefined` for a human session. `requireServiceToken` checks it,
+   * so a token minted to report a lab result cannot also settle a contest.
+   */
+  serviceScope?: readonly string[];
 }
 
 /** §8: MFA is required for these roles. */

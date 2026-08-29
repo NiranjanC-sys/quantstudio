@@ -70,10 +70,16 @@ export function authed(request: FastifyRequest): AuthContext {
  * by the gateway"). Graders and the finaliser call back in with one of these;
  * a user session must never reach these routes.
  */
-export function requireServiceToken(request: FastifyRequest): AuthContext {
+export function requireServiceToken(request: FastifyRequest, scope: string): AuthContext {
   const auth = request.auth;
   if (!auth || !auth.sessionKey.startsWith('svc:')) {
     throw new ApiError('forbidden', 'This endpoint requires an internal service token.');
+  }
+  // The scope is checked, not merely carried. Without this a token minted for
+  // one internal callback is a valid credential for every other one, and the
+  // `svc:` prefix alone was the entire authorisation these routes performed.
+  if (!auth.serviceScope?.includes(scope)) {
+    throw new ApiError('forbidden', `This endpoint requires the "${scope}" scope.`);
   }
   return auth;
 }

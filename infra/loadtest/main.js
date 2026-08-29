@@ -1,457 +1,301 @@
-// main.js
+// main.js — mixed §1 cohort workload against a running RedQuant stack.
 //
-// Mixed workload load test exercising the §1 capacity model
-// (docs/architecture/system-design.md) as five concurrent, independently
-// arrival-rate-controlled cohorts. See infra/loadtest/README.md for how to
-// run this and how to read the results.
+// WHAT CHANGED FROM THE UNRUN VERSION OF THIS FILE
+// ------------------------------------------------
+// The previous script had never been executed. Every endpoint it called was
+// wrong, so a 100% failure rate was the only possible outcome:
 //
-// -----------------------------------------------------------------------
-// WHY ramping-arrival-rate, not ramping-vus
-// -----------------------------------------------------------------------
-// §1's numbers are *request rates* ("Origin RPS"), not concurrent-user
-// counts, and the whole point of this suite is to reproduce the cohort
-// RATIOS at the ORIGIN. `ramping-vus` controls concurrency and lets
-// throughput fall wherever response time happens to put it - under load,
-// slower endpoints silently send fewer requests per second than faster
-// ones, which would quietly corrupt the 55/22/12/8/3 mix into something
-// else entirely. `ramping-arrival-rate` fixes the iteration rate directly
-// and lets k6 add VUs as needed to sustain it, so the ratios in this file
-// ARE the ratios hitting the server, regardless of how fast it responds
-// (up to the preAllocatedVUs/maxVUs ceiling - see makeScenario below).
+//   GET  /lessons/{int}          -> 404. Real: GET /catalog/lessons/{slug}
+//   GET  /dashboard              -> 404. Real: GET /progress/overview
+//   POST /labs/{lessonId}/submit -> 404. Real: POST /labs/submit {lessonId,...}
+//   POST /contests/{id}/submit   -> body used `problemLabel`; the route takes
+//                                   `problemId` (a uuid) and requires a
+//                                   registration row.
+//   POST /auth/dev-session       -> 404; no such endpoint exists. See
+//                                   lib/fixtures.js for what replaced it.
+//   POST /simulate               -> right path, wrong body (see lib/circuits.js).
+//   GET  /simulate/jobs/{id}     -> 404; the gateway has no sync-sim job poller,
+//                                   so the "202 + queue position" leg of §9's
+//                                   degradation ladder is not implemented and
+//                                   cannot be measured. The polling code is gone.
 //
-// -----------------------------------------------------------------------
-// §1 cohort arithmetic (SCALE = 1 == the full 50,000-concurrent-user fleet)
-// -----------------------------------------------------------------------
-//   Cohort              Share   Steady origin rps (§1, verbatim)
-//   reading lessons      55%    611
-//   editing circuits     22%    1,375 nominal sim/s (see below)
-//   running labs         12%    50
-//   in a contest          8%    44
-//   dashboards/social     3%    75
+// COHORT MIX (§1, unchanged arithmetic)
+// -------------------------------------
+//   reading      611 rps   55% of users, 1 nav / 45 s
+//   editing      110 rps   22% of users; 1,375 nominal sim/s of which §4 says
+//                          >=92% never leave the browser -> 1375*0.08 = 110
+//   labs          50 rps   12% of users, 1 submit / 120 s
+//   contest       44 rps    8% of users, 1 submit / 90 s (steady, not the burst)
+//   dashboards    75 rps    3% of users, 1 req / 20 s
+//                890 rps   modeled steady origin load
 //
-// "Editing circuits" is special: §4 states >= 92% of those 1,375 sim/s
-// never leave the browser (T-A tier, client-side @redquant/qir WASM
-// engine). This suite cannot observe client-side work at all - k6 only
-// sees the network - so the `editing` scenario must model ONLY the
-// server-visible slice:
+// §1 states the origin envelope is "~1,500 rps steady, 3,500 rps peak". The five
+// modeled cohorts sum to 890, not 1,500; the gap is traffic this suite does not
+// model (WebSocket control frames for 32,000 sockets, session refresh, ETag
+// revalidation, health checks, retries). It is not inflated to force a match.
 //
-//   EDITING_SERVER_STEADY = 1375 * (1 - CLIENT_SIM_SHARE)
-//                         = 1375 * (1 - 0.92)
-//                         = 1375 * 0.08
-//                         = 110      <- matches §1's own "~110/s steady" figure
+// TWO EXECUTION MODES
+// -------------------
+//   MODE=step (default)  constant-arrival-rate at RATE_MULT x the §1 steady mix,
+//                        for DURATION. One run per multiplier builds a clean
+//                        saturation table; a single ramping run averages the
+//                        good and bad stages together and hides the knee.
+//   MODE=ramp            one ramping-arrival-rate run through the whole curve,
+//                        for the "does the mix hold together over 20 min" view.
 //
-// Summing the five STEADY figures actually modeled as server load:
-//
-//   611 (reading) + 110 (editing, server-only) + 50 (labs)
-//     + 44 (contest) + 75 (dashboards) = 890 rps
-//
-// §1 separately states total origin traffic is "~1,500 rps steady, 3,500
-// rps peak". Our five modeled cohorts sum to 890 rps steady, not 1,500.
-// We do NOT silently inflate the per-cohort numbers to force a match to
-// 1,500 - that would misrepresent what §1 actually specifies per cohort.
-// The ~610 rps gap is attributed to origin traffic this suite does not
-// model as its own scenario: WebSocket control frames/pings for the
-// 32,000 concurrent sockets (§1), session refresh, health checks, cache
-// revalidation (ETag conditional GETs), and retries. See README.md
-// ("what a PASS proves vs. does not") for the explicit statement of this
-// gap so a passing run is never mistaken for "the full origin envelope
-// was reproduced."
-//
-// For PEAK, §1 gives an explicit per-cohort number for exactly one
-// cohort - editing's server-side sims ("~110/s steady, 400/s peak",
-// ratio 400/110 ≈ 3.64x) - and one number that is specific to the
-// contest DEADLINE BURST, not sustained peak ("Sandbox executions: 50/s
-// steady, 250/s at contest deadline"). The deadline burst is a distinct,
-// 90-second, deterministic event and is tested on its own in
-// contest-burst.js; it is deliberately NOT folded into this file's
-// "peak" stage, which models sustained elevated load, not an instant
-// spike. For the remaining cohorts (reading, labs' sustained peak,
-// contest's sustained peak, dashboards) §1 gives no explicit per-cohort
-// peak figure, so we scale each by §1's own stated origin-wide
-// peak:steady ratio (3500/1500 ≈ 2.333x) as an explicit, documented
-// modeling assumption:
-//
-//   READING_PEAK    = round(611 * 2.333)              = 1426
-//   EDITING_PEAK    = 400                              (§1 explicit)
-//   LABS_PEAK       = round(50  * 2.333)                = 117  (sustained; NOT the 250/s deadline figure)
-//   CONTEST_PEAK    = round(44  * 2.333)                = 103  (sustained; the ~1,300 rps burst is contest-burst.js)
-//   DASHBOARDS_PEAK = round(75  * 2.333)                = 175
-//
-//   sum = 1426 + 400 + 117 + 103 + 175 = 2221 rps modeled peak
-//
-// Again this does not equal §1's stated 3,500 rps origin peak; the
-// ~1,279 rps gap is the contest deadline burst (tested separately) plus
-// the same unmodeled auxiliary traffic as above. The full 3,500 rps
-// envelope, burst included, is only actually exercised by running this
-// file's peak stage CONCURRENTLY with contest-burst.js - see README.md.
+// ENV
+//   BASE_URL     default http://localhost:3001
+//   RATE_MULT    multiplier on the §1 steady rates (MODE=step). 1 = 890 rps.
+//   DURATION     hold time for MODE=step, default 90s
+//   SIM_MIX      feasible | spec  (see lib/circuits.js)
+//   SPREAD_IPS   1 to give each VU its own X-Forwarded-For (see lib/fixtures.js)
 
 import http from 'k6/http';
-import { sleep } from 'k6';
+import exec from 'k6/execution';
 import { Trend, Counter, Rate } from 'k6/metrics';
-import { BASE_URL, SCALE, CLIENT_SIM_SHARE, PLAN_MAX_QUBITS } from './lib/config.js';
-import { login, syntheticUser } from './lib/auth.js';
-import { checkOk } from './lib/checks.js';
-import { circuitRequestBody, pickServerCircuitQubits, tierFor } from './lib/circuits.js';
+import { BASE_URL } from './lib/config.js';
+import { CONTEST, GRADABLE_LESSON_IDS, LESSON_SLUGS, authHeaders, idempotencyKey, userForIteration } from './lib/fixtures.js';
+import { pickQubits, simBody, tierFor, SIM_MIX } from './lib/circuits.js';
 
-// ---------------------------------------------------------------------------
-// Custom metrics
-// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------- rate model
+const STEADY = { reading: 611, editing: 110, labs: 50, contest: 44, dashboards: 75 };
+const STEADY_TOTAL = Object.values(STEADY).reduce((a, b) => a + b, 0); // 890
+// §1 gives an explicit peak for exactly one cohort (editing: "~110/s steady,
+// 400/s peak"). For the rest it gives only the origin-wide 3500/1500 = 2.333x.
+const PEAK = { reading: 1426, editing: 400, labs: 117, contest: 103, dashboards: 175 };
 
-// §4 / top-level target: "< 2 s for a 32-qubit statevector simulation."
-export const sim32qDuration = new Trend('sim_32q_duration', true);
+const MODE = __ENV.MODE || 'step';
+const RATE_MULT = Number(__ENV.RATE_MULT || '1');
+const DURATION = __ENV.DURATION || '90s';
+const WARMUP = __ENV.WARMUP || '15s';
 
-// §11 RUM budget: "time_to_first_amplitude ... Budget: 120 ms." See the
-// `editing()` scenario for the important caveat that this is a k6-side
-// APPROXIMATION of a client-observed metric, not a direct measurement.
-export const timeToFirstAmplitude = new Trend('time_to_first_amplitude', true);
+// ------------------------------------------------------------------ metrics
+// One Trend per endpoint class, because http_req_duration aggregated over five
+// cohorts of wildly different cost is not a number anybody can act on.
+const latRead = new Trend('lat_read_lesson', true);
+const latSim = new Trend('lat_simulate', true);
+const latLab = new Trend('lat_lab_submit', true);
+const latContest = new Trend('lat_contest_submit', true);
+const latDash = new Trend('lat_dashboard', true);
 
-// §7: entitlements are evaluated at the gateway; a mismatch between a
-// synthetic user's plan and the qubit count it asks for should produce a
-// controlled denial, not an error. Counted, not just checked, per the spec.
-export const entitlementDenials = new Counter('entitlement_denials');
+const errRead = new Rate('err_read_lesson');
+const errSim = new Rate('err_simulate');
+const errLab = new Rate('err_lab_submit');
+const errContest = new Rate('err_contest_submit');
+const errDash = new Rate('err_dashboard');
 
-// §4: "Cache in Redis ... fronted by an in-process LRU." Read off the
-// `x-sim-cache` response header the kernel/gateway is expected to set.
-export const simCacheHitRate = new Rate('sim_cache_hit_rate');
+const rl = new Counter('rate_limited_total');
+const rlRead = new Rate('rl_read');
+const rlSim = new Rate('rl_simulate');
+const rlLab = new Rate('rl_lab_submit');
+const rlContest = new Rate('rl_contest_submit');
+const rlDash = new Rate('rl_dashboard');
 
-// §9: 429 is an expected, designed-for outcome under load, tracked
-// separately from failures so its share can be asserted to "stay low"
-// rather than either being ignored or (wrongly) failing the run outright.
-export const rateLimitedRatio = new Rate('rate_limited_ratio');
+const entitlementDenials = new Counter('entitlement_denials');
+const simCacheHit = new Rate('sim_cache_hit_rate');
+const upstreamUnavailable = new Counter('sim_upstream_unavailable');
+const creditsExhausted = new Counter('credits_exhausted');
 
-// §9: treat 429 (rate limit) and 403 (entitlement denial - see above) as
-// expected response codes so they do NOT count against `http_req_failed`.
-// Both are separately measured (rateLimitedRatio, entitlementDenials) so
-// this does not hide them - it just stops them polluting the generic
-// error-rate thresholds below, which are meant to catch actual breakage.
-http.setResponseCallback(http.expectedStatuses(200, 201, 202, 204, 206, 304, 403, 429));
+// §9: 429 (shed) and 403 (entitlement denial) are DESIGNED outcomes, so they are
+// counted separately rather than inflating http_req_failed. 503 is NOT excused —
+// an upstream timeout is breakage and must show up in the error rate.
+http.setResponseCallback(http.expectedStatuses(200, 201, 202, 204, 304, 403, 429));
 
-// ---------------------------------------------------------------------------
-// Rate arithmetic (see header comment for the full derivation)
-// ---------------------------------------------------------------------------
-
-const READING_STEADY = 611;
-const EDITING_NOMINAL_STEADY = 1375; // §1: "1,375 sim/s nominal"
-const EDITING_SERVER_STEADY = Math.round(EDITING_NOMINAL_STEADY * (1 - CLIENT_SIM_SHARE)); // 110
-const LABS_STEADY = 50;
-const CONTEST_STEADY = 44;
-const DASHBOARDS_STEADY = 75;
-
-const MODELED_STEADY_TOTAL =
-  READING_STEADY + EDITING_SERVER_STEADY + LABS_STEADY + CONTEST_STEADY + DASHBOARDS_STEADY; // 890
-
-const ORIGIN_PEAK_STEADY_RATIO = 3500 / 1500; // ≈2.333, §1's own origin-wide ratio
-
-const READING_PEAK = Math.round(READING_STEADY * ORIGIN_PEAK_STEADY_RATIO); // 1426
-const EDITING_SERVER_PEAK = 400; // §1 explicit
-const LABS_PEAK = Math.round(LABS_STEADY * ORIGIN_PEAK_STEADY_RATIO); // 117
-const CONTEST_PEAK = Math.round(CONTEST_STEADY * ORIGIN_PEAK_STEADY_RATIO); // 103
-const DASHBOARDS_PEAK = Math.round(DASHBOARDS_STEADY * ORIGIN_PEAK_STEADY_RATIO); // 175
-
-const MODELED_PEAK_TOTAL =
-  READING_PEAK + EDITING_SERVER_PEAK + LABS_PEAK + CONTEST_PEAK + DASHBOARDS_PEAK; // 2221
-
-// Surface the arithmetic at test-init time (visible in `k6 inspect` /
-// `k6 run` logs) so the numbers above are never just a comment nobody reads.
-console.log(
-  `[main.js] modeled steady total = ${MODELED_STEADY_TOTAL} rps, ` +
-    `modeled peak total = ${MODELED_PEAK_TOTAL} rps (SCALE=${SCALE}); ` +
-    `§1 states origin envelope 1500/3500 rps - see header comment for the gap.`,
-);
-
-function scaledRate(base) {
-  return Math.max(1, Math.round(base * SCALE));
-}
-
-// ---------------------------------------------------------------------------
-// Stage timeline - shared by all five scenarios so they overlap in real
-// time and genuinely produce a MIXED workload, not five sequential ones.
-// ---------------------------------------------------------------------------
-
-const WARMUP_DURATION = '2m';
-const RAMP_TO_STEADY_DURATION = '3m';
-const STEADY_HOLD_DURATION = '5m';
-const RAMP_TO_PEAK_DURATION = '3m';
-const PEAK_HOLD_DURATION = '5m';
-const RAMP_DOWN_DURATION = '3m';
-// Total wall-clock per run: 2+3+5+3+5+3 = 21 minutes.
-
-function makeScenario({ steady, peak, exec, avgIterSeconds }) {
-  const steadyRate = scaledRate(steady);
-  const peakRate = scaledRate(peak);
-  const warmupRate = Math.max(1, Math.round(steadyRate * 0.3));
-  // VU budget: enough concurrent VUs to sustain peakRate iterations/sec
-  // given each iteration takes roughly avgIterSeconds, plus 50% headroom
-  // so a slow tail doesn't starve the arrival-rate executor of free VUs
-  // (which would silently turn into arrival-rate under-delivery instead
-  // of a clean failure).
-  const maxVUs = Math.max(10, Math.ceil(peakRate * avgIterSeconds * 1.5));
-  const preAllocatedVUs = Math.max(5, Math.ceil(maxVUs * 0.5));
+function scenarioFor(exec_, base, peak, iterSeconds) {
+  const rate = Math.max(1, Math.round(base * RATE_MULT));
+  // VU budget: 10x the nominal concurrency the arrival rate needs at the
+  // measured iteration cost, so that when latency grows under load the executor
+  // keeps DELIVERING the requested rate instead of quietly under-delivering
+  // (which would look like "the server coped" when it did not). k6 warns
+  // "Insufficient VUs" if even this is not enough; that warning is reported.
+  const maxVUs = Math.min(6000, Math.max(200, Math.ceil(rate * iterSeconds * 10)));
+  if (MODE === 'ramp') {
+    const steps = [0.25, 0.5, 1, 1.5, 2.5, 4].map((m) => ({
+      duration: '90s',
+      target: Math.max(1, Math.round(base * m)),
+    }));
+    return {
+      executor: 'ramping-arrival-rate',
+      exec: exec_,
+      startRate: 1,
+      timeUnit: '1s',
+      preAllocatedVUs: Math.ceil(maxVUs / 2),
+      maxVUs: Math.min(6000, Math.max(200, Math.ceil(peak * 4 * iterSeconds * 10))),
+      stages: [...steps, { duration: '30s', target: 0 }],
+    };
+  }
   return {
-    executor: 'ramping-arrival-rate',
-    exec,
-    startRate: 0,
+    executor: 'constant-arrival-rate',
+    exec: exec_,
+    rate,
     timeUnit: '1s',
-    preAllocatedVUs,
+    duration: DURATION,
+    preAllocatedVUs: Math.ceil(maxVUs / 2),
     maxVUs,
-    stages: [
-      { duration: WARMUP_DURATION, target: warmupRate },
-      { duration: RAMP_TO_STEADY_DURATION, target: steadyRate },
-      { duration: STEADY_HOLD_DURATION, target: steadyRate },
-      { duration: RAMP_TO_PEAK_DURATION, target: peakRate },
-      { duration: PEAK_HOLD_DURATION, target: peakRate },
-      { duration: RAMP_DOWN_DURATION, target: 0 },
-    ],
+    gracefulStop: '20s',
   };
 }
 
-// ---------------------------------------------------------------------------
-// k6 options
-// ---------------------------------------------------------------------------
+// COHORTS lets a run isolate tiers. The full mix is the primary measurement,
+// but with the simulation cohort in it the kernel saturates first and every
+// other number becomes "how long did you queue behind the kernel" rather than a
+// property of that tier. Running the mix WITHOUT `editing` is the only way to
+// see where the gateway / Postgres / Redis path saturates on its own. Both runs
+// are reported; neither is presented as the platform's capacity by itself.
+const ENABLED = new Set((__ENV.COHORTS || 'reading,editing,labs,contest,dashboards').split(','));
+const ALL = {
+  reading: scenarioFor('reading', STEADY.reading, PEAK.reading, 0.05),
+  editing: scenarioFor('editing', STEADY.editing, PEAK.editing, 1.0),
+  labs: scenarioFor('labs', STEADY.labs, PEAK.labs, 0.1),
+  contest: scenarioFor('contest', STEADY.contest, PEAK.contest, 0.1),
+  dashboards: scenarioFor('dashboards', STEADY.dashboards, PEAK.dashboards, 0.1),
+};
+const SCENARIOS = {};
+for (const k of Object.keys(ALL)) if (ENABLED.has(k)) SCENARIOS[k] = ALL[k];
 
 export const options = {
-  scenarios: {
-    reading: makeScenario({ steady: READING_STEADY, peak: READING_PEAK, exec: 'reading', avgIterSeconds: 0.15 }),
-    editing: makeScenario({
-      steady: EDITING_SERVER_STEADY,
-      peak: EDITING_SERVER_PEAK,
-      exec: 'editing',
-      // T-B is a 900ms sync budget, T-C can queue; generous average.
-      avgIterSeconds: 0.6,
-    }),
-    labs: makeScenario({ steady: LABS_STEADY, peak: LABS_PEAK, exec: 'labs', avgIterSeconds: 0.25 }),
-    contest: makeScenario({ steady: CONTEST_STEADY, peak: CONTEST_PEAK, exec: 'contest', avgIterSeconds: 0.2 }),
-    dashboards: makeScenario({
-      steady: DASHBOARDS_STEADY,
-      peak: DASHBOARDS_PEAK,
-      exec: 'dashboards',
-      avgIterSeconds: 0.15,
-    }),
-  },
+  discardResponseBodies: false,
+  scenarios: SCENARIOS,
+  // Thresholds are REPORTED, never aborted on: the point of the run is to see
+  // the whole saturation curve, including the part where it fails.
   thresholds: {
-    // --- Headline thresholds (abortOnFail: true) ---------------------------
-    // §system-design.md top line: "p99 < 300 ms on read paths." Reading
-    // lessons is THE read path (55% of all users, 95%+ CDN-cacheable), so
-    // this is the single most representative read-path threshold.
-    'http_req_duration{scenario:reading}': [{ threshold: 'p(99)<300', abortOnFail: true }],
-    // §system-design.md top line / §4: "< 2 s for a 32-qubit statevector
-    // simulation." Measured end-to-end (including any 202+poll leg) in
-    // sim32qDuration - see editing().
-    sim_32q_duration: [{ threshold: 'p(99)<2000', abortOnFail: true }],
-
-    // --- §11 RUM budget ------------------------------------------------------
-    time_to_first_amplitude: ['p(95)<120'],
-
-    // --- Overall check hygiene -------------------------------------------
-    checks: ['rate>0.99'],
-
-    // --- Per-cohort error-rate thresholds ----------------------------------
-    // 429 and 403 are excluded from http_req_failed by the response
-    // callback above, so these thresholds reflect genuine breakage
-    // (5xx, connection errors, unexpected 4xx) per cohort.
-    'http_req_failed{scenario:reading}': ['rate<0.01'],
-    'http_req_failed{scenario:editing}': ['rate<0.02'],
-    'http_req_failed{scenario:labs}': ['rate<0.02'],
-    'http_req_failed{scenario:contest}': ['rate<0.02'],
-    'http_req_failed{scenario:dashboards}': ['rate<0.01'],
-
-    // --- §9 rate limiting should shed load, not dominate it ----------------
-    rate_limited_ratio: ['rate<0.05'],
+    // top-line claim: "p99 < 300 ms on read paths"
+    lat_read_lesson: ['p(50)<300', 'p(95)<300', 'p(99)<300'],
+    lat_dashboard: ['p(99)<300'],
+    // §4: T-B is a 900 ms synchronous budget
+    lat_simulate: ['p(95)<900'],
+    // §6 step 1: "Budget: 12 ms" for the contest submit write path
+    lat_contest_submit: ['p(99)<300'],
+    err_read_lesson: ['rate<0.01'],
+    err_simulate: ['rate<0.02'],
+    err_lab_submit: ['rate<0.02'],
+    err_contest_submit: ['rate<0.02'],
+    err_dashboard: ['rate<0.01'],
   },
+  summaryTrendStats: ['min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max', 'avg'],
 };
 
-// ---------------------------------------------------------------------------
-// Per-VU session cache
-// ---------------------------------------------------------------------------
-// Module-level `let` is per-VU state in k6 (each VU runs its own JS
-// runtime instance): logging in once per VU and reusing the cookie
-// jar/token for every subsequent iteration avoids hammering the auth path
-// on every single request, which would both be unrealistic (real users
-// don't re-authenticate per action) and would itself trip the §9 auth
-// rate limit (10/10min/IP), contaminating the very thresholds we're
-// trying to measure.
-let session = null;
-
-function ensureSession() {
-  if (session) return session;
-  const user = syntheticUser(__VU);
-  const result = login(user);
-  session = Object.assign({}, user, { headers: result.headers, authOk: result.ok });
-  return session;
+// ------------------------------------------------------------------ helpers
+function classify(res, latTrend, errRate, rlRate) {
+  latTrend.add(res.timings.duration);
+  const s = res.status;
+  if (s === 429) { rl.add(1); rlRate.add(1); errRate.add(0); return 'rate_limited'; }
+  rlRate.add(0);
+  if (s === 403) { errRate.add(0); return 'denied'; }
+  const ok = s >= 200 && s < 300;
+  errRate.add(ok ? 0 : 1);
+  return ok ? 'ok' : `err_${s}`;
 }
 
-function trackRateLimit(res, cohort) {
-  rateLimitedRatio.add(res.status === 429 ? 1 : 0, { scenario: cohort });
-}
+// ------------------------------------------------------------------ cohorts
 
-function pickLessonId() {
-  // §5 catalog: "small, read-mostly, fully cached." A 200-lesson pool is
-  // enough to exercise real cache behaviour without pretending every
-  // request is a unique cold read.
-  return 1 + Math.floor(Math.random() * 200);
-}
-
-function pickProblemLabel() {
-  const labels = ['A', 'B', 'C', 'D', 'E'];
-  return labels[Math.floor(Math.random() * labels.length)];
-}
-
-const LAB_SOURCE_SAMPLE = [
-  'from qiskit import QuantumCircuit',
-  'qc = QuantumCircuit(3, 3)',
-  'qc.h(0); qc.cx(0, 1); qc.cx(1, 2)',
-  'qc.measure(range(3), range(3))',
-].join('\n');
-
-const CONTEST_SOURCE_SAMPLE = [
-  'from qiskit import QuantumCircuit',
-  'def solve():',
-  '    qc = QuantumCircuit(2, 2)',
-  '    qc.h(0); qc.cx(0, 1)',
-  '    qc.measure([0, 1], [0, 1])',
-  '    return qc',
-].join('\n');
-
-/**
- * §9 degradation ladder step 1: a T-B/T-C request under kernel saturation
- * comes back `202 + queued` instead of a synchronous result. Poll until it
- * resolves so latency metrics reflect the FULL user-visible wait.
- */
-function pollSimulationJob(initialRes, headers, maxWaitMs) {
-  let jobId;
-  try {
-    jobId = initialRes.json('jobId') || initialRes.json('id');
-  } catch (_e) {
-    jobId = undefined;
-  }
-  if (!jobId) return initialRes;
-
-  const deadline = Date.now() + maxWaitMs;
-  let res = initialRes;
-  while (Date.now() < deadline) {
-    sleep(0.1);
-    res = http.get(`${BASE_URL}/simulate/jobs/${jobId}`, {
-      headers,
-      tags: { name: 'get_simulate_job' },
-    });
-    if (res.status !== 202) break;
-  }
-  return res;
-}
-
-// ---------------------------------------------------------------------------
-// Scenario bodies
-// ---------------------------------------------------------------------------
-
+/** 55%: reading a lesson. The gateway hands out the pointer + entitlement
+ *  decision; §5 says catalog is "small, read-mostly, fully cached". */
 export function reading() {
-  const user = ensureSession();
-  const lessonId = pickLessonId();
-  const res = http.get(`${BASE_URL}/lessons/${lessonId}`, {
-    headers: user.headers,
-    tags: { name: 'get_lesson' },
+  const user = userForIteration('reading', exec.scenario.iterationInTest);
+  const slug = LESSON_SLUGS[Math.floor(Math.random() * LESSON_SLUGS.length)];
+  const res = http.get(`${BASE_URL}/catalog/lessons/${slug}`, {
+    headers: authHeaders(user, exec.vu.idInTest),
+    tags: { name: 'GET /catalog/lessons/:slug' },
   });
-  checkOk(res, [200, 304], 'reading:get_lesson');
-  trackRateLimit(res, 'reading');
+  classify(res, latRead, errRead, rlRead);
 }
 
+/** 22% of users, but only the ~8% of their simulations that reach the server. */
 export function editing() {
-  const user = ensureSession();
-  const qubits = pickServerCircuitQubits();
-  const body = circuitRequestBody(qubits);
-  const maxAllowed = PLAN_MAX_QUBITS[user.plan] || PLAN_MAX_QUBITS.free;
-
-  const start = Date.now();
-  const res = http.post(`${BASE_URL}/simulate`, JSON.stringify(body), {
-    headers: Object.assign({ 'Content-Type': 'application/json' }, user.headers),
-    tags: { name: 'post_simulate', qubits: String(qubits), tier: tierFor(qubits) },
+  const user = userForIteration('editing', exec.scenario.iterationInTest);
+  const qubits = pickQubits();
+  const res = http.post(`${BASE_URL}/simulate`, JSON.stringify(simBody(qubits)), {
+    headers: authHeaders(user, exec.vu.idInTest, { 'Content-Type': 'application/json' }),
+    tags: { name: 'POST /simulate', qubits: String(qubits), tier: tierFor(qubits), mix: SIM_MIX },
   });
-
+  const outcome = classify(res, latSim, errSim, rlSim);
   if (res.status === 403) {
-    // Expected: qubits > maxAllowed for this synthetic user's plan (§7).
-    entitlementDenials.add(1, { qubits: String(qubits), plan: user.plan });
-    checkOk(res, [403], 'editing:entitlement_denied');
-    return;
+    // Either the §7 qubit ceiling (free 16 / pro 28 / teams 30 / campus 32) or
+    // an exhausted credit balance. Both are correct behaviour, not breakage.
+    entitlementDenials.add(1, { plan: user.plan, qubits: String(qubits) });
+    if (String(res.body).indexOf('credits-exhausted') >= 0) creditsExhausted.add(1);
   }
-
-  let finalRes = res;
-  if (res.status === 202) {
-    finalRes = pollSimulationJob(res, user.headers, 5000);
+  if (res.status === 503) upstreamUnavailable.add(1, { qubits: String(qubits) });
+  if (res.status === 200) {
+    // The kernel reports cache state in the body (`cached`), not a header; the
+    // old script looked for a non-existent `x-sim-cache` header.
+    simCacheHit.add(String(res.body).indexOf('"cached":true') >= 0);
   }
-
-  checkOk(finalRes, [200], 'editing:post_simulate');
-
-  const cacheHeader = finalRes.headers['X-Sim-Cache'] || finalRes.headers['x-sim-cache'];
-  if (finalRes.status === 200) {
-    simCacheHitRate.add(cacheHeader === 'hit');
-  }
-
-  const elapsedMs = Date.now() - start;
-  if (qubits === 32) {
-    sim32qDuration.add(elapsedMs, { tier: tierFor(qubits) });
-  }
-
-  // See header comment on timeToFirstAmplitude: this is an APPROXIMATION.
-  // k6 measures server round-trip only; the real RUM metric (§11) also
-  // includes the client parsing the payload and compositing the Bloch
-  // sphere / probability bars, which we cannot observe from here. We add a
-  // small, explicitly-named, documented constant rather than pretend the
-  // server timing alone IS the client-observed metric.
-  const CLIENT_COMPOSITE_OVERHEAD_MS = 12;
-  timeToFirstAmplitude.add(finalRes.timings.duration + CLIENT_COMPOSITE_OVERHEAD_MS, {
-    qubits: String(qubits),
-  });
-
-  trackRateLimit(finalRes, 'editing');
-  void maxAllowed; // retained for readability/documentation of the branch above
+  void outcome;
 }
 
+/** 12%: a lab submission. Async by design — 202 + job id, graded off the
+ *  request path (§1 "Sandboxed execution, async"). */
 export function labs() {
-  const user = ensureSession();
-  const lessonId = pickLessonId();
-  const idempotencyKey = `${user.id}-lab-${__ITER}-${Date.now()}`;
+  const user = userForIteration('labs', exec.scenario.iterationInTest);
+  const lessonId = GRADABLE_LESSON_IDS[Math.floor(Math.random() * GRADABLE_LESSON_IDS.length)];
   const res = http.post(
-    `${BASE_URL}/labs/${lessonId}/submit`,
-    JSON.stringify({ language: 'qiskit', source: LAB_SOURCE_SAMPLE }),
+    `${BASE_URL}/labs/submit`,
+    JSON.stringify({
+      lessonId,
+      language: 'qiskit',
+      // Unique per submission: §6-style duplicate detection exists on the lab
+      // path too, and identical sources across users would measure the
+      // anti-cheat index rather than the submission path.
+      source: `# lt ${exec.vu.idInTest}/${exec.scenario.iterationInTest}\nfrom qiskit import QuantumCircuit\nqc = QuantumCircuit(3, 3)\nqc.h(0)\nqc.cx(0, 1)\nqc.measure(range(3), range(3))\n`,
+      qubits: 3,
+      backend: 'statevector',
+    }),
     {
-      headers: Object.assign(
-        { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
-        user.headers,
-      ),
-      tags: { name: 'post_lab_submit' },
+      headers: authHeaders(user, exec.vu.idInTest, {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': idempotencyKey('lab'),
+      }),
+      tags: { name: 'POST /labs/submit' },
     },
   );
-  checkOk(res, [200, 201, 202], 'labs:submit');
-  trackRateLimit(res, 'labs');
+  classify(res, latLab, errLab, rlLab);
 }
 
+/** 8%: steady-state contest submissions. The 90 s deadline burst is
+ *  contest-burst.js; this is the 44 rps background rate. */
 export function contest() {
-  const user = ensureSession();
-  const contestId = __ENV.CONTEST_ID || 'loadtest-contest';
-  const problemLabel = pickProblemLabel();
-  const idempotencyKey = `${user.id}-${contestId}-${problemLabel}-${__ITER}`;
+  const user = userForIteration('contest', exec.scenario.iterationInTest);
+  const p = CONTEST.problems[Math.floor(Math.random() * CONTEST.problems.length)];
   const res = http.post(
-    `${BASE_URL}/contests/${contestId}/submit`,
-    JSON.stringify({ problemLabel, language: 'qiskit', source: CONTEST_SOURCE_SAMPLE }),
+    `${BASE_URL}/contests/${CONTEST.slug}/submit`,
+    JSON.stringify({
+      problemId: p.id,
+      language: 'qiskit',
+      source: `#LOADTEST_ACCEPT ${exec.vu.idInTest}/${exec.scenario.iterationInTest}\n`,
+    }),
     {
-      headers: Object.assign(
-        { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
-        user.headers,
-      ),
-      tags: { name: 'post_contest_submit' },
+      headers: authHeaders(user, exec.vu.idInTest, {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': idempotencyKey('cs'),
+      }),
+      tags: { name: 'POST /contests/:slug/submit' },
     },
   );
-  // This is the STEADY, non-burst contest submission rate (44 rps). The
-  // 90-second, ~1,300 rps deadline burst is tested in contest-burst.js.
-  checkOk(res, [200, 201, 202], 'contest:submit');
-  trackRateLimit(res, 'contest');
+  classify(res, latContest, errContest, rlContest);
 }
 
+/** 3%: the dashboard. Reads mastery + streak + xp + review queue in one call. */
 export function dashboards() {
-  const user = ensureSession();
-  const res = http.get(`${BASE_URL}/dashboard`, {
-    headers: user.headers,
-    tags: { name: 'get_dashboard' },
+  const user = userForIteration('dashboards', exec.scenario.iterationInTest);
+  const res = http.get(`${BASE_URL}/progress/overview`, {
+    headers: authHeaders(user, exec.vu.idInTest),
+    tags: { name: 'GET /progress/overview' },
   });
-  checkOk(res, [200, 304], 'dashboards:get_dashboard');
-  trackRateLimit(res, 'dashboards');
+  classify(res, latDash, errDash, rlDash);
 }
+
+export function handleSummary(data) {
+  const label = __ENV.RUN_LABEL || `mult${RATE_MULT}`;
+  return {
+    stdout: textSummary(data),
+    [`results/${label}-summary.json`]: JSON.stringify(data, null, 2),
+  };
+}
+
+// k6's own text summary, imported lazily so the import failure mode is obvious.
+import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.2/index.js';
+
+void WARMUP;
+void STEADY_TOTAL;

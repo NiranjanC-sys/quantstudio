@@ -95,9 +95,17 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
     request: FastifyRequest,
     token: string,
   ): Promise<AuthContext | null> {
-    for (const audience of env.SERVICE_JWT_AUDIENCE) {
+    // Exactly one audience, and not one of the outbound ones. Trying each of
+    // `SERVICE_JWT_AUDIENCE` in turn made the gateway a confused deputy: the
+    // token minted in `routes/tutor.ts` for the `ai-tutor` audience carries the
+    // *end user* as `sub` and is sent to a third-party service, so anyone who
+    // read it there could present it here and be that user for five minutes.
+    {
       try {
-        const claims = await serviceTokens.verify(token, audience);
+        const claims = await serviceTokens.verify(
+          token,
+          env.SERVICE_JWT_INBOUND_AUDIENCE,
+        );
         if (!claims.sub) return null;
 
         const rows = await db.replica
@@ -128,7 +136,11 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
           orgId: row.orgId,
           orgRole: null,
           amr: [],
-          mfaSatisfied: true,
+          // A service token is not a second factor. Nothing that calls
+          // `requireServiceToken` checks MFA, and claiming it was satisfied
+          // would let one of these reach an MFA-gated human endpoint.
+          mfaSatisfied: false,
+          serviceScope: Array.isArray(claims.scope) ? claims.scope : [],
           privilegeVersion: row.privilegeVersion,
           plan: resolved.entitlements.plan,
           entitlements: resolved.entitlements,
@@ -139,10 +151,9 @@ export const authPlugin = fp(async (app: FastifyInstance) => {
           expiresAtMs: Date.now() + env.SERVICE_JWT_TTL_SECONDS * 1000,
         };
       } catch {
-        // Try the next audience; a token minted for the grader is not valid here.
+        return null;
       }
     }
-    return null;
   }
 
   app.addHook('preHandler', async (request: FastifyRequest) => {
