@@ -1,0 +1,173 @@
+---
+id: t1.m2.l5
+title: Shots, Sampling Noise, and Error Bars
+type: concept
+track: t1
+module: t1.m2
+level: L1
+minutes: 13
+objectives:
+  - Compute the standard error of an estimated probability from a given shot count
+  - Choose the shot count needed to resolve two probabilities that differ by a stated amount
+  - Explain why a single run of a quantum circuit is never evidence for a claim
+prerequisites: [t1.m2.l4, t0.m7.l3]
+sources:
+  - label: CS269Q Elements of Quantum Computer Programming (Stanford)
+    url: https://cs269q.stanford.edu/
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+tags: [measurement, statistics]
+---
+
+Every figure in this track reports exact probabilities, because a simulator can
+compute them. A quantum computer cannot. It returns one bitstring per run, and
+the only way to learn a probability is to run the circuit many times and count.
+That replaces a number with an estimate, and an estimate without an error bar is
+not a result.
+
+## What a shot is
+
+A **shot** is one execution of the circuit: prepare, evolve, measure, record a
+bitstring, discard the qubits. The device then starts over from $\ket{0\dots0}$.
+Shots are independent and identically distributed, so $N$ shots of a circuit
+with outcome probability $p$ produce a count $n \sim \mathrm{Binomial}(N, p)$
+and the natural estimator
+
+$$
+\hat{p} = \frac{n}{N} .
+$$
+
+This estimator is unbiased, $\expect{\hat{p}} = p$, and its variance is the
+binomial variance divided by $N^2$:
+
+$$
+\mathrm{Var}(\hat{p}) = \frac{p(1-p)}{N},
+\qquad
+\mathrm{SE}(\hat{p}) = \sqrt{\frac{p(1-p)}{N}} .
+$$
+
+<Margin label="Rule of thumb">
+$p(1-p) \le \tfrac14$ always, so
+$\mathrm{SE} \le \tfrac{1}{2\sqrt N}$ for any circuit. At $N = 1024$ that ceiling
+is $0.015625$; at $N = 10^6$ it is $0.0005$. Precision costs quadratically:
+ten times finer needs one hundred times more shots.
+</Margin>
+
+## A worked pair
+
+Consider a circuit whose true outcome probabilities are $0.49$ and $0.51$. It is
+prepared by $R_y(1.5907977)$, since $\sin^2(\theta/2) = 0.51$ at that angle.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="Ry(1.5907977) then measure. The true probabilities are 0.49 and 0.51, and no finite number of shots will ever report exactly that."
+  ir={{
+    version: 1,
+    name: "nearly-fair",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "r1", gate: "ry", targets: [0], params: [1.5907976603682872] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+Run it 1024 times. The expected count of outcome 1 is
+$1024 \times 0.51 = 522.24$, with standard deviation
+$\sqrt{N p (1-p)} = \sqrt{1024 \times 0.51 \times 0.49} = 16.0$. So a typical
+run reports something like $522 \pm 16$, and $\hat{p} = 0.51 \pm 0.0156$. The
+error bar is wider than the effect you were trying to see. A run that returned
+506 would be entirely consistent with this circuit and also entirely consistent
+with a fair coin, and reporting "the device is biased towards 1" on the strength
+of it would be wrong.
+
+## How many shots do you need
+
+Fix a difference $\delta$ that you must be able to resolve, and demand that it
+is at least two standard errors wide, which is roughly a 95 percent
+separation:
+
+$$
+2\sqrt{\frac{p(1-p)}{N}} \le \delta
+\qquad \Longleftrightarrow \qquad
+N \ge \frac{4\,p(1-p)}{\delta^2} .
+$$
+
+With $p$ near $\tfrac12$ the numerator is 1 and the rule is simply
+$N \ge 1/\delta^2$:
+
+| $\delta$ | shots needed at $p \approx 0.5$ |
+| --- | --- |
+| $0.05$ | $400$ |
+| $0.02$ | $2\,500$ |
+| $0.01$ | $10\,000$ |
+| $0.001$ | $1\,000\,000$ |
+
+So separating $0.51$ from $0.50$ needs $\delta = 0.01$ and about ten thousand
+shots, ten times the default 1024 that most tutorials use. Notice also that
+extreme probabilities are cheap: at $p = 0.933013$, the tomography state from
+the previous lesson, $4p(1-p)/\delta^2$ with $\delta = 0.02$ is only $625$
+shots, because $p(1-p) = 0.0625$ rather than $0.25$.
+
+<Callout tone="warning" title="A zero count is not a zero probability">
+If 1024 shots return no instance of an outcome, the estimate is $\hat{p} = 0$
+and the naive standard error is also 0, which would claim certainty. It is not
+certain. The rule of three gives a 95 percent upper bound of $3/N$, here
+$0.0029$, so the honest statement is "below about 0.3 percent", not "impossible".
+This matters whenever a lesson claims an amplitude cancels exactly.
+</Callout>
+
+## Expectation values carry error bars too
+
+Most of this curriculum reports $\expect{Z}$ rather than a probability. Since
+$\expect{Z} = 2p - 1$, the estimator is $\hat{z} = 2\hat{p} - 1$ and the error
+doubles:
+
+$$
+\mathrm{SE}(\hat{z}) = 2\sqrt{\frac{p(1-p)}{N}} = \sqrt{\frac{1 - \expect{Z}^2}{N}} .
+$$
+
+The second form is the useful one. It says an expectation value near $\pm 1$ is
+cheap to measure and one near 0 is expensive, and it is why the CHSH estimate of
+T1.M6.L2, which combines four correlators each near $\pm 0.707$, needs several
+thousand shots per setting before the violation of the classical bound 2 is
+larger than its own uncertainty.
+
+## Why one run proves nothing
+
+Three reasons, and they stack.
+
+A single Bernoulli sample carries no information about its own variance. From
+one shot you can say the outcome was possible, which you already knew.
+
+Algorithms that are exact in theory are not exact on hardware. Deutsch's
+algorithm in T1.M10 returns the right answer with probability 1 in the noiseless
+model, and with perhaps $0.95$ on a real device. One shot cannot tell an exact
+algorithm from a broken one, and repetition is what turns $0.95$ into a
+confident answer.
+
+Post-selection on a single result is how people fool themselves. Running until
+the answer looks right and then reporting that run is not evidence; it is a
+search over runs. Fix the shot count before you look, report the count and the
+error bar with the number, and the claim becomes checkable.
+
+<Check question="A circuit is claimed to output 0 with probability exactly $0.75$. You run 400 shots and see 279 zeros. Is the claim in trouble?">
+$\hat{p} = 279/400 = 0.6975$. The standard error under the claim is
+$\sqrt{0.75 \times 0.25/400} = \sqrt{0.000469} = 0.02165$. The discrepancy is
+$0.75 - 0.6975 = 0.0525$, which is $2.42$ standard errors. That is suggestive
+and not conclusive: a deviation this large or larger happens about 1.6 percent
+of the time even when the claim is true. The correct response is to run more
+shots, not to declare either victory or a bug. At 4000 shots the standard error
+falls to $0.00685$ and the same discrepancy would be $7.7$ standard errors,
+which would settle it.
+</Check>
+
+## Where this comes from
+
+- [CS269Q, Stanford](https://cs269q.stanford.edu/), whose benchmarking material
+  treats shot budgets as a first-class engineering resource rather than a
+  parameter to leave at its default.
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses), for
+  the convention of reporting counts and error bars alongside every hardware
+  result, which is the habit this lesson exists to install.

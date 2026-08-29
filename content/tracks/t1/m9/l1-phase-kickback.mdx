@@ -1,0 +1,203 @@
+---
+id: t1.m9.l1
+title: Phase Kickback
+type: concept
+track: t1
+module: t1.m9
+level: L1
+minutes: 14
+objectives:
+  - Show that a controlled-U acting on an eigenvector of U kicks the eigenphase onto the control
+  - Compute the state after CX with the target prepared in |->
+  - Explain why the target register is unchanged even though the control acquires a phase
+prerequisites:
+  - t1.m4.l5
+  - t1.m1.l7
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+tags: [phase, kickback]
+---
+
+In a controlled gate, the control decides and the target obeys. That is what the
+name says and it is what the circuit diagram draws. It is also, in the case that
+matters most, exactly backwards: there is a standard way to arrange a controlled
+gate so that the target is left untouched and the control comes out changed.
+Every algorithm in T1.M10 and the whole of phase estimation in T2 are built on
+this one inversion.
+
+## The general statement
+
+Let $U$ be a unitary and $\ket{u}$ an eigenvector of it, so
+$U\ket{u} = e^{i\varphi}\ket{u}$ for some real $\varphi$. Put the control in
+$\ket{+}$ and the target in $\ket{u}$, and apply the controlled-$U$:
+
+$$
+\mathrm{C}U \, \frac{\ket{0} + \ket{1}}{\sqrt2}\ket{u}
+= \frac{\ket{0}\ket{u} + \ket{1}U\ket{u}}{\sqrt2}
+= \frac{\ket{0}\ket{u} + e^{i\varphi}\ket{1}\ket{u}}{\sqrt2}
+= \left(\frac{\ket{0} + e^{i\varphi}\ket{1}}{\sqrt2}\right)\ket{u}.
+$$
+
+Three equalities. The first is the definition of a controlled gate acting on a
+superposed control, by linearity. The second substitutes the eigenvalue equation.
+The third factors $\ket{u}$ out, which is legal precisely because the same
+$\ket{u}$ appears in both terms.
+
+The output is a product state. The target is in $\ket{u}$, exactly as it started.
+The control has picked up a relative phase $e^{i\varphi}$ between its two branches,
+and a relative phase is measurable.
+
+<Margin label="Global becomes relative">
+$e^{i\varphi}$ multiplying $\ket{u}$ alone would be a global phase on the target
+and unobservable. Sitting between the two branches of the control, the same
+number is a relative phase and shows up in an $X$-basis measurement. The
+controlled gate is a device for converting one into the other.
+</Margin>
+
+## The concrete case: CX with the target in $\ket{-}$
+
+Take $U = X$. Its eigenvectors are $\ket{+}$ with eigenvalue $+1$ and $\ket{-}$
+with eigenvalue $-1$, since $X\ket{-} = -\ket{-}$. So $\varphi = \pi$ and the
+control should go from $\ket{+}$ to $\ket{-}$.
+
+<Circuit
+  caption="Control in |+>, target in |->, then CNOT. Four amplitudes of magnitude 0.5, with the sign pattern of |-> tensor |->."
+  show={['amplitudes', 'bloch']}
+  ir={{
+    version: 1,
+    name: "kickback-cx",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "a", gate: "h", targets: [0] },
+      { id: "b", gate: "x", targets: [1] },
+      { id: "c", gate: "h", targets: [1] },
+      { id: "d", gate: "x", targets: [1], controls: [0] }
+    ]
+  }}
+/>
+
+Read the amplitudes: $+0.5$ on $\ket{00}$, $-0.5$ on $\ket{01}$, $-0.5$ on
+$\ket{10}$, $+0.5$ on $\ket{11}$. Factorise the sign pattern:
+
+$$
+\half\big(\ket{00} - \ket{01} - \ket{10} + \ket{11}\big)
+= \frac{\ket{0} - \ket{1}}{\sqrt2} \otimes \frac{\ket{0} - \ket{1}}{\sqrt2}
+= \ket{-}\ket{-}.
+$$
+
+The target is still $\ket{-}$. The control was $\ket{+}$ and is now $\ket{-}$. A
+CNOT whose control was in superposition normally entangles the two qubits; with
+the target in $\ket{-}$ it does not entangle them at all, it rotates the control.
+Switch the figure to the Bloch view and both vectors point along $-x$, each with
+purity 1, which is the numerical signature of a product state.
+
+<Callout tone="gotcha" title="Nothing was measured and nothing moved">
+The eigenvalue $-1$ was a property of $X$ and $\ket{-}$ before the circuit ran.
+The controlled gate did not compute it, look it up, or transmit it. It arranged
+the state so that a number which was previously unobservable became observable on
+a different qubit.
+</Callout>
+
+## Making the phase into a bit
+
+A relative phase is not yet a measurement outcome. Measuring the control in the
+computational basis gives $\tfrac12$ and $\tfrac12$ whether it is in $\ket{+}$ or
+$\ket{-}$; that is what "the information is in the phase" means. One more
+Hadamard converts it.
+
+With the CNOT in place, the control ends in $\ket{-}$, and $H\ket{-} = \ket{1}$:
+
+<Circuit
+  caption="Same circuit plus a final H on the control. The control reads 1 with certainty; the target is still |->."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "kickback-readout",
+    qubits: 2,
+    clbits: 1,
+    ops: [
+      { id: "a", gate: "h", targets: [0] },
+      { id: "b", gate: "x", targets: [1] },
+      { id: "c", gate: "h", targets: [1] },
+      { id: "d", gate: "x", targets: [1], controls: [0] },
+      { id: "e", gate: "h", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+Both surviving basis states have $q_0 = 1$, so the control measures 1 with
+probability 1. Remove the CNOT and the control never left $\ket{+}$, so
+$H\ket{+} = \ket{0}$ and it measures 0 with probability 1:
+
+<Circuit
+  caption="The same circuit with the CNOT removed. Both surviving states have q0 = 0."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "kickback-no-oracle",
+    qubits: 2,
+    clbits: 1,
+    ops: [
+      { id: "a", gate: "h", targets: [0] },
+      { id: "b", gate: "x", targets: [1] },
+      { id: "c", gate: "h", targets: [1] },
+      { id: "e", gate: "h", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+One query, one certain bit, distinguishing "the gate was applied" from "it was
+not". That is Deutsch's algorithm with the labels removed, and you will put the
+labels back on in T1.M10.L1.
+
+## Why the target is unchanged
+
+The factorisation step is worth staring at, because it is the whole reason the
+trick is useful. If the target had been in a general state $\ket{\psi}$ rather
+than an eigenvector, the output would be
+
+$$
+\frac{\ket{0}\ket{\psi} + \ket{1}U\ket{\psi}}{\sqrt2},
+$$
+
+and $\ket{\psi}$ does not factor out of that unless $U\ket{\psi}$ is a multiple of
+$\ket{\psi}$. Instead the two qubits come out entangled, the control's reduced
+state is mixed rather than a clean superposition with a phase, and there is no
+"kickback" to speak of.
+
+So the recipe has a precondition, and it is the reason every oracle in T1.M10 is
+drawn with an ancilla prepared in $\ket{-}$: for a bit-flip oracle
+$U_f\ket{x}\ket{y} = \ket{x}\ket{y \oplus f(x)}$, the state $\ket{-}$ is the
+eigenvector of the $X$ that gets applied, with eigenvalue $(-1)^{f(x)}$. The
+ancilla comes out unchanged every time and the sign lands on $\ket{x}$:
+
+$$
+U_f \ket{x}\ket{-} = (-1)^{f(x)} \ket{x}\ket{-}.
+$$
+
+That identity is the bridge from "an oracle that writes a bit" to "an oracle that
+writes a sign", and phase is the thing quantum circuits can interfere.
+
+<Check question="You apply a controlled-$S$ with the control in $\ket{+}$ and the target in $\ket{1}$. What is the control's state afterwards, and what would a computational-basis measurement of the control show?">
+$S\ket{1} = i\ket{1}$, so $\ket{1}$ is an eigenvector with $\varphi = \pi/2$, and
+the control becomes $\tfrac{1}{\sqrt2}(\ket{0} + i\ket{1})$. A computational-basis
+measurement shows $\tfrac12$ and $\tfrac12$ and reveals nothing: the phase is
+invisible in that basis. To see it you need a $Y$-basis measurement, which is
+$S\dg$ then $H$ then a computational measurement, and that returns 0 with
+certainty. The target is still $\ket{1}$ either way.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), which
+  introduces phase kickback before any algorithm, so that Deutsch, Bernstein-
+  Vazirani and Grover all read as the same move applied to different oracles.
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses),
+  whose algorithms course derives the $\ket{-}$ ancilla identity in the same form
+  used at the end of this lesson.

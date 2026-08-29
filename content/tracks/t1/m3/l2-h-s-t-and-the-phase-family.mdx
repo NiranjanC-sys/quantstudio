@@ -1,0 +1,196 @@
+---
+id: t1.m3.l2
+title: H, S, T and the Phase Family
+type: concept
+track: t1
+module: t1.m3
+level: L1
+minutes: 13
+objectives:
+  - Write the matrices of H, S and T and give the phase each applies to |1>
+  - Show that S squared is Z and T squared is S
+  - Explain why H, S and T generate a dense subgroup of one-qubit unitaries
+prerequisites: [t1.m3.l1]
+sources:
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [gates, phase]
+---
+
+The Paulis are half turns, and half turns alone cannot reach most of the sphere.
+What is missing is a way to turn by less than half, and on the $z$ axis that is
+supplied by a family of diagonal gates that differ only in how much phase they
+put on $\ket{1}$. Three members of that family, together with the Hadamard, turn
+out to be enough to approximate every one-qubit gate there is.
+
+## One family, three members
+
+$$
+P(\lambda) = \begin{pmatrix} 1 & 0 \\ 0 & e^{i\lambda} \end{pmatrix},
+\qquad
+Z = P(\pi), \quad S = P(\pi/2), \quad T = P(\pi/4) .
+$$
+
+Concretely,
+
+$$
+S = \begin{pmatrix} 1 & 0 \\ 0 & i \end{pmatrix},
+\qquad
+T = \begin{pmatrix} 1 & 0 \\ 0 & \tfrac{1+i}{\sqrt2} \end{pmatrix}
+= \begin{pmatrix} 1 & 0 \\ 0 & 0.707107 + 0.707107 i \end{pmatrix} .
+$$
+
+Every one of them leaves $\ket{0}$ untouched and multiplies the amplitude of
+$\ket{1}$ by a unit-modulus number. That means none of them changes any
+computational-basis probability: $|e^{i\lambda}\beta|^2 = |\beta|^2$. They are
+pure relative-phase gates, invisible in the $Z$ basis and decisive in every
+other.
+
+<Margin label="Naming">
+$S$ is the "phase gate" and $T$ is the "$\pi/8$ gate", a name inherited from the
+symmetric form $e^{-i\pi/8}\,\mathrm{diag}(e^{i\pi/8}, e^{-i\pi/8})$ where the
+exponent really is $\pi/8$. The relative phase it applies is $\pi/4$. Both names
+are in wide use and mean the same gate.
+</Margin>
+
+Because the phases add when the gates compose, $P(\lambda)P(\mu) = P(\lambda + \mu)$,
+the family is a circle group and the powers are immediate:
+
+$$
+S^2 = P(\pi/2)^2 = P(\pi) = Z,
+\qquad
+T^2 = P(\pi/4)^2 = P(\pi/2) = S,
+$$
+
+$$
+T^4 = P(\pi) = Z, \qquad T^8 = P(2\pi) = I .
+$$
+
+So $S$ is a square root of $Z$ and $T$ is a fourth root. On the Bloch sphere,
+$Z$ is a half turn about $z$, $S$ a quarter turn, and $T$ an eighth of a turn.
+
+Four $T$ gates in a row are therefore a $Z$, and if you sandwich them between
+Hadamards, $H Z H = X$ turns the whole sequence into a bit flip.
+
+<Simulate
+  show="probabilities"
+  caption="H, then four T gates, then H. Since T to the fourth is Z and HZH is X, the outcome is 1 with certainty."
+  ir={{
+    version: 1,
+    name: "four-t-gates",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "t1", gate: "t", targets: [0] },
+      { id: "t2", gate: "t", targets: [0] },
+      { id: "t3", gate: "t", targets: [0] },
+      { id: "t4", gate: "t", targets: [0] },
+      { id: "h2", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+## The Hadamard is the odd one out
+
+$$
+H = \isqrt \begin{pmatrix} 1 & 1 \\ 1 & -1 \end{pmatrix}
+$$
+
+is not diagonal, and that is exactly its function. The phase family can only
+rotate about $z$, and rotating about one axis forever never leaves a single
+circle of latitude. $H$ exchanges the $x$ and $z$ axes, so it converts a
+$z$ rotation into an $x$ rotation:
+
+$$
+H S H = \text{a quarter turn about } x,
+\qquad
+H P(\lambda) H = \text{a } \lambda \text{ turn about } x .
+$$
+
+With rotations about two different axes available you can reach anywhere, in the
+same way that pitch and yaw generate every orientation of an aircraft.
+
+<Callout tone="note" title="Clifford, and the one gate that is not">
+$H$ and $S$ map Paulis to Paulis under conjugation: $HZH = X$, $SXS^{\dagger} = Y$.
+Gates with that property are Cliffords, and the Gottesman-Knill theorem says a
+circuit built only from Cliffords can be simulated classically in polynomial
+time. $T$ is not Clifford: $TXT^{\dagger} = \tfrac{1}{\sqrt2}(X + Y)$, which is
+not a Pauli. Adding $T$ is what makes the gate set universal, and it is also
+what makes the circuit expensive under error correction in T4.
+</Callout>
+
+## Why H, S and T are enough
+
+The claim is that finite products of $H$, $S$ and $T$ come arbitrarily close to
+every one-qubit unitary, in the sense that for any target $U$ and any
+$\varepsilon > 0$ there is a product $V$ with
+$\lVert U - V \rVert < \varepsilon$ up to global phase. The argument has three
+steps and none of them needs machinery beyond this module.
+
+**Step one: build an irrational rotation.** The product $THTH$ is a rotation of
+the Bloch sphere by an angle $\theta$ satisfying
+$\cos(\theta/2) = \cos^2(\pi/8)$, and that $\theta$ is an irrational multiple of
+$\pi$. Repeating an irrational rotation about a fixed axis fills that circle
+densely: the angles $k\theta \bmod 2\pi$ never repeat and come arbitrarily close
+to every value.
+
+**Step two: get a second axis.** Conjugating the same product by $H$ gives the
+same rotation angle about a different axis, since $H$ moves the axis and
+preserves the angle.
+
+**Step three: compose.** Rotations by dense sets of angles about two distinct
+axes generate a dense subgroup of all rotations of the sphere, by the Euler
+decomposition of T1.M3.L5: any orientation is three successive rotations about
+two alternating axes, and each of the three can be approximated as closely as
+you like.
+
+Density is not efficiency. Reaching precision $\varepsilon$ naively could need
+exponentially many gates; the Solovay-Kitaev theorem, stated in T1.M8.L6,
+guarantees $O(\log^{c}(1/\varepsilon))$ gates instead, with $c$ a small
+constant. That is the result that makes a discrete gate set practical.
+
+## Reading a phase off the amplitude table
+
+Phases are invisible in the probability column and obvious in the amplitude
+column. Apply $T$ to $\ket{+}$: the amplitude on $\ket{0}$ stays at $0.707107$
+and the amplitude on $\ket{1}$ becomes $0.707107 \times e^{i\pi/4} = 0.5 + 0.5i$.
+The probabilities are still $0.5$ and $0.5$.
+
+<Simulate
+  show={['amplitudes', 'probabilities', 'bloch']}
+  caption="H then T. The amplitude on |1> picks up a phase of pi/4 and the Bloch arrow moves an eighth of a turn round the equator."
+  ir={{
+    version: 1,
+    name: "t-on-plus",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "t1", gate: "t", targets: [0] }
+    ]
+  }}
+/>
+
+The Bloch arrow lands at $(0.707107,\, 0.707107,\, 0)$, which is $45$ degrees
+round the equator from $+x$: an eighth of a full turn, as promised.
+
+<Check question="What single standard gate equals $S T^2$, and what does $H S^{\dagger} H$ do to the Bloch sphere?">
+$T^2 = S$, so $S T^2 = S \cdot S = S^2 = Z$. For the second, $S^{\dagger}$ is a
+quarter turn about $z$ in the negative direction, and conjugating by $H$
+exchanges the $x$ and $z$ axes, so $H S^{\dagger} H$ is a quarter turn about the
+$x$ axis in the negative direction. In matrix form it is
+$\tfrac12\begin{pmatrix} 1 - i & 1 + i \\ 1 + i & 1 - i \end{pmatrix}$, which is
+the gate the registry calls $\sqrt{X}^{\dagger}$.
+</Check>
+
+## Where this comes from
+
+- [PennyLane Codebook](https://pennylane.ai/codebook), whose universality module
+  builds the density argument from $T$ and $H$ in exactly these three steps.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  sections 4.5.3 and 10.6, for the irrational-rotation proof of density and for
+  the Clifford and non-Clifford distinction that governs error-correction cost.

@@ -1,0 +1,193 @@
+---
+id: t1.m3.l1
+title: X, Y, Z
+type: concept
+track: t1
+module: t1.m3
+level: L1
+minutes: 12
+objectives:
+  - Write the matrices of X, Y and Z and compute their action on the six Bloch poles
+  - Verify that each Pauli squares to the identity and that they pairwise anticommute
+  - Compute XY and identify the resulting Pauli and phase
+prerequisites: [t1.m1.l7, t0.m4.l2]
+sources:
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [gates, pauli]
+---
+
+Three matrices generate almost everything you will need to say about one qubit,
+and their algebra is small enough to memorise in an afternoon. Learn it now and
+the rest of the track gets easier: Pauli operators are the observables in
+T1.M2, the errors in T1.M11, the stabilisers in T4, and the terms of every
+Hamiltonian in T5.
+
+## The matrices
+
+$$
+X = \begin{pmatrix} 0 & 1 \\ 1 & 0 \end{pmatrix},
+\qquad
+Y = \begin{pmatrix} 0 & -i \\ i & 0 \end{pmatrix},
+\qquad
+Z = \begin{pmatrix} 1 & 0 \\ 0 & -1 \end{pmatrix} .
+$$
+
+$X$ exchanges the two amplitudes, which is why it is called the bit flip. $Z$
+leaves $\ket{0}$ alone and negates $\ket{1}$, the phase flip. $Y$ does both and
+adds a factor of $i$, and the cleanest way to remember it is $Y = iXZ$, which
+you can verify by multiplying: $iXZ = i\begin{pmatrix} 0 & -1 \\ 1 & 0\end{pmatrix} = Y$.
+
+All three are Hermitian, $A^{\dagger} = A$, and unitary, so they are both
+observables and gates. That double role is unusual and specific to this family.
+
+<Margin label="Convention">
+$X$, $Y$ and $Z$ are the Pauli operators. With the identity they span all
+$2 \times 2$ complex matrices, so any one-qubit operator can be written as
+$c_0 I + c_x X + c_y Y + c_z Z$. This is the decomposition T1.M2.L4 used to turn
+three measurements into a full state description.
+</Margin>
+
+## Action on the six poles
+
+Each Pauli is a half turn of the Bloch sphere about its own axis, so it fixes
+the two poles on that axis and swaps the other four in pairs. Written as states,
+with $\simeq$ meaning "up to global phase":
+
+| | $\ket{0}$ | $\ket{1}$ | $\ket{+}$ | $\ket{-}$ | $\ket{+i}$ | $\ket{-i}$ |
+| --- | --- | --- | --- | --- | --- | --- |
+| $X$ | $\ket{1}$ | $\ket{0}$ | $\ket{+}$ | $-\ket{-}$ | $\simeq\ket{-i}$ | $\simeq\ket{+i}$ |
+| $Y$ | $i\ket{1}$ | $-i\ket{0}$ | $\simeq\ket{-}$ | $\simeq\ket{+}$ | $\ket{+i}$ | $-\ket{-i}$ |
+| $Z$ | $\ket{0}$ | $-\ket{1}$ | $\ket{-}$ | $\ket{+}$ | $\ket{-i}$ | $\ket{+i}$ |
+
+Read a row as "this axis survives, the other two reverse". $X$ fixes $\pm x$ and
+negates $y$ and $z$; $Z$ fixes $\pm z$ and negates $x$ and $y$. The entries
+carrying an explicit sign are eigenvalue statements: $X\ket{-} = -\ket{-}$ says
+$\ket{-}$ is the $-1$ eigenvector of $X$, and $Z\ket{1} = -\ket{1}$ says the
+same for $\ket{1}$ and $Z$. Each Pauli has eigenvalues $+1$ and $-1$, and its
+eigenvectors are the two poles on its own axis.
+
+The $Y$ gate is the one people get wrong, so run it.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="Y on |0>. The result is i|1>: outcome 1 with certainty, and an amplitude that is purely imaginary."
+  ir={{
+    version: 1,
+    name: "y-on-zero",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "y1", gate: "y", targets: [0] }
+    ]
+  }}
+/>
+
+The amplitude table reads $0.0000 + 1.0000i$. As a state, $i\ket{1} \simeq \ket{1}$,
+so $Y$ and $X$ are indistinguishable when applied to $\ket{0}$ and then measured.
+They are not indistinguishable in general, and never when either is controlled.
+
+## Squares and anticommutation
+
+Each Pauli squares to the identity:
+
+$$
+X^2 = \begin{pmatrix} 0 & 1 \\ 1 & 0 \end{pmatrix}^2
+= \begin{pmatrix} 1 & 0 \\ 0 & 1 \end{pmatrix} = I,
+$$
+
+and similarly for $Y$ and $Z$. Geometrically, two half turns about the same axis
+make a full turn. Consequently each is its own inverse, and a circuit containing
+$X$ twice in a row on the same qubit can delete both.
+
+They pairwise **anticommute**: $AB = -BA$ for distinct Paulis. Check the hardest
+pair explicitly.
+
+$$
+XY = \begin{pmatrix} 0 & 1 \\ 1 & 0 \end{pmatrix}
+\begin{pmatrix} 0 & -i \\ i & 0 \end{pmatrix}
+= \begin{pmatrix} i & 0 \\ 0 & -i \end{pmatrix} = iZ ,
+$$
+
+$$
+YX = \begin{pmatrix} 0 & -i \\ i & 0 \end{pmatrix}
+\begin{pmatrix} 0 & 1 \\ 1 & 0 \end{pmatrix}
+= \begin{pmatrix} -i & 0 \\ 0 & i \end{pmatrix} = -iZ .
+$$
+
+So $XY = -YX$ and $XY + YX = 0$. The same computation in the other two pairings
+gives the cyclic rule
+
+$$
+XY = iZ, \qquad YZ = iX, \qquad ZX = iY ,
+$$
+
+with each reversal costing a sign. The pattern is exactly that of the
+three-dimensional cross product with an extra $i$, which is not a coincidence:
+both encode rotations in three dimensions.
+
+<Callout tone="gotcha" title="Anticommuting is not the same as commuting to a phase">
+$XY = iZ$ is not $XY \simeq YX$ in any harmless sense. On a single qubit acting
+on a single state the sign is a global phase and washes out. Inside a controlled
+gate, or on one half of an entangled pair, the same sign is a relative phase and
+is measurable. T1.M6.L4 builds an entire nonlocal game out of the fact that
+$X \otimes Z$ and $Z \otimes X$ commute while $X$ and $Z$ do not.
+</Callout>
+
+## Conjugation, and how gates move Paulis
+
+The most useful identity in the family is what $H$ does by conjugation:
+
+$$
+HXH = Z, \qquad HZH = X, \qquad HYH = -Y .
+$$
+
+The first two say the Hadamard exchanges the $x$ and $z$ axes, which is exactly
+the half turn about the diagonal from T1.M1.L8. The third says $y$ is reversed,
+as a half turn about an axis in the $xz$ plane must do.
+
+$HZH = X$ has a circuit reading: a $Z$ sandwiched between Hadamards is a bit
+flip, so applying it to $\ket{0}$ gives $\ket{1}$ with certainty.
+
+<Simulate
+  show="probabilities"
+  caption="H, Z, H on |0>. Because HZH = X, the outcome is 1 with probability 1."
+  ir={{
+    version: 1,
+    name: "hzh-is-x",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "z1", gate: "z", targets: [0] },
+      { id: "h2", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+A gate that maps Paulis to Paulis under conjugation is called a **Clifford**
+gate. $H$, $S$ and CNOT are Cliffords; $T$ is not. T1.M3.L2 shows why that
+distinction decides which gate sets are cheap to simulate classically.
+
+<Check question="Compute $ZY$ and express it as a Pauli times a phase. Then say whether $Z$ and $Y$ have a common eigenvector.">
+$ZY = \begin{pmatrix} 1 & 0 \\ 0 & -1 \end{pmatrix}\begin{pmatrix} 0 & -i \\ i & 0\end{pmatrix} = \begin{pmatrix} 0 & -i \\ -i & 0 \end{pmatrix} = -iX$. The cyclic rule gives
+$YZ = iX$, and reversing the order flips the sign, as anticommutation requires.
+They share no eigenvector: if $\ket{v}$ were a common eigenvector with
+eigenvalues $\lambda$ and $\mu$, then $ZY\ket{v} = \lambda\mu\ket{v}$ and also
+$-YZ\ket{v} = -\lambda\mu\ket{v}$, forcing $\lambda\mu = 0$, which is impossible
+since Pauli eigenvalues are $\pm 1$. Anticommuting observables never have a
+common eigenbasis, which is the algebraic root of the uncertainty relation
+between them.
+</Check>
+
+## Where this comes from
+
+- [PennyLane Codebook](https://pennylane.ai/codebook), whose single-qubit gate
+  module introduces the Paulis by their Bloch-sphere action first and their
+  matrices second, the ordering used here.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 4.2 and exercise 4.7, for the Pauli algebra and the conjugation
+  identities that make the Clifford group tractable.

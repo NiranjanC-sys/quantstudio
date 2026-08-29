@@ -1,0 +1,240 @@
+---
+id: t0.m4.l4
+title: Functions of Matrices and the Matrix Exponential
+type: concept
+track: t0
+module: t0.m4
+level: L0
+minutes: 15
+objectives:
+  - Define f(A) for a Hermitian A through its spectral decomposition
+  - Derive exp(-i theta n.sigma) = cos(theta) I - i sin(theta) n.sigma for a unit vector n
+  - Explain why exp(A)exp(B) differs from exp(A+B) when A and B do not commute
+prerequisites: [t0.m4.l3]
+sources:
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: Preskill, Ph219/CS219 Quantum Computation lecture notes (Caltech)
+    url: http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html
+tags: [operators, exponential]
+---
+
+What is the square root of $\big(\begin{smallmatrix}2&1\\1&2\end{smallmatrix} \big)$, and what does it mean to raise $e$ to a matrix? Both questions have the
+same answer, and it is the spectral theorem: apply the ordinary scalar function
+to each eigenvalue and leave the eigenvectors alone. Every gate in T1.M3 is an
+exponential of a Pauli, so this is the lesson where observables turn into
+operations.
+
+## Functions through the spectrum
+
+If $A = \sum_k \lambda_k \ketbra{v_k}{v_k}$ is Hermitian and $f$ is any function
+defined on the eigenvalues, define
+
+$$
+f(A) = \sum_k f(\lambda_k)\, \ketbra{v_k}{v_k} .
+$$
+
+This is consistent with the obvious cases. For $f(x) = x^2$, the cross terms
+vanish because $\braket{v_j}{v_k} = \delta_{jk}$, leaving
+$\sum_k \lambda_k^2 \ketbra{v_k}{v_k} = A^2$. The same argument extends to every
+power, hence to every polynomial, hence to anything with a power series.
+
+Take $A = \big(\begin{smallmatrix}2&1\\1&2\end{smallmatrix}\big) = 3\ketbra{+}{+} + 1\ketbra{-}{-}$ from the previous lesson. Its square root is
+
+$$
+\sqrt{A} = \sqrt3\,\ketbra{+}{+} + 1\,\ketbra{-}{-}
+= \begin{pmatrix} \frac{\sqrt3 + 1}{2} & \frac{\sqrt3 - 1}{2} \\[2pt]
+\frac{\sqrt3 - 1}{2} & \frac{\sqrt3 + 1}{2}\end{pmatrix}
+= \begin{pmatrix} 1.366025 & 0.366025 \\ 0.366025 & 1.366025\end{pmatrix} .
+$$
+
+Squaring it returns $A$: the diagonal gives $1.366025^2 + 0.366025^2 = 1.866025 + 0.133975 = 2$ and the off-diagonal gives
+$2 \cdot 1.366025 \cdot 0.366025 = 1$. Its exponential is
+
+$$
+e^{A} = e^{3}\ketbra{+}{+} + e^{1}\ketbra{-}{-}
+= \begin{pmatrix} 11.401909 & 8.683628 \\ 8.683628 & 11.401909\end{pmatrix},
+$$
+
+whose entries are $\tfrac{e^3 \pm e}{2}$.
+
+<Margin label="Not the entrywise function">
+$f(A)$ is emphatically not $f$ applied to each entry. The $(1,1)$ entry of
+$e^{A}$ above is $11.401909$, not $e^2 = 7.389056$. The only matrices for which
+the entrywise recipe is right are diagonal ones, which is exactly the case where
+the eigenvectors are the standard basis.
+</Margin>
+
+The exponential also has a series definition,
+$e^{M} = \sum_{k\ge 0} M^k / k!$, which converges for every square $M$ and
+agrees with the spectral definition whenever both apply. The series is the more
+general of the two, since it needs no diagonalisability.
+
+## The Pauli exponential
+
+Let $\hat n = (n_x, n_y, n_z)$ be a real unit vector and write
+
+$$
+\hat n \cdot \vec\sigma = n_x X + n_y Y + n_z Z .
+$$
+
+The key algebraic fact is that this matrix squares to the identity:
+
+$$
+(\hat n \cdot \vec\sigma)^2 = \sum_i n_i^2 \sigma_i^2
++ \sum_{i < j} n_i n_j (\sigma_i \sigma_j + \sigma_j \sigma_i)
+= \left(\textstyle\sum_i n_i^2\right) I = I,
+$$
+
+using $\sigma_i^2 = I$ and the anticommutation
+$\sigma_i\sigma_j = -\sigma_j\sigma_i$ for $i \ne j$, which kills the cross
+terms. Now feed that into the series for $\exp(-i\theta\, \hat n \cdot \vec\sigma)$. Even powers give $I$, odd powers give $\hat n \cdot \vec\sigma$:
+
+$$
+e^{-i\theta \hat n\cdot\vec\sigma}
+= \sum_{m}\frac{(-i\theta)^{2m}}{(2m)!}I
++ \sum_{m}\frac{(-i\theta)^{2m+1}}{(2m+1)!}\hat n\cdot\vec\sigma .
+$$
+
+Since $(-i)^{2m} = (-1)^m$ and $(-i)^{2m+1} = -i(-1)^m$, the two sums are the
+cosine and sine series of T0.M2.L2:
+
+$$
+\boxed{\;e^{-i\theta\, \hat n\cdot\vec\sigma} = \cos\theta\, I
+- i\sin\theta\, (\hat n \cdot \vec\sigma). \;}
+$$
+
+Set $\hat n = (1,0,0)$ and $\theta = \varphi/2$ to get the standard rotation
+gate,
+
+$$
+R_x(\varphi) = e^{-i\varphi X/2} = \cos\tfrac{\varphi}{2} I
+- i \sin\tfrac{\varphi}{2} X
+= \begin{pmatrix} \cos\frac{\varphi}{2} & -i\sin\frac{\varphi}{2} \\
+-i\sin\frac{\varphi}{2} & \cos\frac{\varphi}{2}\end{pmatrix} .
+$$
+
+At $\varphi = \pi/2$ this is
+$\big(\begin{smallmatrix}0.707107 & -0.707107i\\ -0.707107i & 0.707107 \end{smallmatrix}\big)$, which is what the simulator's `rx` gate contains. The
+half-angle is a convention chosen so that $\varphi$ is the rotation angle on the
+Bloch sphere, and it is why $R_x(2\pi) = -I$ rather than $I$.
+
+<Callout tone="note" title="Hermitian in, unitary out">
+If $A\dg = A$ then $\left(e^{-iA}\right)\dg = e^{iA\dg} = e^{iA} = \left(e^{-iA}\right)^{-1}$, so $e^{-iA}$ is unitary. Every observable generates
+a family of gates, and every gate is generated by some observable. In T4 the
+observable is a Hamiltonian and the parameter is time.
+</Callout>
+
+## When the exponents do not commute
+
+For scalars, $e^{a}e^{b} = e^{a+b}$. For matrices this holds only when
+$AB = BA$. The proof of the scalar identity multiplies two series and collects
+terms using the binomial theorem, and the binomial theorem for $(A+B)^n$ needs
+commutativity: already at $n = 2$,
+
+$$
+(A+B)^2 = A^2 + AB + BA + B^2 \ne A^2 + 2AB + B^2 \quad\text{unless } AB = BA .
+$$
+
+Take $A = -i\tfrac{\pi}{4}X$ and $B = -i\tfrac{\pi}{4}Z$, so
+$e^{A} = R_x(\pi/2)$ and $e^{B} = R_z(\pi/2)$ exactly. Then
+
+$$
+e^{A}e^{B} = \begin{pmatrix} 0.5 - 0.5i & 0.5 - 0.5i \\ -0.5 - 0.5i & 0.5 + 0.5i\end{pmatrix},
+\qquad
+e^{A+B} = \begin{pmatrix} 0.444016 - 0.633581i & -0.633581i \\ -0.633581i & 0.444016 + 0.633581i\end{pmatrix} .
+$$
+
+These differ by $0.760029$ in Frobenius norm, which is not a rounding error. The
+second matrix is itself a Pauli exponential: $A + B = -i\tfrac{\pi}{4}(X+Z) = -i\tfrac{\pi\sqrt2}{4}\,\hat n\cdot\vec\sigma$ with
+$\hat n = \tfrac{1}{\sqrt2}(1,0,1)$, so the boxed formula applies with
+$\theta = \pi\sqrt2/4 = 1.110721$, giving $\cos\theta = 0.444016$ and
+$\sin\theta \cdot \isqrt = 0.633581$. Every digit above is that formula.
+
+The failure is measured by the commutator $[A,B] = AB - BA$. Here
+$[X, Z] = -2iY \ne 0$, and the Baker-Campbell-Hausdorff expansion begins
+
+$$
+e^{A}e^{B} = \exp\left(A + B + \half[A,B] + \cdots\right).
+$$
+
+Trotterisation in T4 is the art of making the neglected terms small by
+chopping the exponent into many short pieces.
+
+## Ordering you can measure
+
+Two rotations in the two possible orders, each followed by a Hadamard and a
+measurement. The states differ, and here the difference is not a global phase.
+
+<Simulate
+  show="probabilities"
+  caption="Rx(pi/2) then Rz(pi/2), then H. The result is a computational basis state."
+  ir={{
+    version: 1,
+    name: "rx-then-rz",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "rx", gate: "rx", targets: [0], params: [1.5707963267948966] },
+      { id: "rz", gate: "rz", targets: [0], params: [1.5707963267948966] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $0$ | $1.000000$ |
+| $1$ | $0.000000$ |
+
+</Simulate>
+
+<Simulate
+  show="probabilities"
+  caption="The same two rotations in the opposite order, same final H. Now the outcome is a fair coin."
+  ir={{
+    version: 1,
+    name: "rz-then-rx",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "rz", gate: "rz", targets: [0], params: [1.5707963267948966] },
+      { id: "rx", gate: "rx", targets: [0], params: [1.5707963267948966] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $0$ | $0.500000$ |
+| $1$ | $0.500000$ |
+
+</Simulate>
+
+Certainty against a coin flip, from swapping two gates. $[X,Z] \ne 0$ is not an
+abstraction; it is the reason a compiler may not reorder those two instructions.
+
+<Check question="Compute $e^{-i\theta Z}$ from the boxed formula and check it against the spectral definition.">
+With $\hat n = (0,0,1)$ the formula gives
+$e^{-i\theta Z} = \cos\theta\, I - i\sin\theta\, Z = \operatorname{diag}(\cos\theta - i \sin\theta,\; \cos\theta + i\sin\theta) = \operatorname{diag}\left(e^{-i\theta}, e^{i\theta}\right)$.
+
+Spectrally, $Z = (+1)\ketbra{0}{0} + (-1)\ketbra{1}{1}$, so applying
+$f(x) = e^{-i\theta x}$ to the eigenvalues gives
+$e^{-i\theta}\ketbra{0}{0} + e^{+i\theta}\ketbra{1}{1}$, the same diagonal
+matrix. Note that $R_z(\varphi) = e^{-i\varphi Z/2}$ carries the phases
+$e^{\mp i\varphi/2}$, differing from the gate
+$P(\varphi) = \operatorname{diag}(1, e^{i\varphi})$ by the global phase
+$e^{-i\varphi/2}$.
+</Check>
+
+## Where this comes from
+
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  sections 2.1.8 and 4.2, for functions of operators and the Pauli rotation
+  formula in the form derived here.
+- [Preskill, Ph219](http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html),
+  chapter 2, for the Hermitian generator picture and the commutator as the
+  obstruction to combining exponentials.

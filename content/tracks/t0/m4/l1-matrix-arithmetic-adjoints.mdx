@@ -1,0 +1,244 @@
+---
+id: t0.m4.l1
+title: Matrix Arithmetic and Adjoints
+type: concept
+track: t0
+module: t0.m4
+level: L0
+minutes: 12
+objectives:
+  - Multiply matrices and compute the adjoint of a complex matrix
+  - Prove that (AB)^dagger equals B^dagger A^dagger
+  - Explain why matrix multiplication is associative but not commutative
+prerequisites: [t0.m3.l3]
+sources:
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [linear-algebra, matrices]
+---
+
+A circuit is a list of gates in an order, and running it is multiplying their
+matrices in the reverse of that order. Two facts about matrix multiplication
+therefore decide what a circuit can be: it is associative, so gates may be
+grouped and fused into blocks without changing the result, and it is not
+commutative, so the order can never be shuffled. Everything a compiler is
+allowed to do to your circuit lives in the gap between those two sentences.
+
+## The product
+
+For $A$ of shape $m \times k$ and $B$ of shape $k \times n$, the product is the
+$m \times n$ matrix
+
+$$
+(AB)_{ij} = \sum_{\ell=1}^{k} A_{i\ell} B_{\ell j} .
+$$
+
+Entry $(i,j)$ is row $i$ of $A$ paired against column $j$ of $B$. Work an
+example that will not let you get away with sign errors:
+
+$$
+A = \begin{pmatrix} 1 & i \\ 0 & 2\end{pmatrix},
+\qquad
+B = \begin{pmatrix} 0 & 1 \\ 1 + i & 1 \end{pmatrix}.
+$$
+
+Entry by entry, using $i^2 = -1$:
+
+$$
+(AB)_{11} = 1 \cdot 0 + i(1+i) = i + i^2 = -1 + i,
+\qquad
+(AB)_{12} = 1 \cdot 1 + i \cdot 1 = 1 + i,
+$$
+$$
+(AB)_{21} = 0 \cdot 0 + 2(1+i) = 2 + 2i,
+\qquad
+(AB)_{22} = 0 \cdot 1 + 2 \cdot 1 = 2 ,
+$$
+
+giving
+
+$$
+AB = \begin{pmatrix} -1 + i & 1 + i \\ 2 + 2i & 2 \end{pmatrix},
+\qquad
+BA = \begin{pmatrix} 0 & 2 \\ 1 + i & 1 + i \end{pmatrix}.
+$$
+
+The second product is a different matrix, not a rearrangement of the first.
+
+## Associative but not commutative
+
+**Associativity.** $(AB)C = A(BC)$, because both sides have entry
+
+$$
+\sum_{\ell}\sum_{m} A_{i\ell} B_{\ell m} C_{mj},
+$$
+
+and the only difference between the two groupings is which sum is performed
+first. Finite sums may be reordered, so the entries agree.
+
+**Non-commutativity.** Nothing in the formula for $(AB)_{ij}$ is symmetric in
+$A$ and $B$: the index $\ell$ runs along rows of $A$ and columns of $B$. Even
+when both shapes allow both products, the two answers pair up different numbers.
+The example above is one witness; the cleanest quantum witness is
+$XZ = -ZX$, since
+
+$$
+XZ = \begin{pmatrix} 0 & -1 \\ 1 & 0\end{pmatrix},
+\qquad
+ZX = \begin{pmatrix} 0 & 1 \\ -1 & 0 \end{pmatrix} .
+$$
+
+<Margin label="Why the order reverses">
+A circuit that applies $U_1$, then $U_2$, then $U_3$ acts on a state as
+$U_3 U_2 U_1 \ket{\psi}$. Diagrams read left to right in time, matrix products
+read right to left in application order. Getting this backwards is the single
+most common bug in hand-written simulator code.
+</Margin>
+
+## The adjoint
+
+The **adjoint** (or conjugate transpose, or dagger) of $A$ is
+$\left(A\dg\right)_{ij} = \overline{A_{ji}}$: transpose, then conjugate every
+entry. For the matrices above,
+
+$$
+A\dg = \begin{pmatrix} 1 & 0 \\ -i & 2 \end{pmatrix},
+\qquad
+B\dg = \begin{pmatrix} 0 & 1 - i \\ 1 & 1 \end{pmatrix}.
+$$
+
+The adjoint is what makes the inner product of T0.M3.L1 behave, because it is
+defined by the property
+
+$$
+\langle A u, v \rangle = \langle u, A\dg v\rangle
+$$
+
+for all $u, v$. Reading that as bras and kets, $A\dg$ is the matrix that acts on
+the bra side the way $A$ acts on the ket side.
+
+## The product rule reverses
+
+**Claim.** $(AB)\dg = B\dg A\dg$.
+
+**Proof.** Compare entries. On the left,
+
+$$
+\left((AB)\dg\right)_{ij} = \overline{(AB)_{ji}}
+= \overline{\sum_{\ell} A_{j\ell}B_{\ell i}}
+= \sum_{\ell} \overline{A_{j\ell}}\; \overline{B_{\ell i}},
+$$
+
+using that conjugation is additive and multiplicative. On the right,
+
+$$
+\left(B\dg A\dg\right)_{ij} = \sum_{\ell} \left(B\dg\right)_{i\ell}\left(A\dg\right)_{\ell j}
+= \sum_{\ell} \overline{B_{\ell i}}\; \overline{A_{j \ell}} .
+$$
+
+The two sums have the same terms, since complex multiplication commutes.
+$\blacksquare$
+
+Confirm on the example. Direct:
+
+$$
+(AB)\dg = \begin{pmatrix} -1 - i & 2 - 2i \\ 1 - i & 2\end{pmatrix} .
+$$
+
+Reversed product:
+
+$$
+B\dg A\dg = \begin{pmatrix} 0 & 1-i \\ 1 & 1\end{pmatrix}
+\begin{pmatrix} 1 & 0 \\ -i & 2\end{pmatrix}
+= \begin{pmatrix} (1-i)(-i) & 2(1-i) \\ 1 - i & 2 \end{pmatrix}
+= \begin{pmatrix} -1 - i & 2 - 2i \\ 1 - i & 2\end{pmatrix},
+$$
+
+using $(1-i)(-i) = -i + i^2 = -1 - i$. They match.
+
+<Callout tone="note" title="Reversal is why inverting a circuit is easy">
+For unitary gates $U\dg = U^{-1}$, so the inverse of a circuit
+$U_n \cdots U_2 U_1$ is $U_1\dg U_2\dg \cdots U_n\dg$: reverse the gate list and
+dagger each gate. Uncomputation in T0.M6.L3 and the diffusion operator in T2 are
+both applications of exactly this.
+</Callout>
+
+## Order you can measure
+
+Non-commutativity is not a bookkeeping detail, it is observable. Compare $H$
+after $X$ against $X$ after $H$, both applied to $\ket{0}$, then rotate back
+with a final $H$ and measure. The first circuit computes $HHX\ket{0} = X\ket{0} = \ket{1}$, the second computes $HXH\ket{0} = Z\ket{0} = \ket{0}$.
+
+<Simulate
+  show="probabilities"
+  caption="X first, then H, then H again. The two Hadamards cancel and the X survives."
+  ir={{
+    version: 1,
+    name: "x-then-h",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "x0", gate: "x", targets: [0] },
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "h2", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $0$ | $0.000000$ |
+| $1$ | $1.000000$ |
+
+</Simulate>
+
+<Simulate
+  show="probabilities"
+  caption="The same three gates with the first two swapped. HXH is Z, which leaves |0> alone."
+  ir={{
+    version: 1,
+    name: "h-then-x",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "x0", gate: "x", targets: [0] },
+      { id: "h2", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $0$ | $1.000000$ |
+| $1$ | $0.000000$ |
+
+</Simulate>
+
+Same three gates, same qubit, one transposition of two of them, and the outcome
+flips from certain 1 to certain 0. That is the practical meaning of $HX \ne XH$.
+
+<Check question="Let $C = \big(\begin{smallmatrix} 0 & 1 \\ 0 & 0\end{smallmatrix}\big)$ and $D = \big(\begin{smallmatrix} 0 & 0 \\ 1 & 0\end{smallmatrix}\big)$. Compute $CD$, $DC$, $C\dg$ and $(CD)\dg$.">
+$CD = \big(\begin{smallmatrix} 1 & 0 \\ 0 & 0\end{smallmatrix}\big)$ and
+$DC = \big(\begin{smallmatrix} 0 & 0 \\ 0 & 1\end{smallmatrix}\big)$. Both
+products are projectors, and they are different ones, which is a strong form of
+non-commutativity: here $CD$ and $DC$ do not even share a single non-zero entry.
+
+$C\dg = D$, since transposing swaps the two off-diagonal positions and the
+entries are real. Finally $(CD)\dg = CD$, because $CD = \ketbra{0}{0}$ is
+Hermitian, and the reversal rule agrees:
+$D\dg C\dg = C D$.
+</Check>
+
+## Where this comes from
+
+- [Microsoft Quantum Katas](https://github.com/microsoft/QuantumKatas), whose
+  linear-algebra kata sequences matrix products before adjoints before unitarity,
+  the order used here.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 2.1, for the defining property of the adjoint through the inner
+  product rather than as a recipe on entries.

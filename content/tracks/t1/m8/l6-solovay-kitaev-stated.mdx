@@ -1,0 +1,319 @@
+---
+id: t1.m8.l6
+title: Solovay-Kitaev, Stated
+type: concept
+track: t1
+module: t1.m8
+level: L1
+minutes: 13
+objectives:
+  - State the Solovay-Kitaev theorem and its polylogarithmic gate-count bound
+  - Estimate the sequence length needed to approximate a rotation to a given accuracy
+  - Explain why the theorem makes any dense gate set as good as any other, up to logs
+prerequisites:
+  - t1.m8.l5
+sources:
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: Preskill, Ph219/CS219 Quantum Computation lecture notes (Caltech)
+    url: http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html
+tags: [circuits, approximation]
+---
+
+The last lesson proved that $H$, $T$ and CX can approximate anything. It said
+nothing about how long the approximation takes. "Dense" is compatible with
+"needs $2^{100}$ gates to get three decimal places", and if that were the cost
+the theory would be a curiosity. Solovay-Kitaev is the theorem that says it is
+not: the cost is polylogarithmic in the accuracy, and that single fact is why
+nobody argues about which gate set to build hardware around.
+
+## The statement
+
+Let $G$ be a finite set of gates in $SU(2)$ that is closed under inverses and
+generates a dense subgroup. Then for any $U \in SU(2)$ and any
+$\varepsilon > 0$ there is a product of
+
+$$
+O\!\left(\log^{c}\frac{1}{\varepsilon}\right)
+$$
+
+gates from $G$ that approximates $U$ to within $\varepsilon$ in operator norm.
+Nielsen and Chuang state the exponent as $c \approx 2$. Explicit constructive
+versions of the proof, which give you an algorithm that finds the sequence rather
+than only proving one exists, run with a larger exponent, close to 4.
+
+<Margin label="What the theorem does not give you">
+It does not give a constant. $O(\log^2(1/\varepsilon))$ hides a factor that
+depends on the gate set and on how the recursion is seeded. Two dense gate sets
+with the same asymptotic bound can differ by a large constant in practice, which
+is why compiler teams still care which one they target.
+</Margin>
+
+## Reading the bound as a number
+
+The useful way to hold this is as a ratio rather than an absolute count. With
+$c = 2$, the length grows as $\log^2(1/\varepsilon)$:
+
+| $\varepsilon$ | $\log_2(1/\varepsilon)$ | $\log_2^2(1/\varepsilon)$ |
+| --- | --- | --- |
+| $10^{-2}$ | $6.644$ | $44.1$ |
+| $10^{-3}$ | $9.966$ | $99.3$ |
+| $10^{-6}$ | $19.932$ | $397.3$ |
+| $10^{-9}$ | $29.897$ | $893.9$ |
+
+Going from three decimal places to six multiplies $\log_2(1/\varepsilon)$ by
+exactly 2, so it multiplies $\log^2(1/\varepsilon)$ by exactly 4. A thousandfold
+improvement in accuracy costs a factor of four in gates. Compare that with the
+alternative the theorem rules out, where accuracy $\varepsilon$ would cost
+$1/\varepsilon$ gates: there, the same thousandfold improvement would cost a
+factor of a thousand.
+
+## Watching a sequence converge
+
+You can see the mechanism without any of the recursion. Take the word
+$H, T, H, T$, which up to global phase is the irrational rotation from the last
+lesson, and apply it repeatedly to $\ket{0}$. If the rotation angle were a
+rational multiple of $2\pi$ the state would cycle through finitely many points.
+It is not, so the orbit is dense on a circle of latitude and repeatedly comes
+back near where it started, closer and closer as you allow more repetitions.
+
+One repetition, four gates, leaves the qubit a long way from $\ket{0}$:
+
+<Circuit
+  caption="The word H T H T applied once. The state is 14.64% of the way to |1>."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "sk-word-1",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "g0_0", gate: "h", targets: [0] },
+      { id: "g0_1", gate: "t", targets: [0] },
+      { id: "g0_2", gate: "h", targets: [0] },
+      { id: "g0_3", gate: "t", targets: [0] }
+    ]
+  }}
+/>
+
+Six repetitions, twenty-four gates:
+
+<Simulate
+  show="probabilities"
+  ir={{
+    version: 1,
+    name: "sk-word-6",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "g0_0", gate: "h", targets: [0] },
+      { id: "g0_1", gate: "t", targets: [0] },
+      { id: "g0_2", gate: "h", targets: [0] },
+      { id: "g0_3", gate: "t", targets: [0] },
+      { id: "g1_0", gate: "h", targets: [0] },
+      { id: "g1_1", gate: "t", targets: [0] },
+      { id: "g1_2", gate: "h", targets: [0] },
+      { id: "g1_3", gate: "t", targets: [0] },
+      { id: "g2_0", gate: "h", targets: [0] },
+      { id: "g2_1", gate: "t", targets: [0] },
+      { id: "g2_2", gate: "h", targets: [0] },
+      { id: "g2_3", gate: "t", targets: [0] },
+      { id: "g3_0", gate: "h", targets: [0] },
+      { id: "g3_1", gate: "t", targets: [0] },
+      { id: "g3_2", gate: "h", targets: [0] },
+      { id: "g3_3", gate: "t", targets: [0] },
+      { id: "g4_0", gate: "h", targets: [0] },
+      { id: "g4_1", gate: "t", targets: [0] },
+      { id: "g4_2", gate: "h", targets: [0] },
+      { id: "g4_3", gate: "t", targets: [0] },
+      { id: "g5_0", gate: "h", targets: [0] },
+      { id: "g5_1", gate: "t", targets: [0] },
+      { id: "g5_2", gate: "h", targets: [0] },
+      { id: "g5_3", gate: "t", targets: [0] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $0$ | $0.988491$ |
+| $1$ | $0.011509$ |
+
+</Simulate>
+
+Twenty-three repetitions, ninety-two gates:
+
+<Simulate
+  show="probabilities"
+  ir={{
+    version: 1,
+    name: "sk-word-23",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "g0_0", gate: "h", targets: [0] },
+      { id: "g0_1", gate: "t", targets: [0] },
+      { id: "g0_2", gate: "h", targets: [0] },
+      { id: "g0_3", gate: "t", targets: [0] },
+      { id: "g1_0", gate: "h", targets: [0] },
+      { id: "g1_1", gate: "t", targets: [0] },
+      { id: "g1_2", gate: "h", targets: [0] },
+      { id: "g1_3", gate: "t", targets: [0] },
+      { id: "g2_0", gate: "h", targets: [0] },
+      { id: "g2_1", gate: "t", targets: [0] },
+      { id: "g2_2", gate: "h", targets: [0] },
+      { id: "g2_3", gate: "t", targets: [0] },
+      { id: "g3_0", gate: "h", targets: [0] },
+      { id: "g3_1", gate: "t", targets: [0] },
+      { id: "g3_2", gate: "h", targets: [0] },
+      { id: "g3_3", gate: "t", targets: [0] },
+      { id: "g4_0", gate: "h", targets: [0] },
+      { id: "g4_1", gate: "t", targets: [0] },
+      { id: "g4_2", gate: "h", targets: [0] },
+      { id: "g4_3", gate: "t", targets: [0] },
+      { id: "g5_0", gate: "h", targets: [0] },
+      { id: "g5_1", gate: "t", targets: [0] },
+      { id: "g5_2", gate: "h", targets: [0] },
+      { id: "g5_3", gate: "t", targets: [0] },
+      { id: "g6_0", gate: "h", targets: [0] },
+      { id: "g6_1", gate: "t", targets: [0] },
+      { id: "g6_2", gate: "h", targets: [0] },
+      { id: "g6_3", gate: "t", targets: [0] },
+      { id: "g7_0", gate: "h", targets: [0] },
+      { id: "g7_1", gate: "t", targets: [0] },
+      { id: "g7_2", gate: "h", targets: [0] },
+      { id: "g7_3", gate: "t", targets: [0] },
+      { id: "g8_0", gate: "h", targets: [0] },
+      { id: "g8_1", gate: "t", targets: [0] },
+      { id: "g8_2", gate: "h", targets: [0] },
+      { id: "g8_3", gate: "t", targets: [0] },
+      { id: "g9_0", gate: "h", targets: [0] },
+      { id: "g9_1", gate: "t", targets: [0] },
+      { id: "g9_2", gate: "h", targets: [0] },
+      { id: "g9_3", gate: "t", targets: [0] },
+      { id: "g10_0", gate: "h", targets: [0] },
+      { id: "g10_1", gate: "t", targets: [0] },
+      { id: "g10_2", gate: "h", targets: [0] },
+      { id: "g10_3", gate: "t", targets: [0] },
+      { id: "g11_0", gate: "h", targets: [0] },
+      { id: "g11_1", gate: "t", targets: [0] },
+      { id: "g11_2", gate: "h", targets: [0] },
+      { id: "g11_3", gate: "t", targets: [0] },
+      { id: "g12_0", gate: "h", targets: [0] },
+      { id: "g12_1", gate: "t", targets: [0] },
+      { id: "g12_2", gate: "h", targets: [0] },
+      { id: "g12_3", gate: "t", targets: [0] },
+      { id: "g13_0", gate: "h", targets: [0] },
+      { id: "g13_1", gate: "t", targets: [0] },
+      { id: "g13_2", gate: "h", targets: [0] },
+      { id: "g13_3", gate: "t", targets: [0] },
+      { id: "g14_0", gate: "h", targets: [0] },
+      { id: "g14_1", gate: "t", targets: [0] },
+      { id: "g14_2", gate: "h", targets: [0] },
+      { id: "g14_3", gate: "t", targets: [0] },
+      { id: "g15_0", gate: "h", targets: [0] },
+      { id: "g15_1", gate: "t", targets: [0] },
+      { id: "g15_2", gate: "h", targets: [0] },
+      { id: "g15_3", gate: "t", targets: [0] },
+      { id: "g16_0", gate: "h", targets: [0] },
+      { id: "g16_1", gate: "t", targets: [0] },
+      { id: "g16_2", gate: "h", targets: [0] },
+      { id: "g16_3", gate: "t", targets: [0] },
+      { id: "g17_0", gate: "h", targets: [0] },
+      { id: "g17_1", gate: "t", targets: [0] },
+      { id: "g17_2", gate: "h", targets: [0] },
+      { id: "g17_3", gate: "t", targets: [0] },
+      { id: "g18_0", gate: "h", targets: [0] },
+      { id: "g18_1", gate: "t", targets: [0] },
+      { id: "g18_2", gate: "h", targets: [0] },
+      { id: "g18_3", gate: "t", targets: [0] },
+      { id: "g19_0", gate: "h", targets: [0] },
+      { id: "g19_1", gate: "t", targets: [0] },
+      { id: "g19_2", gate: "h", targets: [0] },
+      { id: "g19_3", gate: "t", targets: [0] },
+      { id: "g20_0", gate: "h", targets: [0] },
+      { id: "g20_1", gate: "t", targets: [0] },
+      { id: "g20_2", gate: "h", targets: [0] },
+      { id: "g20_3", gate: "t", targets: [0] },
+      { id: "g21_0", gate: "h", targets: [0] },
+      { id: "g21_1", gate: "t", targets: [0] },
+      { id: "g21_2", gate: "h", targets: [0] },
+      { id: "g21_3", gate: "t", targets: [0] },
+      { id: "g22_0", gate: "h", targets: [0] },
+      { id: "g22_1", gate: "t", targets: [0] },
+      { id: "g22_2", gate: "h", targets: [0] },
+      { id: "g22_3", gate: "t", targets: [0] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $0$ | $0.999210$ |
+| $1$ | $0.000790$ |
+
+</Simulate>
+
+The residual error falls from $0.1464$ to $0.0115$ to $0.000790$ as the sequence
+goes from 4 to 24 to 92 gates. This is brute force, not Solovay-Kitaev, and brute
+force is exactly what the theorem improves on. A counting argument gives the
+scale: there are about $|G|^{\ell}$ words of length $\ell$ and $SU(2)$ is three
+dimensional, so the best a brute-force search over that many words can do is
+accuracy of order $|G|^{-\ell/3}$, which is fine asymptotically but requires
+searching exponentially many words. Solovay-Kitaev replaces
+the search with a recursion that refines a coarse approximation using group
+commutators, and it is the recursion that turns $\log(1/\varepsilon)$ into a
+polynomial rather than an exponent.
+
+<Callout tone="note" title="Where the error budget goes">
+A circuit of $m$ gates needs each gate approximated to about $\varepsilon/m$ for
+the whole circuit to be within $\varepsilon$, because operator-norm errors add.
+The total overhead is therefore $O(m \log^c(m/\varepsilon))$, still polylog in the
+accuracy and only linear in the circuit size.
+</Callout>
+
+## Why the choice of gate set stops mattering
+
+Suppose you have two dense finite gate sets, $A$ and $B$. Every gate in $A$ can
+be approximated by a sequence from $B$ of length $O(\log^c(1/\varepsilon))$, and
+vice versa. So any circuit written in $A$ can be rewritten in $B$ at a
+polylogarithmic multiplicative cost, and any complexity class defined by
+polynomial-size circuits over $A$ equals the one defined over $B$.
+
+That is a strong statement and it has two consequences worth separating.
+
+**For theory,** it means BQP is well defined without naming a gate set. Papers
+can say "a universal gate set" and mean it, and nobody has to redo a proof
+because a device changed its native operations.
+
+**For engineering,** it means the hardware designer picks native gates for
+physical reasons, not computational ones. Ion traps get $R_{xx}$ because that is
+what a shared motional mode gives you. IBM superconducting devices get ECR
+because that is what cross-resonance gives you. Neither choice restricts what can
+be computed, and the compiler absorbs the difference at a cost the theorem bounds.
+
+What the theorem does *not* do is make everything cheap. Under error correction
+the constant in front matters enormously, because each $T$ in the approximating
+sequence needs a distilled magic state, and $T$-count is the dominant cost in
+every resource estimate in T3.M4. Solovay-Kitaev tells you the count grows slowly.
+It does not tell you it is small.
+
+<Check question="You need 500 different single-qubit rotations, each to accuracy $10^{-6}$, and you are told each one costs about 400 gates. What accuracy would 800 gates per rotation buy, on the $c = 2$ reading?">
+About $3 \times 10^{-9}$. If length scales as $\log^2(1/\varepsilon)$ then
+$\log_2(1/\varepsilon)$ scales as the square root of the length, so doubling the
+budget multiplies $\log_2(1/\varepsilon)$ by $\sqrt2$: from $19.932$ to about
+$28.19$, and $2^{-28.19} \approx 3.3 \times 10^{-9}$. Twice the gates bought a
+factor of roughly three hundred in accuracy. The asymmetry is the whole point, and
+the number to remember is the one from the table: every doubling of
+$\log_2(1/\varepsilon)$ costs a factor of four in gates, not a factor of a
+thousand.
+</Check>
+
+## Where this comes from
+
+- [Nielsen & Chuang, *Quantum Computation and Quantum Information*](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 4.5.3 and appendix 3, for the statement of the theorem with $c \approx 2$
+  and for the group-commutator recursion behind it.
+- [Preskill, Ph219/CS219](http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html),
+  for the argument that the theorem makes the choice of universal gate set
+  irrelevant to complexity classification.

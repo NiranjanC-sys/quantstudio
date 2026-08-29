@@ -187,7 +187,19 @@ class AerBackend:
             qc.save_density_matrix(label="rho")
         else:
             qc.save_statevector(label="psi")
-        job = sim.run(qk_transpile(qc, sim), shots=1, seed_simulator=options.seed)
+        # optimisation_level=0 is load-bearing, not caution. From level 1 the
+        # preset pass manager runs ElidePermutations, which deletes SWAP gates
+        # and records the relabelling in the TranspileLayout instead -- so the
+        # saved statevector comes back in *physical* qubit order and every
+        # amplitude that a SWAP moved is in the wrong place. We need basis
+        # translation (our controlled aliases are not Aer primitives) and
+        # nothing else; the circuit is already routed for an all-to-all
+        # simulator, so there is nothing for the optimiser to win.
+        job = sim.run(
+            qk_transpile(qc, sim, optimization_level=0),
+            shots=1,
+            seed_simulator=options.seed,
+        )
         data = job.result().data(0)
         watch.mark("evolveMs")
 
@@ -247,7 +259,11 @@ class AerBackend:
         want_rho = method == "density_matrix"
         if want_rho:
             qc.save_density_matrix(label="rho")
-        job = sim.run(qk_transpile(qc, sim), shots=shots, seed_simulator=options.seed)
+        job = sim.run(
+            qk_transpile(qc, sim, optimization_level=0),
+            shots=shots,
+            seed_simulator=options.seed,
+        )
         res = job.result()
         watch.mark("evolveMs")
 

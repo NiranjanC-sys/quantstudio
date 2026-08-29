@@ -1,0 +1,685 @@
+# Benchmark pattern 5: Shor's algorithm as pseudocode, order finding, and the
+# classical wrapper. Every modular arithmetic result, phase estimation
+# distribution and qubit budget below was computed, not recalled.
+
+questions:
+  - id: iq-041
+    title: Write Shor as pseudocode and name the quantum part
+    kind: coding
+    prompt: |
+      Write Shor's factoring algorithm as pseudocode at the level you would put
+      in a design document. Be explicit about which steps are classical and
+      which are quantum, and about what the quantum subroutine returns. Then
+      run your pseudocode by hand on N = 15 with a = 7 and show the factors
+      falling out.
+    difficulty: easy
+    pattern: Shor pseudocode and order finding
+    topics: [shor, order-finding, factoring, hybrid-algorithms]
+    companies: [IBM, Microsoft Azure Quantum, Google Quantum AI, Quantinuum]
+    modelAnswer: |
+      Shor is a classical algorithm with one quantum subroutine. The subroutine
+      is order finding, and everything else is number theory you would run on a
+      laptop.
+
+      ```
+      factor(N):
+          if N is even: return 2
+          if N = p^k for some prime p and k > 1: return p        # classical
+          loop:
+              a <- uniform random in [2, N-1]                     # classical
+              g <- gcd(a, N)                                      # classical
+              if g > 1: return g                                  # lucky hit
+              r <- quantum_order_find(a, N)                       # QUANTUM
+              if r is odd: continue
+              h <- a^(r/2) mod N                                  # classical
+              if h == N-1: continue                               # degenerate
+              return gcd(h-1, N), gcd(h+1, N)                     # classical
+      ```
+
+      `quantum_order_find(a, N)` returns the least r > 0 with a^r = 1 mod N. It
+      is the only step with no known efficient classical algorithm, and it is
+      implemented as phase estimation on the modular multiplication operator
+      U|y> = |a*y mod N> followed by a continued fraction expansion.
+
+      Running it on N = 15, a = 7. The powers of 7 mod 15 are
+      1, 7, 4, 13, 1, 7, 4, 13, ..., so r = 4. It is even, so
+      h = 7^2 mod 15 = 4, and h is not 14, so we are not in the degenerate
+      case. Then gcd(4-1, 15) = gcd(3, 15) = 3 and gcd(4+1, 15) = gcd(5, 15)
+      = 5. Both are non-trivial and 3 * 5 = 15.
+
+      The identity doing the work is a^r - 1 = 0 mod N, so
+      (a^(r/2) - 1)(a^(r/2) + 1) = 0 mod N. N divides the product but, when
+      a^(r/2) is not congruent to plus or minus 1, N divides neither factor, so
+      each shares a proper divisor with N and gcd finds it.
+
+      Two failure branches are real, not decorative. For N = 15, a = 14 the
+      order is 2 and 14^1 = 14 = N-1, so the degenerate branch fires and you
+      resample. Counting over all a coprime to 15, six of the seven candidates
+      work, so the retry loop terminates quickly. For N = 21 only six of eleven
+      coprime candidates work, so retries matter more.
+    followUps:
+      - Why does the algorithm need the check that N is not a prime power?
+      - What is the expected number of retries, and how do you bound it?
+      - Where would you put a classical fallback if the quantum subroutine returns a wrong r?
+    commonMistakes:
+      - Describing Shor as a quantum algorithm end to end. Only order finding is quantum, and saying so is half the interview answer.
+      - Omitting the a^(r/2) = N-1 degenerate check, which for N = 15 and a = 14 returns the useless pair 1 and 15.
+      - Forgetting the gcd(a, N) > 1 shortcut, which for composite N with small factors sometimes finishes the job with no quantum step at all.
+    references:
+      - label: Shor, Polynomial-Time Algorithms for Prime Factorization and Discrete Logarithms on a Quantum Computer
+        url: https://arxiv.org/abs/quant-ph/9508027
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+
+  - id: iq-042
+    title: Turn a phase estimation reading into an order
+    kind: coding
+    prompt: |
+      Your order-finding subroutine measures the counting register and returns
+      an integer m out of 2^t. Show me the classical post-processing that turns
+      m into a candidate order r, and demonstrate it on a case where the phase
+      is not exactly representable in t bits.
+    difficulty: easy
+    pattern: Shor pseudocode and order finding
+    topics: [continued-fractions, phase-estimation, post-processing, order-finding]
+    companies: [IBM, Microsoft Azure Quantum, Quantinuum, Classiq]
+    modelAnswer: |
+      Phase estimation gives m such that m/2^t approximates s/r for some
+      integer s. Recovering r from a rational approximation is exactly what the
+      continued fraction expansion does: compute the convergents of m/2^t and
+      take the last one whose denominator is below N. That denominator is the
+      candidate r. Then verify classically: check a^r = 1 mod N. If it fails,
+      try the next convergent, or resample.
+
+      ```python
+      from fractions import Fraction
+
+      def order_from_measurement(m: int, t: int, a: int, N: int):
+          frac = Fraction(m, 1 << t).limit_denominator(N)
+          r = frac.denominator
+          return r if r > 0 and pow(a, r, N) == 1 else None
+      ```
+
+      The easy case first. For N = 15, a = 7 the order is 4 and 1/4 is exactly
+      representable in t = 8 bits, so the measurement lands on m = 64 with
+      m/256 = 0.25 exactly and the convergent is 1/4 directly. Measurements at
+      m = 0, 128 and 192 give 0, 1/2 and 3/4, whose denominators are 1, 2 and
+      4. Only the reading 0 is useless.
+
+      The interesting case is N = 21, a = 2, where r = 6 and 1/6 is not a dyadic
+      rational. With only t = 5 counting qubits, the peak sits at m = 5 with
+      probability 0.684162, and 5/32 = 0.15625 has convergent 3/19, denominator
+      19. That is wrong, and worse, no measurement outcome at t = 5 yields a
+      convergent with denominator 6 at all: the total probability of success is
+      exactly zero. Five counting qubits are simply not enough.
+
+      Increasing t fixes it, and the numbers show the threshold behaviour
+      sharply. Probability that the convergent has denominator 6:
+
+          t = 5   ->  0.000000
+          t = 7   ->  0.683995
+          t = 9   ->  0.925018
+          t = 11  ->  0.983944
+
+      This is the rule t >= 2n + 1 where n is the bit length of N. For N = 21,
+      n = 5 and 2n + 1 = 11, which is precisely where the success probability
+      exceeds 0.98. Choosing t by intuition rather than by the bound is how
+      people end up with an order-finding routine that never finds an order.
+    followUps:
+      - Why is the bound 2n + 1 rather than n + 1?
+      - You get r' that is a proper divisor of the true r. How do you detect and repair that?
+      - How many independent measurements would you take before giving up on a given a?
+    commonMistakes:
+      - Choosing t equal to the bit length of N, which for N = 21 gives zero probability of recovering r = 6.
+      - Taking the first convergent rather than the last one with denominator below N.
+      - Skipping the classical verification a^r = 1 mod N, so a wrong candidate propagates into the factoring step and produces the trivial pair 1 and N.
+    references:
+      - label: Kitaev, Quantum measurements and the Abelian Stabilizer Problem
+        url: https://arxiv.org/abs/quant-ph/9511026
+      - label: Watrous quantum computation lecture notes
+        url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+
+  - id: iq-043
+    title: Size the counting register for a given N
+    kind: coding
+    prompt: |
+      For a modulus N of n bits, how many counting qubits does the order-finding
+      phase estimation need, and how many qubits does the whole algorithm need?
+      Give the rule, justify it, and then instantiate it for N = 21 and for a
+      2048-bit RSA modulus.
+    difficulty: medium
+    pattern: Shor pseudocode and order finding
+    topics: [resource-estimation, phase-estimation, qubit-count, shor]
+    companies: [IBM, Microsoft Azure Quantum, PsiQuantum, Quantinuum]
+    modelAnswer: |
+      The counting register needs t = 2n + 1 qubits, where n = ceil(log2 N).
+      The reason is that two distinct fractions s/r and s'/r' with r, r' < N
+      differ by at least 1/(r*r') > 1/N^2, so to separate them you need
+      resolution better than 1/N^2, which is 2n bits. The extra qubit buys the
+      constant success probability: with t = 2n + 1 the probability that the
+      continued fraction expansion returns the true r is at least 4/pi^2, about
+      0.405, per attempt.
+
+      I checked the claim empirically for N = 21, where n = 5 and the true order
+      of a = 2 is 6. Probability that the convergent has denominator 6:
+
+          t = 5   ->  0.000000
+          t = 7   ->  0.683995
+          t = 9   ->  0.925018
+          t = 11  ->  0.983944
+
+      t = 11 is exactly 2n + 1, and it delivers 0.98, comfortably above the
+      guaranteed floor.
+
+      Total qubits depends on the modular exponentiation implementation, which
+      dominates. Three reference points:
+
+          textbook, separate exponent and work registers:  about 3n
+          Beauregard's semiclassical construction:         2n + 3
+          counting register alone if measured one bit at a time: 1
+
+      For N = 21, n = 5: 11 counting qubits, 13 total under Beauregard, 15
+      under the textbook layout. For 2048-bit RSA, n = 2048: 4097 counting
+      qubits and 4099 total logical qubits under Beauregard.
+
+      Say the last number out loud with the caveat attached, because it is the
+      number people misquote. 4099 is a logical qubit count with no error
+      correction. Gidney and Ekera's estimate for factoring 2048-bit RSA on a
+      surface-code machine is around 20 million noisy physical qubits running
+      for about 8 hours, and that gap between 4099 logical and 20 million
+      physical is the entire engineering problem. Quoting the logical number
+      without the physical one is the mistake that gets flagged.
+
+      The semiclassical trick is worth naming: with a single-qubit counting
+      register, mid-circuit measurement and classically conditioned phase
+      rotations, you replace the whole t-qubit register with one qubit measured
+      t times. It costs the same circuit depth and needs real-time feedback,
+      which is a hardware requirement, not a software one.
+    followUps:
+      - Where exactly does the 4/pi^2 success bound come from?
+      - Describe the semiclassical QFT and what hardware feature it demands.
+      - How does the qubit count change if you use windowed arithmetic?
+    commonMistakes:
+      - Using t = n counting qubits, which fails outright when the order does not divide 2^t.
+      - Quoting 4099 logical qubits as "what it takes to break RSA" without the physical qubit and runtime estimate.
+      - Assuming the counting register dominates the qubit budget. The modular arithmetic work registers usually do.
+    references:
+      - label: Gidney and Ekera, How to factor 2048 bit RSA integers in 8 hours using 20 million noisy qubits
+        url: https://arxiv.org/abs/1905.09749
+      - label: Shor, Polynomial-Time Algorithms for Prime Factorization and Discrete Logarithms on a Quantum Computer
+        url: https://arxiv.org/abs/quant-ph/9508027
+
+  - id: iq-044
+    title: Handle the failure branches of Shor honestly
+    kind: coding
+    prompt: |
+      Enumerate every way a single round of Shor can fail to produce a factor,
+      give a concrete N and a for each, and tell me how your implementation
+      responds to each case. I want the retry policy, not just the taxonomy.
+    difficulty: medium
+    pattern: Shor pseudocode and order finding
+    topics: [failure-modes, retry-policy, order-finding, number-theory]
+    companies: [IBM, Microsoft Azure Quantum, Classiq, Quantinuum]
+    modelAnswer: |
+      There are four distinct failure branches and they need different
+      responses.
+
+      1. The order is odd. Then a^(r/2) is not an integer power and the
+         difference of squares trick does not apply. Example: N = 21, a = 5 has
+         order 6, which is even, so take instead any a whose order is odd;
+         these exist for many N. Response: resample a. Cost is one wasted
+         quantum run.
+
+      2. a^(r/2) = N - 1 mod N. Then gcd(h-1, N) = 1 and gcd(h+1, N) = N, so
+         you learn nothing. Example: N = 15, a = 14 has r = 2 and
+         14^1 = 14 = N - 1. Also N = 21, a = 5 has r = 6 and
+         5^3 mod 21 = 20 = N - 1. Response: resample a. This branch is common
+         enough that omitting the check produces a silent infinite loop
+         returning the trivial factorisation.
+
+      3. The phase estimation returns a wrong r, usually a divisor of the true
+         order or an outright miss. Response: verify a^r = 1 mod N classically
+         before using r. If it fails, try the next continued fraction
+         convergent, then take the least common multiple of r values from two
+         independent runs, which recovers the true order with high probability.
+         Only after that do you resample a.
+
+      4. The measurement returns m = 0, whose convergent is 0/1 and carries no
+         information. Response: discard and repeat the quantum run with the same
+         a. No need to resample a.
+
+      The retry policy that follows: per a, allow up to a small constant number
+      of quantum runs, say 4, combining results by lcm; if none verifies,
+      resample a; cap the total number of a values before declaring failure and
+      falling back to a classical factoring routine.
+
+      The success rate per coprime a is the number worth having at hand. I
+      enumerated it directly:
+
+          N = 15  ->  6/7  = 0.857
+          N = 21  ->  6/11 = 0.545
+          N = 33  ->  10/19 = 0.526
+          N = 35  ->  18/23 = 0.783
+          N = 77  ->  30/59 = 0.508
+
+      The general guarantee is that at least half of the coprime residues work
+      when N has at least two distinct odd prime factors, and the table is
+      consistent with that: the worst case here is 0.508. So expected retries is
+      under two, and a cap of ten distinct a values gives failure probability
+      below 0.001.
+    followUps:
+      - Show why at least half the coprime residues avoid both bad branches.
+      - How do you combine two candidate orders from independent runs?
+      - What does your implementation do if the device returns biased results because of readout error?
+    commonMistakes:
+      - Treating an odd order and the a^(r/2) = N-1 case as the same branch. They are different and only one of them is fixed by resampling the quantum run alone.
+      - Not verifying r classically, so a wrong order silently produces gcd values of 1 and N.
+      - Resampling a on an m = 0 measurement, which throws away a perfectly good a for no reason.
+    references:
+      - label: Shor, Polynomial-Time Algorithms for Prime Factorization and Discrete Logarithms on a Quantum Computer
+        url: https://arxiv.org/abs/quant-ph/9508027
+      - label: CMU 15-859BB Quantum Computation lecture notes
+        url: https://www.cs.cmu.edu/~odonnell/quantum18/
+
+  - id: iq-045
+    title: Specify the modular exponentiation subroutine
+    kind: coding
+    prompt: |
+      The quantum part of Shor is dominated by computing a^x mod N into a
+      register, controlled on the counting qubits. Specify that subroutine:
+      what it maps, how you build it out of smaller pieces, and what it costs
+      in gates and ancillas. Do not just say "modular exponentiation".
+    difficulty: medium
+    pattern: Shor pseudocode and order finding
+    topics: [modular-arithmetic, reversible-computing, circuit-synthesis, resource-counting]
+    companies: [IBM, Microsoft Azure Quantum, PsiQuantum, Quantinuum]
+    modelAnswer: |
+      The subroutine maps |x>|1> to |x>|a^x mod N> where x lives in the t-qubit
+      counting register and the work register holds n qubits. It is built as a
+      cascade of controlled modular multiplications: writing
+      x = sum_j x_j 2^j, then a^x = product_j (a^(2^j))^(x_j), so the circuit is
+
+          for j in 0 .. t-1:
+              controlled on counting qubit j, multiply the work register by
+              a^(2^j) mod N
+
+      and each constant a^(2^j) mod N is precomputed classically by repeated
+      squaring. That is the key structural point: the exponent is never computed
+      quantumly, only the multiplications are, and every multiplier is a
+      classical constant known at compile time.
+
+      Each controlled modular multiplication decomposes further:
+
+          modular multiplication by constant c
+              -> repeated modular addition of shifted constants
+                  -> modular addition
+                      -> plain addition plus a comparison and conditional
+                         subtraction of N
+
+      Plain addition is a ripple-carry or a QFT-based adder. The QFT adder is
+      attractive because adding a classical constant becomes a layer of single
+      qubit phase rotations in the Fourier basis, with no carry ancillas at all,
+      which is what Beauregard exploits to get the whole algorithm into 2n + 3
+      qubits.
+
+      Costs, stated as scaling with a named constant factor rather than as a
+      bare O:
+
+          modular addition:        O(n) gates
+          modular multiplication:  O(n) additions, so O(n^2) gates
+          full exponentiation:     t = 2n+1 multiplications, so O(n^3) gates
+
+      For 2048-bit RSA that n^3 is roughly 10^10 Toffoli-equivalent operations,
+      which is why the Gidney and Ekera estimate lands at hours of runtime on a
+      machine with 20 million physical qubits rather than at seconds.
+
+      Two implementation notes that separate a real answer from a memorised one.
+      First, every intermediate must be uncomputed, because leftover garbage
+      entangled with x destroys the phase estimation. Second, the modular
+      reduction is the expensive part, not the multiplication, and windowed
+      arithmetic that looks up several exponent bits at once trades ancillas for
+      a substantial reduction in Toffoli count.
+    followUps:
+      - Sketch the QFT-based constant adder and say why it needs no carry ancillas.
+      - What does windowed arithmetic buy, and what does it cost in ancillas?
+      - How would you test a modular multiplication circuit for n = 4 exhaustively?
+    commonMistakes:
+      - Computing the exponent quantumly. Every multiplier is a classical constant obtained by repeated squaring before the circuit is built.
+      - Forgetting uncomputation of intermediate carries, which entangles garbage with the counting register and flattens the phase estimation peak.
+      - Reporting the cost as O(n^2) by counting one multiplication instead of the 2n+1 of them.
+    references:
+      - label: Gidney and Ekera, How to factor 2048 bit RSA integers in 8 hours using 20 million noisy qubits
+        url: https://arxiv.org/abs/1905.09749
+      - label: Shende, Bullock and Markov, Synthesis of Quantum Logic Circuits
+        url: https://arxiv.org/abs/quant-ph/0406176
+
+  - id: iq-046
+    title: Explain why N = 15 demonstrations prove nothing
+    kind: coding
+    prompt: |
+      A paper reports factoring 15 on hardware with a handful of qubits. A
+      colleague concludes RSA is in trouble. Explain precisely what such a
+      demonstration does and does not show, and describe the compilation
+      shortcut that makes it possible.
+    difficulty: medium
+    pattern: Shor pseudocode and order finding
+    topics: [shor, compiled-circuits, benchmarking, scientific-scepticism]
+    companies: [IBM, Google Quantum AI, Microsoft Azure Quantum, Q-CTRL]
+    modelAnswer: |
+      The shortcut is that when you already know the answer, you can compile
+      almost the entire circuit away. For N = 15 and a = 7 the order is 4, so
+      the modular multiplication operator U|y> = |7y mod 15> acting on the
+      relevant orbit {1, 7, 4, 13} is a permutation of period 4. Any circuit
+      that implements a period-4 permutation on two qubits reproduces the same
+      phase estimation output. In practice, once you fix a and know r, the
+      controlled-U^(2^j) operators collapse to identity for j >= 2 because
+      U^4 = I, and the surviving operators are single CNOTs or swaps. What
+      remains is a circuit that could not factor a number it was not told the
+      answer to.
+
+      What a demonstration like this does show is real and worth stating: the
+      device can execute a small entangling circuit and a QFT with enough
+      coherence to produce a recognisable interference pattern. That is a
+      benchmark result, and a legitimate one.
+
+      What it does not show is any progress on the scaling question. The honest
+      test is whether the circuit was compiled without knowledge of the factors.
+      Ask three questions of any such claim:
+
+      1. Were the controlled-U^(2^j) operators built from a general modular
+         multiplier, or were they specialised using the known order?
+      2. Is the counting register 2n + 1 qubits, or fewer because the phases
+         were known to be dyadic?
+      3. Would the same circuit, run with a different a, still work?
+
+      A demonstration that answers all three well needs, for N = 21 with n = 5,
+      eleven counting qubits, thirteen total under Beauregard's layout, and a
+      general modular multiplier, and the order r = 6 is not a power of two so
+      the phase 1/6 is not exactly representable and the continued fraction step
+      genuinely has to work. At t = 5 the success probability for recovering
+      r = 6 is exactly zero, and it only reaches 0.98 at t = 11. That is the
+      difference between a compiled demonstration and a real one.
+
+      The scaling gap to RSA is the number to close with: 2048-bit RSA needs
+      4099 logical qubits and roughly 20 million physical qubits for about
+      8 hours. Nothing at N = 15 moves that needle.
+    followUps:
+      - Design an experiment on 13 qubits that would be a genuine order-finding demonstration.
+      - What benchmark would you propose instead to measure progress towards Shor?
+      - How would you detect from a published circuit diagram alone that the compilation used the answer?
+    commonMistakes:
+      - Accepting a qubit count as evidence of algorithmic capability without asking how the controlled unitaries were compiled.
+      - Assuming any factoring demonstration scales, when the compilation shortcut is exactly what does not scale.
+      - Dismissing such experiments entirely. They are useful benchmarks; the error is in what conclusion is drawn.
+    references:
+      - label: Shor, Polynomial-Time Algorithms for Prime Factorization and Discrete Logarithms on a Quantum Computer
+        url: https://arxiv.org/abs/quant-ph/9508027
+      - label: Gidney and Ekera, How to factor 2048 bit RSA integers in 8 hours using 20 million noisy qubits
+        url: https://arxiv.org/abs/1905.09749
+
+  - id: iq-047
+    title: Adapt order finding to discrete logarithms
+    kind: coding
+    prompt: |
+      Shor's paper solves two problems, not one. Describe the discrete
+      logarithm algorithm, say what changes relative to order finding, and
+      explain why it matters more than factoring for the systems people
+      actually deploy.
+    difficulty: hard
+    pattern: Shor pseudocode and order finding
+    topics: [discrete-logarithm, phase-estimation, cryptography, hidden-subgroup]
+    companies: [IBM, Microsoft Azure Quantum, PsiQuantum, Quantinuum]
+    modelAnswer: |
+      Discrete log asks: given a generator g of a cyclic group of known order r
+      and an element y = g^x, find x. The quantum algorithm uses two counting
+      registers instead of one. Prepare both in uniform superposition over
+      Z_r, compute |u>|v>|g^u * y^(-v)> into a work register, then apply a QFT
+      over Z_r to each counting register and measure.
+
+      The function f(u, v) = g^u * y^(-v) = g^(u - x*v) is constant on the
+      coset {(u, v) : u - x*v = c}, so the hidden subgroup is
+      {(u, v) : u = x*v}, and the two-dimensional Fourier transform concentrates
+      the measurement on pairs (m1, m2) satisfying m1 + x*m2 = 0 mod r. One
+      measurement plus one modular inverse gives x, provided m2 is invertible
+      mod r, which it is with probability phi(r)/r.
+
+      What changes relative to order finding: two registers rather than one, a
+      QFT over Z_r rather than over Z_(2^t) if r is known exactly, and the
+      classical post-processing is a modular inversion rather than a continued
+      fraction expansion. What stays the same: it is phase estimation on a
+      commuting family of shift operators, so it is the abelian hidden subgroup
+      problem in both cases.
+
+      Why it matters more in practice. RSA is factoring, but the majority of
+      key exchange and signature traffic on the modern internet is elliptic
+      curve Diffie-Hellman and ECDSA, which are discrete log in an elliptic
+      curve group. Elliptic curve keys are much shorter for equivalent
+      classical security, 256 bits against 3072 for RSA, and the quantum
+      resource requirement scales with key length. So elliptic curve
+      cryptography is the more exposed target on a per-bit basis even though
+      factoring gets the headlines. That is the point to make: the migration
+      driver named by the NIST post-quantum programme covers both, and both are
+      being replaced for the same reason.
+
+      The one thing not to overclaim: the elliptic curve group arithmetic is
+      harder to implement reversibly than modular multiplication, so the
+      concrete resource estimates are not simply "scaled down RSA numbers".
+    followUps:
+      - How does the algorithm change when r is not known in advance?
+      - Sketch why both problems are instances of the abelian hidden subgroup problem.
+      - Which post-quantum key exchange would you deploy today and why?
+    commonMistakes:
+      - Presenting discrete log as a small tweak to order finding without mentioning the second register or the Fourier transform over Z_r.
+      - Claiming elliptic curve cryptography is safe from Shor. It is the discrete log instance the algorithm was written for.
+      - Reusing RSA resource estimates for elliptic curves. The reversible group arithmetic is different and the numbers do not transfer.
+    references:
+      - label: Shor, Polynomial-Time Algorithms for Prime Factorization and Discrete Logarithms on a Quantum Computer
+        url: https://arxiv.org/abs/quant-ph/9508027
+      - label: NIST Post-Quantum Cryptography project
+        url: https://csrc.nist.gov/projects/post-quantum-cryptography
+
+  - id: iq-048
+    title: Design a test suite for an order-finding implementation
+    kind: coding
+    prompt: |
+      You are reviewing a pull request that adds order finding to your library.
+      The author included one test: it factors 15. Tell me what else the suite
+      needs, with specific inputs and expected outputs, and say which tests can
+      run in CI on a simulator and which cannot.
+    difficulty: hard
+    pattern: Shor pseudocode and order finding
+    topics: [testing, verification, order-finding, ci]
+    companies: [IBM, Classiq, Microsoft Azure Quantum, Q-CTRL]
+    modelAnswer: |
+      Factoring 15 is the weakest possible test because the order is a power of
+      two, the phase is exactly representable, and the continued fraction step
+      never has to do anything.
+
+      Classical layer, all deterministic and cheap:
+
+      * Order table. Assert order(7, 15) = 4, order(11, 15) = 2,
+        order(14, 15) = 2, order(2, 21) = 6, order(5, 21) = 6,
+        order(3, 35) = 12, order(5, 33) = 10.
+      * Degenerate branch. Assert that a = 14, N = 15 is rejected because
+        14^1 mod 15 = 14 = N - 1, and that a = 5, N = 21 is rejected because
+        5^3 mod 21 = 20 = N - 1.
+      * Post-processing. Assert order_from_measurement(64, 8, 7, 15) = 4 and
+        that order_from_measurement(5, 5, 2, 21) returns None, because 5/32 has
+        convergent 3/19 and 2^19 mod 21 is not 1.
+      * Success ratios. Assert that the fraction of coprime a that succeed is
+        6/7 for N = 15, 6/11 for N = 21 and 30/59 for N = 77. These pin the
+        branch logic in a way no single case does.
+
+      Quantum layer on a statevector simulator, still in CI:
+
+      * Phase estimation on a synthetic unitary with known eigenphase. Feed the
+        eigenvector directly and assert the output distribution matches the
+        analytic Dirichlet kernel. For phase 1/6 with t = 5, assert the peak is
+        at m = 5 with probability 0.684162.
+      * Counting register sizing. Assert that the probability of recovering
+        r = 6 for N = 21 is 0.000000 at t = 5, 0.683995 at t = 7, 0.925018 at
+        t = 9 and 0.983944 at t = 11. This is the single best regression test in
+        the suite because it fails loudly if anyone shortens the register.
+      * Modular multiplier correctness. For n = 4, apply the multiplier
+        exhaustively to all 16 basis states and assert it is the right
+        permutation and that ancillas return to |0>.
+      * Uncomputation. Assert the reduced density matrix of the counting
+        register is pure after the work register is traced out.
+
+      What cannot run in CI: end-to-end order finding for any N large enough to
+      be interesting, because the full circuit for N = 21 needs 13 qubits with
+      general arithmetic and the simulation cost rises as 2^qubits. Mark those
+      as a nightly or on-demand job, and keep the deterministic classical tests
+      plus the small-unitary phase estimation tests in the fast path.
+    followUps:
+      - How would you construct a property-based test for the modular multiplier?
+      - What is the right way to test the semiclassical single-qubit variant?
+      - Which of these tests would you keep when running against real hardware?
+    commonMistakes:
+      - Testing only N = 15, whose order 4 is a power of two, so the continued fraction path is never exercised.
+      - Writing shot-based assertions on a simulator, which introduces flakiness without adding coverage over exact distributions.
+      - Testing the composed algorithm only, so a counting register that is too short is masked by a lucky choice of a.
+    references:
+      - label: Microsoft Quantum Katas
+        url: https://github.com/microsoft/QuantumKatas
+      - label: Kitaev, Quantum measurements and the Abelian Stabilizer Problem
+        url: https://arxiv.org/abs/quant-ph/9511026
+
+  - id: iq-049
+    title: Estimate when Shor becomes a real threat
+    kind: coding
+    prompt: |
+      Your security team asks when they need to have migrated off RSA-2048.
+      Build the estimate from first principles: logical qubits, physical
+      qubits, code distance, cycle time, and the assumptions that dominate the
+      answer. Be explicit about what you do not know.
+    difficulty: hard
+    pattern: Shor pseudocode and order finding
+    topics: [resource-estimation, fault-tolerance, surface-code, cryptography]
+    companies: [IBM, PsiQuantum, Microsoft Azure Quantum, Google Quantum AI]
+    modelAnswer: |
+      Build it in layers and be explicit that each layer multiplies uncertainty.
+
+      Layer 1, logical qubits. For n = 2048, the counting register is
+      2n + 1 = 4097 qubits and Beauregard's layout needs 2n + 3 = 4099 total.
+      This is arithmetic, not an estimate, and it is the only firm number in
+      the whole chain.
+
+      Layer 2, logical operations. Modular exponentiation is O(n^3) in
+      Toffoli-equivalent gates, which at n = 2048 is on the order of 10^10
+      Toffolis. The constant factor matters enormously and depends on the
+      arithmetic: windowed arithmetic reduces it substantially at the cost of
+      ancillas.
+
+      Layer 3, physical overhead. Under the surface code, a logical qubit at
+      code distance d costs roughly 2d^2 physical qubits, and d is set by the
+      physical error rate p relative to the threshold and by the total number
+      of logical operations. Magic state distillation for the T gates behind
+      each Toffoli typically dominates the physical footprint, not the data
+      qubits.
+
+      Layer 4, wall clock. Runtime is the number of logical cycles times the
+      surface code cycle time, which is itself several physical gate and
+      measurement rounds. Measurement and classical decoding latency, not gate
+      speed, sets the floor.
+
+      The published anchor point is Gidney and Ekera: about 20 million noisy
+      physical qubits for roughly 8 hours to factor RSA-2048, assuming a
+      physical error rate around 10^-3 and a surface code. That is one
+      well-specified point in a space where the assumptions dominate.
+
+      What I do not know, and would say so: the physical error rate achievable
+      at that scale, whether the connectivity assumed by the surface code
+      layout is realisable, the classical decoding throughput at that qubit
+      count, and the manufacturing timeline. Any date I give is a guess about
+      engineering roadmaps, not about physics.
+
+      So the answer to the security team is not a date. It is: the threat model
+      is store-now-decrypt-later, so the migration deadline is set by how long
+      your data must stay confidential, not by when a machine appears. If
+      traffic captured today must stay secret for 15 years, you migrate now.
+      NIST has standardised post-quantum algorithms, so the migration is a
+      concrete engineering project with no dependency on any quantum timeline.
+      That reframing is the answer a security team can act on.
+    followUps:
+      - How does the estimate change if the physical error rate improves by an order of magnitude?
+      - Why does magic state distillation dominate the physical qubit count?
+      - What would you monitor as a leading indicator that the estimate is moving?
+    commonMistakes:
+      - Quoting 4099 logical qubits as the requirement and stopping there, which understates the physical requirement by four orders of magnitude.
+      - Giving a calendar date. The uncertainty is in engineering roadmaps and cannot be estimated from the algorithm.
+      - Ignoring store-now-decrypt-later, which makes the migration deadline earlier than any threat date.
+    references:
+      - label: Gidney and Ekera, How to factor 2048 bit RSA integers in 8 hours using 20 million noisy qubits
+        url: https://arxiv.org/abs/1905.09749
+      - label: "Fowler et al, Surface codes: Towards practical large-scale quantum computation"
+        url: https://arxiv.org/abs/1208.0928
+
+  - id: iq-050
+    title: Debug an order-finding routine that always returns 1
+    kind: coding
+    prompt: |
+      Your order-finding routine compiles, runs, and returns r = 1 for every
+      input. The counting register is the right size and the classical
+      post-processing is unit tested. Walk me through your debugging, in the
+      order you would actually do it.
+    difficulty: hard
+    pattern: Shor pseudocode and order finding
+    topics: [debugging, phase-estimation, uncomputation, order-finding]
+    companies: [IBM, Classiq, Quantinuum, Microsoft Azure Quantum]
+    modelAnswer: |
+      r = 1 means the continued fraction expansion is seeing m/2^t close to 0,
+      which means the counting register measurement is peaked at m = 0. A peak
+      at zero is the signature of a phase estimation that measured phase 0,
+      which happens for exactly three reasons. Test them in this order, cheapest
+      first.
+
+      1. The eigenstate preparation is wrong. Phase estimation on the modular
+         multiplier is usually run on |1> in the work register, which is an
+         equal superposition of all r eigenvectors, giving a uniform spread over
+         s = 0 .. r-1. If instead the work register is initialised to |0>, then
+         a*0 = 0 mod N, so |0> is an eigenvector with eigenvalue 1 and phase
+         exactly 0. Every measurement returns m = 0. This is the single most
+         common cause and it is a one-character bug.
+
+      2. The controlled unitaries are not actually controlled. If the control
+         wiring is dropped, the work register evolves unconditionally, the
+         counting register never picks up a relative phase, and the final QFT of
+         a uniform superposition is |0>. Test by extracting the unitary of one
+         controlled-U block on a small instance and checking that the control
+         zero subspace is the identity.
+
+      3. The scratch is not uncomputed. Leftover ancilla entangled with the work
+         register dephases the counting register. This produces a flat
+         distribution rather than a peak at zero, so distinguish case 3 from
+         cases 1 and 2 by looking at the whole histogram, not just the argmax.
+
+      The diagnostic that separates all three in one run: replace the modular
+      multiplier with a synthetic single-qubit unitary of known eigenphase, say
+      a phase gate with phase 1/8, feed its eigenvector, and run the same phase
+      estimation harness. If that returns m/2^t = 0.125 correctly, the harness
+      is fine and the bug is in the arithmetic. If it also returns 0, the bug is
+      in the phase estimation wiring.
+
+      Then scale back up in one step: N = 15, a = 7, work register in |1>, and
+      assert the counting register concentrates on m in {0, 64, 128, 192} for
+      t = 8, each with probability 0.25, whose convergents are 0, 1/4, 1/2 and
+      3/4. Getting exactly that four-peak comb is proof the whole chain works,
+      and it is a much stronger assertion than "it factored 15".
+
+      Finally, check the ancilla purity: trace out everything but the counting
+      register and assert the reduced state is pure. That catches case 3
+      directly rather than by inference from the histogram shape.
+    followUps:
+      - The histogram is flat rather than peaked at zero. What is your first hypothesis?
+      - How do you test that a controlled-U block is genuinely controlled without simulating the full circuit?
+      - What logging would you add so this class of bug is diagnosable from a hardware run?
+    commonMistakes:
+      - Initialising the work register to |0> instead of |1>, which makes 1 an eigenvalue with phase 0 and returns r = 1 every time.
+      - Looking only at the argmax of the histogram, which cannot distinguish a genuine zero phase from a dephased flat distribution.
+      - Debugging the full modular arithmetic circuit before checking the phase estimation harness against a synthetic unitary with a known phase.
+    references:
+      - label: Kitaev, Quantum measurements and the Abelian Stabilizer Problem
+        url: https://arxiv.org/abs/quant-ph/9511026
+      - label: IBM Quantum Learning courses
+        url: https://quantum.cloud.ibm.com/learning/en/courses

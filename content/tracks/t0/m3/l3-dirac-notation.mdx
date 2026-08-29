@@ -139,9 +139,16 @@ $$
 
 using $c_k = \braket{e_k}{v}$. Check the two one-qubit cases numerically:
 $\ketbra{0}{0} + \ketbra{1}{1} = I$ by inspection, and
-$\ketbra{+}{+} + \ketbra{-}{-} = \half\big(\begin{smallmatrix}1&1\\1&1\end{smallmatrix}\big)
-+ \half\big(\begin{smallmatrix}1&-1\\-1&1\end{smallmatrix}\big) = I$ because
-the off-diagonal halves cancel.
+and
+
+$$
+\ketbra{+}{+} + \ketbra{-}{-}
+= \half\begin{pmatrix} 1 & 1 \\ 1 & 1 \end{pmatrix}
++ \half\begin{pmatrix} 1 & -1 \\ -1 & 1 \end{pmatrix}
+= I
+$$
+
+because the off-diagonal halves cancel.
 
 The practical use is inserting $I$ wherever a derivation needs a basis. For
 instance,

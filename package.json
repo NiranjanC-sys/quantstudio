@@ -3,7 +3,9 @@
   "private": true,
   "version": "1.0.0",
   "packageManager": "pnpm@11.21.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
@@ -12,7 +14,9 @@
     "lint": "turbo run lint",
     "kernel:dev": "cd apps/quantum-kernel && uvicorn app.main:app --reload --port 8100",
     "db:migrate": "pnpm --filter @redquant/api db:migrate",
-    "loadtest": "k6 run infra/loadtest/main.js"
+    "loadtest": "k6 run infra/loadtest/main.js",
+    "validate:content": "node scripts/validate-content.mjs content/tracks",
+    "fix:math": "node scripts/fix-split-math.mjs content/tracks"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

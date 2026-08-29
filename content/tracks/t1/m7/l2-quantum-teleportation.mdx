@@ -67,8 +67,8 @@ $$
 \half\Big(
 \ket{\Phi^+}(\alpha\ket{0} + \beta\ket{1})
 + \ket{\Phi^-}(\alpha\ket{0} - \beta\ket{1})
-+ \ket{\Psi^+}(\beta\ket{0} + \alpha\ket{1})
-+ \ket{\Psi^-}(\beta\ket{0} - \alpha\ket{1})
++ \ket{\Psi^+}(\alpha\ket{1} + \beta\ket{0})
++ \ket{\Psi^-}(\alpha\ket{1} - \beta\ket{0})
 \Big).
 $$
 
@@ -96,8 +96,7 @@ what makes the protocol safe: Alice's outcome carries no information about the
 message, which is why she can shout it over an open channel.
 
 Take a concrete message to check the arithmetic. Let
-$\ket{\psi} = \cos\tfrac{\pi}{6}\ket{0} + i\sin\tfrac{\pi}{6}\ket{1}
-= 0.866025\ket{0} + 0.5\,i\ket{1}$, produced by a single $U(\pi/3, \pi/2, 0)$
+$\ket{\psi} = \cos\tfrac{\pi}{6}\ket{0} + i\sin\tfrac{\pi}{6}\ket{1} = 0.866025\ket{0} + 0.5\,i\ket{1}$, produced by a single $U(\pi/3, \pi/2, 0)$
 gate. Here is the state immediately before Alice measures.
 
 <Circuit

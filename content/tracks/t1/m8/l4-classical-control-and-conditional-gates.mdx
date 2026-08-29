@@ -1,0 +1,161 @@
+---
+id: t1.m8.l4
+title: Classical Control and Conditional Gates
+type: concept
+track: t1
+module: t1.m8
+level: L1
+minutes: 13
+objectives:
+  - Express a conditional gate in the circuit IR using a classical condition
+  - Trace the teleportation correction as a classically controlled X and Z
+  - Explain why feed-forward latency, not gate time, dominates a conditional circuit
+prerequisites:
+  - t1.m8.l3
+  - t1.m7.l2
+sources:
+  - label: CS269Q Elements of Quantum Computer Programming (Stanford)
+    url: https://cs269q.stanford.edu/
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+tags: [circuits, classical-control]
+---
+
+A quantum circuit with a conditional gate is no longer a picture of a unitary. It
+is a program with an `if` in it, and the value the `if` tests did not exist when
+the program was written. That is the whole content of classical control, and it
+is what turns teleportation from a derivation into something a device can
+actually execute.
+
+## The IR
+
+An operation in this platform's circuit IR carries an optional `condition` with
+two fields: a list of classical bit indices and an integer value. The operation
+executes only when those bits, read as a binary number, equal that value.
+
+```json
+{ "id": "fx", "gate": "x", "targets": [2],
+  "condition": { "bits": [1], "value": 1 } }
+```
+
+That is "apply $X$ to qubit 2 if classical bit 1 is set". For more than one bit,
+the list is ordered **least significant first**: `bits: [0, 1]` with `value: 3`
+means $c_0 = 1$ and $c_1 = 1$, while `value: 1` means $c_0 = 1$ and $c_1 = 0$.
+
+<Margin label="Read the order twice">
+Classical bit ordering inside a condition is least significant first, which is the
+opposite of the qubit convention. Qubit 0 is the most significant bit of a basis
+string; classical bit 0 is the least significant bit of a condition value. Both
+appear in the same operation list, so check which one you are looking at.
+</Margin>
+
+Here is a classical AND built entirely out of conditions: two fair coins measured
+into $c_0$ and $c_1$, and an $X$ on qubit 2 that fires only when both are 1.
+
+<Circuit
+  caption="Two coins and a conditional X. Four of the eight basis states appear, each close to 25%, and the third label is 1 exactly when the first two are both 1."
+  show={['probabilities']}
+  shots={4096}
+  ir={{
+    version: 1,
+    name: "classical-and",
+    qubits: 3,
+    clbits: 3,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] },
+      { id: "g", gate: "x", targets: [2], condition: { bits: [0, 1], value: 3 } },
+      { id: "m2", gate: "measure", targets: [2], cbits: [2] }
+    ]
+  }}
+/>
+
+The surviving strings are $\ket{000}$, $\ket{010}$, $\ket{100}$ and $\ket{111}$.
+The missing four are exactly the ones that would violate
+$q_2 = q_0 \wedge q_1$.
+
+## Teleportation, executed rather than derived
+
+The correction table you derived in T1.M7.L2 was: apply $X$ to Bob's qubit if
+$c_1 = 1$, then $Z$ if $c_0 = 1$. In the IR that is two operations with
+conditions, and nothing else.
+
+<Circuit
+  caption="Teleporting the state |1>. Two measurements, two conditional gates, and qubit 2 ends in |1> on every trajectory."
+  show={['probabilities', 'qasm']}
+  shots={4096}
+  ir={{
+    version: 1,
+    name: "teleport-classically-controlled",
+    qubits: 3,
+    clbits: 2,
+    ops: [
+      { id: "p", gate: "x", targets: [0] },
+      { id: "b0", gate: "h", targets: [1] },
+      { id: "b1", gate: "x", targets: [2], controls: [1] },
+      { id: "t0", gate: "x", targets: [1], controls: [0] },
+      { id: "t1", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] },
+      { id: "fx", gate: "x", targets: [2], condition: { bits: [1], value: 1 } },
+      { id: "fz", gate: "z", targets: [2], condition: { bits: [0], value: 1 } }
+    ]
+  }}
+/>
+
+The message is $\ket{1}$, so the correct answer is that qubit 2 ends in $\ket{1}$
+whatever Alice measured. Every surviving basis string in the panel has a final
+label of 1: the probability that qubit 2 reads 1 is exactly $1$, averaged over all
+4096 trajectories. The four measurement outcomes each occur about a quarter of the
+time, and the two conditional gates repair all four branches.
+
+Delete the conditional $Z$ and the protocol still works for this particular
+message, because $Z\ket{1} = -\ket{1}$ is a global phase. Delete the conditional
+$X$ and it breaks immediately, because half the branches deliver $\ket{0}$. That
+asymmetry is a property of the message, not of the protocol; teleport $\ket{+}$
+instead and the missing $Z$ becomes fatal while the missing $X$ becomes harmless.
+
+<Callout tone="gotcha" title="Conditions are not controls">
+A `condition` reads a classical bit that already has a value. A `control` reads a
+qubit that may be in superposition, and entangles with it. Writing a control where
+you meant a condition gives a circuit that is coherent instead of collapsed, and
+the two agree only through the principle of deferred measurement.
+</Callout>
+
+## Why the gate time stops mattering
+
+Count the physical work in that teleportation circuit: five gates before the
+measurements, two after. On superconducting hardware those seven operations take
+well under a microsecond in total.
+
+Now count the waiting. Each measurement integrates a readout signal for roughly a
+microsecond. The result is digitised and sent to a controller. The controller
+evaluates the condition. The decision is turned into a pulse and sent back. The
+whole feed-forward loop is typically longer than every gate in the circuit put
+together, and during it qubit 2 does nothing but decohere.
+
+This is why "dynamic circuit" support is quoted as a latency figure rather than a
+gate count, and why hardware teams work hard to move the conditional logic close
+to the qubits. The rule to carry forward: in a circuit with feed-forward, the
+resource you are spending is the number of classical round trips, not the number
+of gates. Two round trips in series cost more than fifty gates in parallel.
+
+<Check question="You write `condition: { bits: [0, 1], value: 2 }`. Which classical outcomes fire the gate?">
+Only $c_0 = 0$ and $c_1 = 1$. The list is least significant first, so $c_0$ carries
+weight $1$ and $c_1$ carries weight $2$, and the value $2 = 0 \cdot 1 + 1 \cdot 2$
+picks out that one combination. If you meant "fire when $c_0 = 1$ and $c_1 = 0$"
+you wanted `value: 1`. A condition always tests the full listed register for
+equality, so there is no way to express "either bit set" in a single condition;
+that needs two operations, or a classical register you have already reduced.
+</Check>
+
+## Where this comes from
+
+- [CS269Q, Stanford](https://cs269q.stanford.edu/), whose treatment of classical
+  control and the hybrid instruction stream is the reason this track teaches
+  feed-forward as a latency problem rather than a syntax problem.
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses), for
+  the dynamic-circuits programming model in which conditions on classical
+  registers are ordinary instructions.

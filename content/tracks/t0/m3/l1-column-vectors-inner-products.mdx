@@ -63,15 +63,13 @@ never do is mix the two inside one derivation.
 The complex inner product satisfies:
 
 1. **Conjugate symmetry.** $\langle v, u \rangle = \overline{\langle u, v\rangle}$.
-2. **Linearity in the second argument.** $\langle u, \alpha v + \beta w\rangle =
-   \alpha\langle u, v\rangle + \beta\langle u, w\rangle$, and conjugate-linearity
+2. **Linearity in the second argument.** $\langle u, \alpha v + \beta w\rangle = \alpha\langle u, v\rangle + \beta\langle u, w\rangle$, and conjugate-linearity
    in the first.
 3. **Positive definiteness.** $\langle u, u\rangle \ge 0$, with equality only for
    $u = 0$.
 
 Property 3 follows from property 1 plus the definition. Setting $v = u$ in
-conjugate symmetry gives $\langle u, u\rangle = \overline{\langle u,
-u\rangle}$, and a number equal to its own conjugate has zero imaginary part, so
+conjugate symmetry gives $\langle u, u\rangle = \overline{\langle u, u\rangle}$, and a number equal to its own conjugate has zero imaginary part, so
 $\langle u,u \rangle$ is real. Being explicitly
 $\sum_k \overline{u_k} u_k = \sum_k |u_k|^2$, it is also non-negative, and it
 vanishes only when every $|u_k| = 0$.
@@ -154,8 +152,7 @@ because neither pair is parallel.
 <Callout tone="note" title="What the inequality is for">
 Cauchy-Schwarz is what guarantees $|\braket{\psi}{\phi}| \le 1$ for two
 normalised states, so the overlap can be read as a probability amplitude. It is
-also the reason the angle $\cos\theta = \langle u,v\rangle / (\lVert u\rVert
-\lVert v\rVert)$ between two real vectors is well defined: the right-hand side
+also the reason the angle $\cos\theta = \langle u,v\rangle / (\lVert u\rVert \lVert v\rVert)$ between two real vectors is well defined: the right-hand side
 never leaves $[-1,1]$.
 </Callout>
 

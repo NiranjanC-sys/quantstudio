@@ -133,12 +133,10 @@ It is not linear. The denominator $\sqrt{\Pr[b]}$ depends on $\ket{\psi}$, so
 the map $\ket{\psi} \mapsto \ket{\psi'}$ is not a linear map at all, and only
 linear maps have matrices to invert.
 
-It is not injective. The states $\ket{\psi}$ above and, say,
-$0.6\ket{10} + 0.8\ket{11}$ both collapse to $\ket{1}\otimes\ket{+}$ on some
-branch of a measurement of qubit 0, wait, they do not, and that is worth being
-careful about: a cleaner example is that $\ket{+}$ and
-$0.6\ket{0} + 0.8\ket{1}$ both collapse to $\ket{0}$ on outcome 0. Two different
-inputs, one output. No inverse exists, whatever the probabilities were.
+It is not injective. Measure a single qubit and report outcome 0: the state
+$\ket{+}$ becomes $\ket{0}$, and so does $0.6\ket{0} + 0.8\ket{1}$, and so does
+every state with a non-zero amplitude on $\ket{0}$. Infinitely many inputs, one
+output. No inverse exists, whatever the probabilities were.
 
 The practical consequence is the shape of every circuit in this track:
 unitary gates first, measurement last. Anything you wanted to do with the

@@ -1,0 +1,214 @@
+---
+id: t1.m3.l3
+title: Rx, Ry, Rz and General U
+type: concept
+track: t1
+module: t1.m3
+level: L1
+minutes: 14
+objectives:
+  - Derive Rx(theta) = cos(theta/2) I - i sin(theta/2) X from the matrix exponential
+  - Explain why a 2 pi rotation returns the state to itself only up to a sign
+  - Express X, Y, Z and S in terms of Rx, Ry, Rz and a global phase
+prerequisites: [t1.m3.l2, t0.m4.l4]
+sources:
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [gates, rotations]
+---
+
+Named gates are discrete and hardware is continuous. A pulse of half the
+duration produces half the rotation, and a variational algorithm needs to tune
+that angle by gradient descent. The gates that expose the angle are the rotation
+gates, and they come from one exponential.
+
+## The derivation
+
+Physical evolution for a time $t$ under a Hamiltonian $\mathcal{H}$ is
+$e^{-i\mathcal{H}t}$. Take $\mathcal{H} = X$ and write $\theta$ for $2t$:
+
+$$
+R_x(\theta) = e^{-i\theta X/2} .
+$$
+
+Expand the exponential as its power series and use $X^2 = I$, so that
+$X^{2k} = I$ and $X^{2k+1} = X$:
+
+$$
+e^{-i\theta X/2}
+= \sum_{k=0}^{\infty} \frac{1}{k!}\left( \frac{-i\theta}{2} \right)^{k} X^{k}
+= \underbrace{\sum_{k \text{ even}} \frac{(-i\theta/2)^k}{k!}}_{\text{coefficient of } I} I
+\;+\; \underbrace{\sum_{k \text{ odd}} \frac{(-i\theta/2)^k}{k!}}_{\text{coefficient of } X} X .
+$$
+
+The even terms are $\sum_m \frac{(-1)^m (\theta/2)^{2m}}{(2m)!} = \cos(\theta/2)$,
+since the two factors of $-i$ in each pair give $-1$. The odd terms carry one
+leftover $-i$ and give $-i\sin(\theta/2)$. Hence
+
+$$
+R_x(\theta) = \cos\frac{\theta}{2}\, I - i \sin\frac{\theta}{2}\, X
+= \begin{pmatrix} \cos\tfrac{\theta}{2} & -i\sin\tfrac{\theta}{2} \\[2pt]
+-i\sin\tfrac{\theta}{2} & \cos\tfrac{\theta}{2} \end{pmatrix} .
+$$
+
+<Margin label="Where the half comes from">
+Nothing in the series produced a half by itself; it was put into the definition
+so that $R_a(\theta)$ rotates the *Bloch sphere* by $\theta$. States pick up
+$\theta/2$ and arrows pick up $\theta$, because the Bloch map already halves the
+polar angle. Every appearance of $\theta/2$ in this module traces to that one
+choice.
+</Margin>
+
+The derivation used only $X^2 = I$, so it repeats verbatim for $Y$ and $Z$:
+
+$$
+R_y(\theta) = \begin{pmatrix} \cos\tfrac{\theta}{2} & -\sin\tfrac{\theta}{2} \\[2pt]
+\sin\tfrac{\theta}{2} & \cos\tfrac{\theta}{2} \end{pmatrix},
+\qquad
+R_z(\theta) = \begin{pmatrix} e^{-i\theta/2} & 0 \\ 0 & e^{i\theta/2} \end{pmatrix} .
+$$
+
+$R_y$ is real, which is why it was the workhorse of T1.M1: it is exactly the
+rotation of the real unit circle by $\theta/2$.
+
+Check one value against the sim. $R_x(\pi/3)$ should give
+$\cos(\pi/6) = 0.866025$ on $\ket{0}$ and $-i\sin(\pi/6) = -0.5i$ on $\ket{1}$.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="Rx(pi/3) on |0>. Amplitudes 0.866025 and -0.5i, probabilities 0.75 and 0.25."
+  ir={{
+    version: 1,
+    name: "rx-third-turn",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "r1", gate: "rx", targets: [0], params: [1.0471975511965976] }
+    ]
+  }}
+/>
+
+## A full turn is minus one
+
+Set $\theta = 2\pi$:
+
+$$
+R_x(2\pi) = \cos(\pi) I - i \sin(\pi) X = -I .
+$$
+
+The Bloch arrow has come all the way round and is exactly where it started. The
+state vector is not: it is $-\ket{\psi}$. A $4\pi$ rotation is needed to return
+the vector itself, since $R_x(4\pi) = I$.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="Rx(2 pi) on |0>. The probability is 1 on |0> and the amplitude is -1: a full turn is the identity only up to sign."
+  ir={{
+    version: 1,
+    name: "full-turn",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "r1", gate: "rx", targets: [0], params: [6.283185307179586] }
+    ]
+  }}
+/>
+
+On a lone qubit the sign is a global phase and unobservable, exactly as T1.M1.L7
+proved. It stops being unobservable the moment the rotation is controlled, or
+applied to one half of an entangled pair, because then it is a relative phase
+between branches. This is the spinor property of spin-one-half systems, and it
+is measurable: neutron interferometry experiments detect the sign change from a
+$2\pi$ rotation directly.
+
+<Callout tone="gotcha" title="Rz on |0> looks like nothing">
+$R_z(\theta)\ket{0} = e^{-i\theta/2}\ket{0}$, so a simulator will report
+probability 1 on $\ket{0}$ for every $\theta$ and the Bloch arrow will not move.
+The gate is not broken and it is not a no-op; the north pole is on its axis.
+Sandwich it between Hadamards, or apply it to $\ket{+}$, and the effect appears
+at once.
+</Callout>
+
+## The named gates, recovered
+
+Every gate of T1.M3.L1 and T1.M3.L2 is a rotation times a phase. Substituting
+$\theta = \pi$ into the formula gives $R_a(\pi) = -i A$, so
+
+$$
+X = i R_x(\pi) = e^{i\pi/2} R_x(\pi),
+\qquad
+Y = e^{i\pi/2} R_y(\pi),
+\qquad
+Z = e^{i\pi/2} R_z(\pi) .
+$$
+
+For the phase family, compare $R_z(\lambda) = \mathrm{diag}(e^{-i\lambda/2}, e^{i\lambda/2})$
+with $P(\lambda) = \mathrm{diag}(1, e^{i\lambda})$: they differ by the overall
+factor $e^{-i\lambda/2}$, so
+
+$$
+P(\lambda) = e^{i\lambda/2} R_z(\lambda),
+\qquad
+S = P(\pi/2) = e^{i\pi/4} R_z(\pi/2),
+\qquad
+T = e^{i\pi/8} R_z(\pi/4) .
+$$
+
+Hardware exploits this. On superconducting devices $R_z$ is implemented by
+shifting the phase of the microwave drive rather than by a pulse, so it takes no
+time and adds no error; a compiler will happily convert every $S$ and $T$ into
+$R_z$ and push them through the circuit.
+
+## The general one-qubit gate
+
+Three angles fix any one-qubit unitary up to global phase, and the registry's
+canonical form is
+
+$$
+U(\theta, \varphi, \lambda)
+= \begin{pmatrix}
+\cos\tfrac{\theta}{2} & -e^{i\lambda}\sin\tfrac{\theta}{2} \\[2pt]
+e^{i\varphi}\sin\tfrac{\theta}{2} & e^{i(\varphi + \lambda)}\cos\tfrac{\theta}{2}
+\end{pmatrix},
+$$
+
+which acts on $\ket{0}$ to give exactly the canonical state
+$\cos\tfrac{\theta}{2}\ket{0} + e^{i\varphi}\sin\tfrac{\theta}{2}\ket{1}$ of
+T1.M1.L7. It factors into rotations as
+
+$$
+U(\theta, \varphi, \lambda) = e^{i(\varphi + \lambda)/2}\,
+R_z(\varphi)\, R_y(\theta)\, R_z(\lambda) ,
+$$
+
+which you can confirm by multiplying the three diagonal and real matrices
+directly: the two $R_z$ factors contribute $e^{\pm i\varphi/2}$ and
+$e^{\pm i\lambda/2}$ to the rows and columns, and pulling out
+$e^{-i(\varphi+\lambda)/2}$ leaves the matrix above. That factorisation is the
+Euler decomposition, and T1.M3.L5 runs it in the other direction: given a matrix,
+extract the angles.
+
+Setting $\theta = \pi/2$, $\varphi = 0$, $\lambda = \pi$ gives
+$\begin{pmatrix} 0.707107 & 0.707107 \\ 0.707107 & -0.707107\end{pmatrix} = H$,
+so the Hadamard is a member of this family too.
+
+<Check question="Express $\sqrt{X}$, the gate with $\sqrt{X}^2 = X$, as a rotation times a phase, and give its matrix.">
+A half turn about $x$ is $R_x(\pi)$, so a quarter turn is $R_x(\pi/2)$ and
+$R_x(\pi/2)^2 = R_x(\pi) = -iX$. To fix the phase, take
+$\sqrt{X} = e^{i\pi/4} R_x(\pi/2)$, whose square is $e^{i\pi/2}(-iX) = X$.
+Numerically $R_x(\pi/2) = \tfrac{1}{\sqrt2}\begin{pmatrix} 1 & -i \\ -i & 1\end{pmatrix}$,
+and multiplying by $e^{i\pi/4} = \tfrac{1+i}{\sqrt2}$ gives
+$\tfrac12\begin{pmatrix} 1+i & 1-i \\ 1-i & 1+i \end{pmatrix}$, which is the
+registry's $\sqrt{X}$ and a native gate on IBM hardware.
+</Check>
+
+## Where this comes from
+
+- [PennyLane Codebook](https://pennylane.ai/codebook), whose rotation module
+  derives $R_x$ from the exponential and then immediately makes the angle a
+  trainable parameter, which is where these gates earn their keep in T5.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 4.2, for the rotation operators, the $-I$ at $2\pi$, and the
+  three-parameter form of a general one-qubit unitary.

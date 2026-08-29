@@ -68,14 +68,12 @@ That is **Euler's formula**.
 
 <Margin label="A proof without series">
 Let $f(\theta) = e^{-i\theta}(\cos\theta + i \sin\theta)$. Differentiating,
-$f'(\theta) = e^{-i\theta}\big[-i(\cos\theta + i\sin\theta) + (-\sin\theta +
-i\cos\theta)\big] = 0$. So $f$ is constant, and $f(0) = 1$, giving
+$f'(\theta) = e^{-i\theta}\big[-i(\cos\theta + i\sin\theta) + (-\sin\theta + i\cos\theta)\big] = 0$. So $f$ is constant, and $f(0) = 1$, giving
 $\cos\theta + i\sin\theta = e^{i\theta}$. Shorter, but it assumes the derivative
 rule for $e^{i\theta}$ that the series proves.
 </Margin>
 
-Truncating the series is a fair numerical check. Summing $\sum_{k<30}
-(i)^k/k!$ at $\theta = 1$ gives $0.540302 + 0.841471 i$, and
+Truncating the series is a fair numerical check. Summing $\sum_{k<30} (i)^k/k!$ at $\theta = 1$ gives $0.540302 + 0.841471 i$, and
 $\cos 1 = 0.540302$, $\sin 1 = 0.841471$.
 
 ## Immediate consequences
@@ -97,8 +95,7 @@ So $\theta \mapsto e^{i\theta}$ traces the unit circle, at unit speed, starting
 at 1 and going anticlockwise. It is $2\pi$-periodic, which is the same
 statement as the argument being defined only modulo $2\pi$.
 
-Conjugation flips the angle: $\overline{e^{i\theta}} = \cos\theta - i\sin\theta
-= e^{-i\theta}$. Combined with $z\bar z = |z|^2$, this gives the tidy inverse
+Conjugation flips the angle: $\overline{e^{i\theta}} = \cos\theta - i\sin\theta = e^{-i\theta}$. Combined with $z\bar z = |z|^2$, this gives the tidy inverse
 $1/e^{i\theta} = e^{-i\theta}$.
 
 Any non-zero complex number now has the compact **polar form**
@@ -149,8 +146,7 @@ The gate $P(\lambda) = \operatorname{diag}(1, e^{i\lambda})$ multiplies the
 amplitude of $\ket{1}$ by a point on the unit circle and leaves $\ket{0}$ alone.
 The $T$ gate is $P(\pi/4)$. Applied after a Hadamard, it turns the state
 $\isqrt(\ket{0} + \ket{1})$ into $\isqrt\left(\ket{0} + e^{i\pi/4}\ket{1}\right)$,
-so the second amplitude should be $0.707107 \times (0.707107 + 0.707107 i) = 0.5
-+ 0.5i$.
+so the second amplitude should be $0.707107 \times (0.707107 + 0.707107 i) = 0.5 + 0.5i$.
 
 <Simulate
   show={['amplitudes', 'bloch']}
@@ -185,8 +181,7 @@ $-3 = 3e^{i\pi}$, since the modulus is 3 and the point lies on the negative real
 axis. $-2i = 2e^{-i\pi/2}$, modulus 2, pointing straight down, and the principal
 argument convention $(-\pi, \pi]$ prefers $-\pi/2$ to $3\pi/2$.
 
-Then $(-2i)^3 = \left(2e^{-i\pi/2}\right)^3 = 8 e^{-3i\pi/2} = 8 e^{i\pi/2} =
-8i$, using $2\pi$-periodicity to bring the angle back into range. Direct
+Then $(-2i)^3 = \left(2e^{-i\pi/2}\right)^3 = 8 e^{-3i\pi/2} = 8 e^{i\pi/2} = 8i$, using $2\pi$-periodicity to bring the angle back into range. Direct
 expansion agrees: $(-2i)^3 = -8i^3 = -8(-i) = 8i$.
 </Check>
 

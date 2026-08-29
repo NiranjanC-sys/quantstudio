@@ -1,0 +1,203 @@
+---
+id: t0.m4.l2
+title: "Unitary, Hermitian, Projector"
+type: concept
+track: t0
+module: t0.m4
+level: L0
+minutes: 14
+objectives:
+  - Test a given matrix for unitarity, Hermiticity and idempotence
+  - Prove that a unitary matrix preserves the inner product of any two vectors
+  - Construct the rank-1 projector onto a given unit vector and verify P squared equals P
+prerequisites: [t0.m4.l1]
+sources:
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: Preskill, Ph219/CS219 Quantum Computation lecture notes (Caltech)
+    url: http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html
+tags: [operators]
+---
+
+Three classes of matrix carry the whole of quantum mechanics: unitaries are what
+you may do to a state, Hermitian matrices are what you may measure, and
+projectors are what a measurement outcome does. Each is defined by a one-line
+equation in the adjoint, and the three definitions overlap in interesting ways.
+Knowing which class a matrix belongs to tells you what it is allowed to mean.
+
+## The three definitions
+
+$$
+U\dg U = U U\dg = I \quad \text{(unitary)},
+\qquad
+A\dg = A \quad \text{(Hermitian)},
+\qquad
+P^2 = P, \; P\dg = P \quad \text{(projector)} .
+$$
+
+The first says the inverse is the adjoint. The second says the matrix is its own
+adjoint. The third says applying it twice is the same as applying it once, and
+that it is Hermitian, which is what makes it an *orthogonal* projector rather
+than a skewed one.
+
+<Margin label="Real special cases">
+Over the reals the dagger is just the transpose, so unitary becomes orthogonal
+and Hermitian becomes symmetric. The rotation matrix of T0.M3.L2 is orthogonal;
+the matrix $\big(\begin{smallmatrix}2&1\\1&2\end{smallmatrix}\big)$ is
+symmetric. All the statements below specialise correctly.
+</Margin>
+
+## Testing concrete matrices
+
+**Hadamard.** $H = \isqrt\big(\begin{smallmatrix}1&1\\1&-1\end{smallmatrix}\big)$
+has real symmetric entries, so $H\dg = H$ and it is Hermitian. Squaring,
+
+$$
+H^2 = \half \begin{pmatrix}1&1\\1&-1\end{pmatrix}\begin{pmatrix}1&1\\1&-1\end{pmatrix}
+= \half\begin{pmatrix}2&0\\0&2\end{pmatrix} = I,
+$$
+
+so $H\dg H = H^2 = I$ and it is unitary too. It is not a projector, since
+$H^2 = I \ne H$.
+
+**Pauli $Y$.** $Y = \big(\begin{smallmatrix}0&-i\\i&0\end{smallmatrix}\big)$.
+Transposing swaps the off-diagonal entries to $i$ and $-i$, and conjugating
+swaps them back, so $Y\dg = Y$. And $Y^2 = I$, so $Y$ is Hermitian and unitary.
+All three Paulis share this: they are both observables and gates.
+
+**$T$ gate.** $T = \operatorname{diag}(1, e^{i\pi/4})$. Its adjoint is
+$\operatorname{diag}(1, e^{-i\pi/4}) \ne T$, so it is not Hermitian. But
+$T\dg T = \operatorname{diag}(1, e^{-i\pi/4}e^{i\pi/4}) = I$, so it is unitary.
+Unitary without Hermitian is the common case.
+
+**A non-example.** $N = \big(\begin{smallmatrix}1&1\\0&1\end{smallmatrix}\big)$
+is neither: $N\dg = \big(\begin{smallmatrix}1&0\\1&1\end{smallmatrix}\big)\ne N$,
+and
+
+$$
+N\dg N = \begin{pmatrix}1&0\\1&1\end{pmatrix}\begin{pmatrix}1&1\\0&1\end{pmatrix}
+= \begin{pmatrix}1&1\\1&2\end{pmatrix} \ne I .
+$$
+
+No quantum circuit implements $N$, because it stretches some vectors and not
+others.
+
+## Unitaries preserve inner products
+
+**Claim.** If $U\dg U = I$ then $\langle Uu, Uv\rangle = \langle u,v\rangle$ for
+all $u, v$.
+
+**Proof.** Using the reversal rule of the previous lesson,
+
+$$
+\langle Uu, Uv \rangle = (Uu)\dg (Uv) = u\dg U\dg U v = u\dg I v
+= u\dg v = \langle u, v\rangle . \;\blacksquare
+$$
+
+Setting $v = u$ gives $\lVert Uu\rVert = \lVert u \rVert$, so normalisation
+survives every gate and total probability stays 1. The converse also holds: a
+matrix preserving all inner products must satisfy $U\dg U = I$, because
+$u\dg(U\dg U - I)v = 0$ for all $u,v$ forces the bracketed matrix to be zero.
+"Unitary" and "preserves lengths and angles" are the same condition.
+
+Geometrically the columns of $U$ are an orthonormal basis, since
+$\left(U\dg U\right)_{jk}$ is the inner product of columns $j$ and $k$. A gate
+is a change of orthonormal basis, which is why T0.M3.L2 and this lesson are the
+same subject twice.
+
+## Rank-1 projectors
+
+Given a unit vector $\ket{a}$, define $P = \ketbra{a}{a}$. The reversal rule
+gives $P\dg = \left(\bra{a}\right)\dg\left(\ket{a}\right)\dg = \ketbra{a}{a} = P$, since daggering a ket produces a bra and vice versa. And
+
+$$
+P^2 = \ket{a}\braket{a}{a}\bra{a} = \ket{a}(1)\bra{a} = P ,
+$$
+
+which uses normalisation of $\ket{a}$ in an essential way. If $\ket{a}$ were not
+a unit vector, $P^2 = \lVert a\rVert^2 P$ and idempotence fails.
+
+Take $\ket{+}$:
+
+$$
+P_+ = \ketbra{+}{+} = \half\begin{pmatrix}1&1\\1&1\end{pmatrix},
+\qquad
+P_+^2 = \tfrac14\begin{pmatrix}2&2\\2&2\end{pmatrix} = P_+ .
+$$
+
+Its eigenvalues are 0 and 1, and its determinant is 0, so it is not invertible
+and certainly not unitary. It also fails to preserve norms:
+$P_+\ket{0} = (0.5, 0.5)^{T}$ has norm $0.707107$, not 1. That shortfall is not
+a defect, it is the Born rule: the squared norm of $P_x\ket{\psi}$ is exactly
+the probability of outcome $x$, here $0.707107^2 = 0.5$.
+
+<Callout tone="gotcha" title="Projectors are not gates">
+Because a projector shrinks vectors, no unitary circuit implements one. The only
+way to apply a projector to a physical qubit is to measure and condition on the
+outcome, which is why measurement is a separate primitive in the circuit model
+and why it cannot be undone.
+</Callout>
+
+## Idempotence you can watch
+
+Unitarity has a directly observable consequence: $H\dg = H$ and $H^2 = I$
+together say that two Hadamards restore any state exactly.
+
+<Simulate
+  show={['probabilities', 'amplitudes']}
+  caption="H applied twice to |0>. Because H is both Hermitian and unitary, the pair is the identity."
+  ir={{
+    version: 1,
+    name: "h-squared",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "h2", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+The amplitude of $\ket{0}$ is exactly 1. Compare the classical fair coin of
+T0.M1.L2, which is idempotent in the opposite sense, $F^2 = F$. That is no
+coincidence: as a matrix, $F = \half\big(\begin{smallmatrix}1&1\\1&1 \end{smallmatrix}\big)$ is precisely the projector $\ketbra{+}{+}$. Applying it
+twice leaves you no better informed than once, because it has already thrown the
+information away. $H$ keeps everything and gives it back.
+
+## The three classes overlap
+
+| Matrix | Hermitian | Unitary | Projector |
+| --- | --- | --- | --- |
+| $I$ | yes | yes | yes |
+| $X, Y, Z, H$ | yes | yes | no |
+| $S, T$ | no | yes | no |
+| $\ketbra{+}{+}$ | yes | no | yes |
+| $\big(\begin{smallmatrix}1&1\\0&1\end{smallmatrix}\big)$ | no | no | no |
+
+A matrix that is both unitary and a projector must satisfy $P^2 = P$ and
+$P^{-1} = P\dg = P$, hence $P = I$. That is why the identity is the only entry
+with three yeses.
+
+<Check question="Is $M = \isqrt\big(\begin{smallmatrix}1&i\\i&1\end{smallmatrix}\big)$ unitary? Is it Hermitian? What is the projector onto $\ket{\psi} = \tfrac{1}{\sqrt5}(1, 2)^{T}$?">
+$M\dg = \isqrt\big(\begin{smallmatrix}1&-i\\-i&1\end{smallmatrix}\big) \ne M$,
+so it is not Hermitian. For unitarity,
+
+$$
+M\dg M = \half\begin{pmatrix}1&-i\\-i&1\end{pmatrix}\begin{pmatrix}1&i\\i&1\end{pmatrix}
+= \half\begin{pmatrix}1 - i^2 & i - i\\ -i + i & -i^2 + 1\end{pmatrix} = I,
+$$
+
+so yes, it is unitary. It is exactly $R_x(-\pi/2) = \exp(i\pi X/4)$.
+
+The projector is $\ketbra{\psi}{\psi} = \tfrac15\big(\begin{smallmatrix}1&2\\2&4 \end{smallmatrix}\big)$. Check idempotence: squaring gives
+$\tfrac{1}{25}\big(\begin{smallmatrix}5&10\\10&20\end{smallmatrix}\big) = \tfrac15\big(\begin{smallmatrix}1&2\\2&4\end{smallmatrix}\big)$, as required.
+</Check>
+
+## Where this comes from
+
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 2.1.6, for the operator classes and the equivalence of unitarity with
+  inner-product preservation.
+- [Preskill, Ph219](http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html),
+  chapter 2, where projectors are introduced as the mathematical content of a
+  measurement outcome rather than as an algebraic curiosity.

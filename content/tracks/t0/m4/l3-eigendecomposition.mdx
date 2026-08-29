@@ -1,0 +1,230 @@
+---
+id: t0.m4.l3
+title: Eigendecomposition and the Spectral Theorem
+type: concept
+track: t0
+module: t0.m4
+level: L0
+minutes: 15
+objectives:
+  - Compute the eigenvalues and eigenvectors of a 2x2 Hermitian matrix by hand
+  - Write a Hermitian matrix in the form sum_k lambda_k |v_k><v_k|
+  - Explain why the eigenvalues of a Hermitian matrix are real and those of a unitary lie on the unit circle
+prerequisites: [t0.m4.l2]
+sources:
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: C191A Qubits, Quantum Mechanics and Computers (UC Berkeley)
+    url: https://www2.eecs.berkeley.edu/Courses/EECSCourseCode.phpC191A/
+tags: [operators, spectral]
+---
+
+Most vectors get rotated by a matrix. A few get only stretched. Those few are
+the eigenvectors, and for the operator classes of the previous lesson they are
+not a curiosity but a complete description: a Hermitian matrix is nothing more
+than a list of real numbers attached to an orthonormal basis. Once you can write
+an operator that way, you can measure it, exponentiate it, and take its square
+root, all by doing arithmetic on the numbers in the list.
+
+## Eigenvalues by hand
+
+$\lambda$ is an eigenvalue of $A$ with eigenvector $\ket{v} \ne 0$ when
+$A\ket{v} = \lambda\ket{v}$, equivalently when $(A - \lambda I)\ket{v} = 0$,
+equivalently when
+
+$$
+\det(A - \lambda I) = 0 .
+$$
+
+Take the real symmetric matrix
+
+$$
+A = \begin{pmatrix} 2 & 1 \\ 1 & 2\end{pmatrix},
+\qquad
+\det\begin{pmatrix} 2-\lambda & 1 \\ 1 & 2-\lambda\end{pmatrix}
+= (2-\lambda)^2 - 1 = \lambda^2 - 4\lambda + 3 .
+$$
+
+The roots are $\lambda = 3$ and $\lambda = 1$. For $\lambda = 3$, the equation
+$(A - 3I)v = 0$ reads $-v_1 + v_2 = 0$, so $v_1 = v_2$ and the normalised
+eigenvector is $\ket{+}$. For $\lambda = 1$ it reads $v_1 + v_2 = 0$, giving
+$\ket{-}$. The two eigenvectors are orthogonal, which is not luck.
+
+<Margin label="Orthogonality is automatic">
+If $A\dg = A$ and $A\ket{v} = \lambda\ket{v}$, $A\ket{w} = \mu\ket{w}$ with
+$\lambda \ne \mu$, then $\lambda\braket{w}{v} = \bra{w}A\ket{v} = \mu\braket{w}{v}$, using reality of $\mu$. So
+$(\lambda - \mu)\braket{w}{v} = 0$ and the eigenvectors are orthogonal.
+</Margin>
+
+## Eigenvalues of a Hermitian matrix are real
+
+Let $A\dg = A$ and $A\ket{v} = \lambda\ket{v}$ with $\braket{v}{v} = 1$.
+Sandwich:
+
+$$
+\lambda = \lambda\braket{v}{v} = \bra{v}A\ket{v} .
+$$
+
+Now take the conjugate of that number. Conjugating a scalar of the form
+$\bra{v}A\ket{v}$ is the same as daggering it, and by the reversal rule
+$\left(\bra{v}A\ket{v}\right)\dg = \bra{v}A\dg\ket{v} = \bra{v}A\ket{v}$. So
+$\bar\lambda = \lambda$, and $\lambda$ is real. $\blacksquare$
+
+The unitary case is the same trick with norms. If $U\dg U = I$ and
+$U\ket{v} = \lambda\ket{v}$ with $\ket{v}$ a unit vector, then
+
+$$
+1 = \lVert v \rVert = \lVert Uv\rVert = \lVert \lambda v \rVert = |\lambda| ,
+$$
+
+so every eigenvalue of a unitary has modulus 1 and can be written
+$e^{i\theta}$. Real numbers for observables, points on the unit circle for
+gates: that is the whole distinction, and T0.M4.L4 will turn one into the other
+with an exponential.
+
+## The spectral theorem
+
+**Statement.** Every Hermitian $A$ on $\mathbb{C}^n$ has an orthonormal basis of
+eigenvectors $\ket{v_1},\dots,\ket{v_n}$ with real eigenvalues, and
+
+$$
+A = \sum_k \lambda_k \ketbra{v_k}{v_k} .
+$$
+
+The right-hand side is a weighted sum of the projectors of T0.M4.L2, so a
+Hermitian operator is literally a list of outcomes with a projector attached to
+each. Verify the decomposition for the example:
+
+$$
+3\ketbra{+}{+} + 1\ketbra{-}{-}
+= \tfrac32\begin{pmatrix}1&1\\1&1\end{pmatrix} + \half\begin{pmatrix}1&-1\\-1&1\end{pmatrix}
+= \begin{pmatrix}2&1\\1&2\end{pmatrix} = A .
+$$
+
+A complex example. Let
+
+$$
+B = \begin{pmatrix} 1 & -i \\ i & 1\end{pmatrix} = I + Y .
+$$
+
+It is Hermitian, since transposing gives $\big(\begin{smallmatrix}1&i\\-i&1 \end{smallmatrix}\big)$ and conjugating returns $B$. Its characteristic
+polynomial is
+
+$$
+\det\begin{pmatrix}1-\lambda & -i \\ i & 1 - \lambda\end{pmatrix}
+= (1-\lambda)^2 - (-i)(i) = (1-\lambda)^2 - 1 = \lambda(\lambda - 2),
+$$
+
+so the eigenvalues are $0$ and $2$, both real as promised. For $\lambda = 2$ the
+first row gives $-v_1 - iv_2 = 0$, so $v_1 = -iv_2$; taking $v_2 = i$ gives
+$v_1 = 1$ and the normalised eigenvector
+
+$$
+\ket{y_+} = \isqrt\begin{pmatrix}1\\ i\end{pmatrix},
+\qquad
+\ket{y_-} = \isqrt\begin{pmatrix}1\\ -i\end{pmatrix} \text{ for } \lambda = 0 .
+$$
+
+Since one eigenvalue is zero, the spectral sum has one surviving term:
+
+$$
+B = 2\ketbra{y_+}{y_+} = 2 \cdot \half \begin{pmatrix}1\\i\end{pmatrix}
+\begin{pmatrix}1 & -i\end{pmatrix}
+= \begin{pmatrix}1 & -i \\ i & 1\end{pmatrix} .
+$$
+
+## The Paulis, decomposed
+
+$$
+Z = (+1)\ketbra{0}{0} + (-1)\ketbra{1}{1},
+\qquad
+X = (+1)\ketbra{+}{+} + (-1)\ketbra{-}{-},
+$$
+
+and $Y = (+1)\ketbra{y_+}{y_+} + (-1)\ketbra{y_-}{y_-}$. Each is Hermitian with
+eigenvalues $\pm 1$, and each is also unitary, consistent with both rules at
+once: $\pm 1$ are real and have modulus 1.
+
+## Reading an eigenvalue off a machine
+
+The spectral decomposition is how an expectation value is computed. For a
+Hermitian $A$ with eigenvalues $\lambda_k$ and projectors $P_k$,
+
+$$
+\expect{A} = \bra{\psi}A\ket{\psi} = \sum_k \lambda_k \bra{\psi}P_k\ket{\psi}
+= \sum_k \lambda_k \, p_k ,
+$$
+
+so the average of $A$ is the average of its eigenvalues weighted by the
+probability of landing in each eigenspace. Measuring $X$ means measuring in the
+$\pm$ basis, which on hardware means applying $H$ and reading the computational
+basis.
+
+Take $\ket{\psi} = R_y(0.8)\ket{0} = \cos(0.4)\ket{0} + \sin(0.4)\ket{1} = 0.921061\ket{0} + 0.389418\ket{1}$.
+
+<Simulate
+  show="probabilities"
+  caption="Ry(0.8), then H, then measure. Outcome 0 means the +1 eigenvector of X, outcome 1 means the -1 eigenvector."
+  ir={{
+    version: 1,
+    name: "measure-x-observable",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "r0", gate: "ry", targets: [0], params: [0.8] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+>
+
+| outcome | eigenvalue | probability |
+| --- | --- | --- |
+| $0$ | $+1$ | $0.858678$ |
+| $1$ | $-1$ | $0.141322$ |
+
+</Simulate>
+
+Weighting the eigenvalues by those probabilities,
+
+$$
+\expect{X} = (+1)(0.858678) + (-1)(0.141322) = 0.717356 .
+$$
+
+Compare the direct sandwich: $\bra{\psi}X\ket{\psi} = 2\cos(0.4)\sin(0.4) = \sin(0.8) = 0.717356$. The two routes agree to six decimals, which is the
+spectral theorem doing its job.
+
+<Callout tone="note" title="Not every matrix is diagonalisable">
+The spectral theorem needs $A\dg A = AA\dg$, the normality condition, which
+Hermitian and unitary matrices both satisfy. The matrix
+$\big(\begin{smallmatrix}1&1\\0&1\end{smallmatrix}\big)$ is not normal: its only
+eigenvalue is 1 and it has just one eigenvector direction, so no basis of
+eigenvectors exists. Nothing in quantum mechanics is built from such matrices,
+which is why the theorem can be used so freely here.
+</Callout>
+
+<Check question="Find the eigenvalues and normalised eigenvectors of $C = \big(\begin{smallmatrix}0&2\\2&3\end{smallmatrix}\big)$, and write its spectral decomposition.">
+$\det(C - \lambda I) = -\lambda(3-\lambda) - 4 = \lambda^2 - 3\lambda - 4 = (\lambda - 4)(\lambda + 1)$, so the eigenvalues are $4$ and $-1$, both real
+because $C$ is symmetric.
+
+For $\lambda = 4$: $-4v_1 + 2v_2 = 0$ gives $v_2 = 2v_1$, so
+$\ket{v_4} = \tfrac{1}{\sqrt5}(1,2)^{T}$. For $\lambda = -1$:
+$v_1 + 2v_2 = 0$ gives $\ket{v_{-1}} = \tfrac{1}{\sqrt5}(2,-1)^{T}$. The two are
+orthogonal, as Hermiticity requires.
+
+$$
+C = 4 \cdot \tfrac15\begin{pmatrix}1&2\\2&4\end{pmatrix}
+  - 1 \cdot \tfrac15\begin{pmatrix}4&-2\\-2&1\end{pmatrix}
+  = \tfrac15\begin{pmatrix}0&10\\10&15\end{pmatrix}
+  = \begin{pmatrix}0&2\\2&3\end{pmatrix}.
+$$
+</Check>
+
+## Where this comes from
+
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 2.1.7, for the spectral decomposition in outer-product form and the
+  normality condition.
+- [C191A, UC Berkeley](https://www2.eecs.berkeley.edu/Courses/EECSCourseCode.phpC191A/),
+  which introduces observables as Hermitian operators and measurement as
+  projection onto eigenspaces, the framing used in the final section.

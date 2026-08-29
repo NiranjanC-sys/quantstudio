@@ -1,0 +1,208 @@
+---
+id: t1.m8.l5
+title: Universal Gate Sets
+type: concept
+track: t1
+module: t1.m8
+level: L1
+minutes: 14
+objectives:
+  - State what it means for a gate set to be universal for quantum computation
+  - Show that CX plus all single-qubit gates is universal
+  - Explain why Clifford gates alone are not universal and what T adds
+prerequisites:
+  - t1.m8.l1
+  - t1.m3.l5
+sources:
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: Preskill, Ph219/CS219 Quantum Computation lecture notes (Caltech)
+    url: http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html
+tags: [circuits, universality]
+---
+
+A device gives you a fixed, finite menu of gates. The unitary group on $n$ qubits
+is a continuous manifold of dimension $4^n - 1$. How can a finite menu possibly
+reach an uncountable set? The answer splits into two different claims that get
+called by the same name, and separating them is the point of this lesson.
+
+## Two meanings of universal
+
+**Exact universality.** A gate set is exactly universal if every unitary on any
+number of qubits can be written as a finite product of its elements. This
+requires an infinite set, because a finite set generates only countably many
+products and there are uncountably many unitaries.
+
+**Approximate universality.** A finite gate set is approximately universal if,
+for every target unitary $U$ and every $\varepsilon > 0$, some finite product $V$
+of gates from the set satisfies $\lVert U - V \rVert < \varepsilon$. The products
+form a dense subset. This is the version hardware actually delivers, and it is
+enough, because you only ever need a state accurate enough that the output
+distribution is right to within your shot noise.
+
+<Margin label="The norm">
+Take $\lVert \cdot \rVert$ to be the operator norm,
+$\lVert A \rVert = \max_{\ket{\psi}} \lVert A\ket{\psi} \rVert$ over unit vectors.
+Errors in it add: approximating $m$ gates each to $\varepsilon/m$ approximates the
+product to $\varepsilon$.
+</Margin>
+
+## CX plus every single-qubit gate is exactly universal
+
+This set is infinite, so exact universality is on the table. The proof is a chain
+of three reductions, each of which you have already met.
+
+**Step one: any unitary is a product of two-level unitaries.** A two-level
+unitary acts non-trivially on only two of the $2^n$ basis states, like a rotation
+in a coordinate plane. Gaussian elimination on the matrix, zeroing one off-
+diagonal entry at a time with a two-dimensional rotation, expresses any $U$ as a
+product of at most $2^{n-1}(2^n - 1)$ of them. That count is exponential and the
+theorem does not claim it is efficient. It claims it is possible.
+
+**Step two: any two-level unitary is a multi-controlled single-qubit gate.** The
+two basis states it touches differ in some set of bit positions. Use CNOTs to map
+that pair onto a pair differing in exactly one bit, apply the single-qubit
+rotation controlled on all the other bits, and undo the CNOTs.
+
+**Step three: any multi-controlled gate reduces to CX and single-qubit gates.**
+The base case is the Toffoli, and the decomposition is explicit.
+
+<Circuit
+  caption="Toffoli decomposed into 6 CNOTs and 9 single-qubit gates, with both controls set. The target flips, as it should."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "toffoli-decomposed-11",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "p0", gate: "x", targets: [0] },
+      { id: "p1", gate: "x", targets: [1] },
+      { id: "g1", gate: "h", targets: [2] },
+      { id: "g2", gate: "x", targets: [2], controls: [1] },
+      { id: "g3", gate: "tdg", targets: [2] },
+      { id: "g4", gate: "x", targets: [2], controls: [0] },
+      { id: "g5", gate: "t", targets: [2] },
+      { id: "g6", gate: "x", targets: [2], controls: [1] },
+      { id: "g7", gate: "tdg", targets: [2] },
+      { id: "g8", gate: "x", targets: [2], controls: [0] },
+      { id: "g9", gate: "t", targets: [1] },
+      { id: "g10", gate: "t", targets: [2] },
+      { id: "g11", gate: "h", targets: [2] },
+      { id: "g12", gate: "x", targets: [1], controls: [0] },
+      { id: "g13", gate: "t", targets: [0] },
+      { id: "g14", gate: "tdg", targets: [1] },
+      { id: "g15", gate: "x", targets: [1], controls: [0] }
+    ]
+  }}
+/>
+
+Input $\ket{110}$ gives output $\ket{111}$ with probability 1, which is what a
+Toffoli does. The same circuit with control 0 in $\ket{+}$ and control 1 in
+$\ket{1}$ produces $\tfrac{1}{\sqrt2}(\ket{010} + \ket{111})$, so it is
+controlling coherently rather than just permuting basis states.
+
+<Circuit
+  caption="The same fifteen gates with control 0 in superposition. Two branches of amplitude 0.7071, the target flipped in exactly the branch where both controls are 1."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "toffoli-decomposed-superposed",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "p0", gate: "h", targets: [0] },
+      { id: "p1", gate: "x", targets: [1] },
+      { id: "g1", gate: "h", targets: [2] },
+      { id: "g2", gate: "x", targets: [2], controls: [1] },
+      { id: "g3", gate: "tdg", targets: [2] },
+      { id: "g4", gate: "x", targets: [2], controls: [0] },
+      { id: "g5", gate: "t", targets: [2] },
+      { id: "g6", gate: "x", targets: [2], controls: [1] },
+      { id: "g7", gate: "tdg", targets: [2] },
+      { id: "g8", gate: "x", targets: [2], controls: [0] },
+      { id: "g9", gate: "t", targets: [1] },
+      { id: "g10", gate: "t", targets: [2] },
+      { id: "g11", gate: "h", targets: [2] },
+      { id: "g12", gate: "x", targets: [1], controls: [0] },
+      { id: "g13", gate: "t", targets: [0] },
+      { id: "g14", gate: "tdg", targets: [1] },
+      { id: "g15", gate: "x", targets: [1], controls: [0] }
+    ]
+  }}
+/>
+
+Count the cost in the footer: 6 two-qubit gates and depth 11 for one Toffoli. That
+number is why T0.M6's reversible-computation lesson insisted that Toffoli is
+cheap classically and expensive here.
+
+## Clifford is not enough
+
+The Clifford group is generated by $H$, $S$ and CX. It contains all the Pauli
+gates, all the Bell-state preparations, all the stabilizer circuits. It looks
+like a lot. It is not universal, and there are two separate reasons.
+
+The first is counting. For fixed $n$, the Clifford group modulo global phase is
+*finite*. A finite group cannot be dense in a continuous one, so there are
+unitaries no Clifford circuit approximates, no matter how long.
+
+The second is the Gottesman-Knill theorem: a circuit built from Clifford gates,
+computational-basis preparations and computational-basis measurements can be
+simulated on a classical computer in polynomial time. A universal set that was
+classically simulable would collapse the entire subject, so Clifford circuits
+cannot be universal unless quantum computing buys nothing.
+
+<Callout tone="gotcha" title="Entanglement is not the resource">
+The Bell-state circuit is Clifford. So is the GHZ circuit on a thousand qubits.
+Maximal entanglement, classically simulable. Whatever the quantum advantage is
+made of, raw entanglement is not sufficient for it.
+</Callout>
+
+## What T adds
+
+Add the $T$ gate, a $\pi/4$ rotation about $z$, and the set becomes approximately
+universal. Here is the mechanism, concretely.
+
+Up to a global phase, $T = R_z(\pi/4)$ and $HTH = R_x(\pi/4)$. Compose them:
+$R_z(\pi/4) R_x(\pi/4)$ is a rotation about some axis by an angle $\theta$
+satisfying
+
+$$
+\cos\frac{\theta}{2} = \cos^2\frac{\pi}{8} = 0.8535533906,
+$$
+
+which gives $\theta = 1.0960568152$ radians. Divide by $2\pi$:
+
+$$
+\frac{\theta}{2\pi} = 0.1744428601\ldots
+$$
+
+That ratio is irrational. An irrational rotation has powers that never repeat and
+that fill the circle densely, so repeated applications of this one operator
+approximate *every* rotation about its axis to arbitrary accuracy. Conjugating by
+$H$ gives a second axis, not parallel to the first, and rotations about two
+non-parallel axes generate all of $SU(2)$. Add CX and you have the whole group.
+
+That is the reason $T$ is singled out everywhere in this curriculum. It is the
+gate that makes the set dense, it is the gate Gottesman-Knill cannot handle, and
+under error correction it is by far the most expensive gate to implement, which
+is why T4 counts $T$ gates rather than gates.
+
+<Check question="Someone claims their device is universal because it can produce any two-qubit product state and any Bell state. Are they?">
+No. Producing a set of *states* is much weaker than implementing a set of
+*unitaries*, and in this case the circuits described are all Clifford, so
+Gottesman-Knill applies and the whole device is classically simulable in
+polynomial time. Universality is a claim about the group generated by the gates,
+not about which states you can reach from $\ket{0\cdots0}$. The test to apply is
+whether the gate set generates a dense subgroup of $SU(2^n)$ up to phase, and a
+finite Clifford group never does.
+</Check>
+
+## Where this comes from
+
+- [Nielsen & Chuang, *Quantum Computation and Quantum Information*](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  sections 4.5.1 to 4.5.3, for the two-level decomposition, the Toffoli circuit
+  used above, and the irrational-rotation argument for $H$ and $T$.
+- [Preskill, Ph219/CS219](http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html),
+  for the Clifford group, Gottesman-Knill, and why the non-Clifford gate is the
+  one that costs under error correction.

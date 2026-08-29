@@ -1,0 +1,182 @@
+---
+id: t1.m2.l3
+title: Measuring in Other Bases
+type: concept
+track: t1
+module: t1.m2
+level: L1
+minutes: 13
+objectives:
+  - Convert an X-basis or Y-basis measurement into a basis change followed by a Z measurement
+  - Compute the X-basis outcome probabilities of a state given in the computational basis
+  - Show that H before measurement implements an X-basis measurement
+prerequisites: [t1.m2.l2, t0.m3.l2]
+sources:
+  - label: QWorld QBook101
+    url: https://qworld.net/qbook101/
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+tags: [measurement, bases]
+---
+
+Hardware measures in one basis. Every superconducting or trapped-ion device
+reports which of two energy levels a qubit is in, and that is the computational
+basis, full stop. Yet half the interesting questions in this track are about
+other bases: T1.M1.L7 needed the $X$ basis to see a relative phase, and T1.M6
+needs measurement axes at arbitrary angles. The reconciliation is a trick so
+routine that it disappears from most write-ups, and it is worth making explicit
+once.
+
+## Rotate the question, not the apparatus
+
+A measurement in the orthonormal basis $\{\ket{b_0}, \ket{b_1}\}$ assigns
+outcome $k$ the probability $|\braket{b_k}{\psi}|^2$. Let $B$ be the unitary
+whose *rows* are the bras $\bra{b_0}, \bra{b_1}$, equivalently the unitary with
+$B\ket{b_k} = \ket{k}$. Then
+
+$$
+\braket{b_k}{\psi} = \bra{k} B \ket{\psi} ,
+$$
+
+so the probability of outcome $k$ in the $b$ basis for the state $\ket{\psi}$
+equals the probability of outcome $k$ in the computational basis for the state
+$B\ket{\psi}$. Applying $B$ and then measuring normally is not an approximation
+of the measurement you wanted; it is that measurement, exactly.
+
+<Margin label="Definition">
+$B$ is the **basis-change unitary**, and it satisfies
+$B = \sum_k \ketbra{k}{b_k}$. Because $B$ is unitary, the two states you might
+have measured, $\ket{\psi}$ and $B\ket{\psi}$, are related reversibly: no
+information is lost in the rotation, only relabelled.
+</Margin>
+
+## The X basis, and why it is a Hadamard
+
+The $X$ basis is $\ket{+} = \tfrac{1}{\sqrt2}(\ket{0} + \ket{1})$ and
+$\ket{-} = \tfrac{1}{\sqrt2}(\ket{0} - \ket{1})$. The unitary sending
+$\ket{+} \mapsto \ket{0}$ and $\ket{-} \mapsto \ket{1}$ is
+
+$$
+B = \ketbra{0}{+} + \ketbra{1}{-}
+= \isqrt \begin{pmatrix} 1 & 1 \\ 1 & -1 \end{pmatrix}
+= H ,
+$$
+
+which you can read off the definition or simply recall from T1.M1.L2 that
+$H\ket{+} = \ket{0}$ and $H\ket{-} = \ket{1}$. So **H before a measurement is an
+X-basis measurement**, and the reported bit 0 means $\ket{+}$ while 1 means
+$\ket{-}$. That single sentence is used dozens of times in the rest of the
+track.
+
+The probabilities follow from the inner products:
+
+$$
+\Pr[+] = \left| \braket{+}{\psi} \right|^2 = \left| \frac{\alpha + \beta}{\sqrt2} \right|^2,
+\qquad
+\Pr[-] = \left| \frac{\alpha - \beta}{\sqrt2} \right|^2 .
+$$
+
+Take the state $R_y(\pi/3)\ket{0} = \cos(\pi/6)\ket{0} + \sin(\pi/6)\ket{1} = 0.866025\ket{0} + 0.5\ket{1}$, whose computational-basis probabilities are
+$0.75$ and $0.25$. Then
+
+$$
+\Pr[+] = \left( \frac{0.866025 + 0.5}{\sqrt2} \right)^2
+= 0.965926^2 = 0.933013 ,
+\qquad \Pr[-] = 0.066987 .
+$$
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="Ry(pi/3) then H, then measure. The reported bit is the X-basis outcome: 0 means |+>, and it appears 93.3013 percent of the time."
+  ir={{
+    version: 1,
+    name: "x-basis-readout",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "r1", gate: "ry", targets: [0], params: [1.0471975511965976] },
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+Delete the Hadamard and the same state reports $0.75$ and $0.25$ instead. One
+gate, two entirely different questions asked of one preparation.
+
+## The Y basis needs two gates
+
+The $Y$ basis is $\ket{+i} = \tfrac{1}{\sqrt2}(\ket{0} + i\ket{1})$ and
+$\ket{-i} = \tfrac{1}{\sqrt2}(\ket{0} - i\ket{1})$. Build the basis change in
+two steps. First $S^{\dagger} = \mathrm{diag}(1, -i)$ removes the $i$:
+
+$$
+S^{\dagger}\ket{+i} = \isqrt \begin{pmatrix} 1 \\ -i \cdot i \end{pmatrix}
+= \isqrt \begin{pmatrix} 1 \\ 1 \end{pmatrix} = \ket{+},
+\qquad
+S^{\dagger}\ket{-i} = \ket{-} .
+$$
+
+Then $H$ finishes the job, so $B = H S^{\dagger}$, applied in that order:
+$S^{\dagger}$ first, $H$ second. A $Y$-basis measurement is $S^{\dagger}$, then
+$H$, then measure.
+
+<Simulate
+  show="probabilities"
+  caption="H and S prepare |+i>; S-dagger and H then measure it in the Y basis. The outcome is 0 with certainty."
+  ir={{
+    version: 1,
+    name: "y-basis-readout",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "s1", gate: "s", targets: [0] },
+      { id: "sd", gate: "sdg", targets: [0] },
+      { id: "h2", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+The state $\ket{+i}$ is a fair coin in both the $Z$ and the $X$ bases and is
+certain in the $Y$ basis. Three bases, three completely different verdicts on
+one state, which is the operational meaning of the three axes of the Bloch
+sphere.
+
+<Callout tone="gotcha" title="The gate order reverses">
+To measure in the basis $\{\ket{b_k}\}$ you apply $B$, and $B$ is built from the
+*inverse* of whatever prepares that basis. $\ket{+i}$ is prepared by $H$ then
+$S$, so the readout is $S^{\dagger}$ then $H$: the same gates, daggered and in
+the opposite order, because $(HS)^{\dagger} = S^{\dagger}H^{\dagger}$. Writing
+the preparation and then reversing it is the reliable way to get this right.
+</Callout>
+
+## An axis at any angle
+
+Nothing restricts you to the three named axes. To measure along the axis in the
+$xz$ plane at angle $\phi$ from $+z$, apply $R_y(-\phi)$ and then measure. The
+rotation carries that axis onto $+z$, and $R_y(-\phi)^{\dagger} Z R_y(-\phi) = \cos\phi\, Z + \sin\phi\, X$ is the observable you have measured. Setting
+$\phi = \pi/2$ recovers the $X$ basis and shows that $R_y(-\pi/2)$ is an
+alternative to $H$, differing from it only by which outcome gets called 0.
+T1.M6.L1 uses exactly this construction with four different angles to violate a
+Bell inequality.
+
+<Check question="A qubit is in $\ket{0}$. What are its outcome probabilities in the X basis and in the Y basis, and what is the state after an X-basis measurement reporting 1?">
+$\braket{+}{0} = \tfrac{1}{\sqrt2}$ and $\braket{-}{0} = \tfrac{1}{\sqrt2}$, so
+the $X$-basis outcomes are $0.5$ and $0.5$. The same holds in the $Y$ basis,
+since $|\braket{\pm i}{0}|^2 = \tfrac12$. Outcome 1 in the $X$ basis means the
+state was projected onto $\ket{-}$, so the qubit is now $\ket{-}$, not
+$\ket{1}$. If you implemented the measurement as $H$ then a computational
+measurement, the physical qubit is left in $\ket{1}$ and you must apply $H$
+again to return it to the $\ket{-}$ the measurement actually prepared.
+</Check>
+
+## Where this comes from
+
+- [QWorld QBook101](https://qworld.net/qbook101/), which teaches measurement in
+  a rotated basis on the real circle first, so that "rotate then measure" is
+  visible as a picture before it is an identity.
+- [PennyLane Codebook](https://pennylane.ai/codebook), whose measurement module
+  drills the $H$ and $S^{\dagger}H$ patterns until they are automatic, because
+  every expectation-value estimate in T3 and T5 is built from them.

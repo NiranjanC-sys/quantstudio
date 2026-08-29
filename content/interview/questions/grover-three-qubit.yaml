@@ -1,0 +1,649 @@
+# Benchmark pattern 4: Grover search on a three-qubit register.
+# Every amplitude, success probability and gate count below was produced by
+# running the circuit, not by recall.
+
+questions:
+  - id: iq-031
+    title: Run Grover on three qubits and justify the iteration count
+    kind: coding
+    prompt: |
+      You have a three-qubit register and a phase oracle that flips the sign of
+      exactly one marked basis state. Write the full Grover circuit, choose the
+      number of iterations, and tell me the success probability you expect. Do
+      not say "about sqrt(N)": give me the integer you would actually run and
+      the probability to three decimal places. Qubit 0 is the most significant
+      bit.
+    difficulty: easy
+    pattern: Grover search on three qubits
+    topics: [grover, amplitude-amplification, oracle, success-probability]
+    companies: [IBM, Google Quantum AI, IonQ, Microsoft Azure Quantum]
+    modelAnswer: |
+      The register has N = 8 basis states and M = 1 is marked, so the Grover
+      rotation angle is theta = 2*arcsin(sqrt(M/N)) = 2*arcsin(1/sqrt(8)),
+      which is 0.722734248 radians, or 41.4096 degrees. After k iterations the
+      probability of measuring the marked state is sin((2k+1)*theta/2)^2.
+
+      Evaluate it rather than quoting the asymptotic form:
+
+          k = 0  ->  0.125
+          k = 1  ->  0.781250
+          k = 2  ->  0.945313
+          k = 3  ->  0.330078
+
+      So the answer is two iterations, giving 0.945 success. The continuous
+      optimum is pi/(2*theta) - 1/2 = 1.673408, and the nearest integer is 2. The
+      often-quoted (pi/4)*sqrt(N) = 2.2214 is the large-N approximation; at
+      N = 8 it still rounds to 2, but the exact formula is what you should
+      quote in an interview because it is what you would code.
+
+      The circuit is: Hadamard on all three qubits, then two rounds of
+      (oracle, diffusion), then measure.
+
+      ```python
+      import cirq
+
+      def grover(marked: int, iters: int = 2) -> cirq.Circuit:
+          q = cirq.LineQubit.range(3)
+          bits = [(marked >> (2 - i)) & 1 for i in range(3)]
+          c = cirq.Circuit(cirq.H.on_each(*q))
+          for _ in range(iters):
+              # phase oracle: X-conjugate so the marked pattern becomes |111>
+              c.append(cirq.X(q[i]) for i in range(3) if bits[i] == 0)
+              c.append(cirq.CCZ(*q))
+              c.append(cirq.X(q[i]) for i in range(3) if bits[i] == 0)
+              # diffusion
+              c.append(cirq.H.on_each(*q))
+              c.append(cirq.X.on_each(*q))
+              c.append(cirq.CCZ(*q))
+              c.append(cirq.X.on_each(*q))
+              c.append(cirq.H.on_each(*q))
+          return c
+      ```
+
+      Simulating with marked = 5, that is the state |101> with qubit 0 as the
+      most significant bit, gives P(|101>) = 0.945313 and 0.0078125 on each of
+      the other seven states, which sums to 1 exactly. Notice the third
+      iteration is actively harmful: it takes you back down to 0.330. Grover is
+      a rotation, not a ratchet, and you must stop.
+    followUps:
+      - Two items are marked instead of one. What changes and what is the new success probability?
+      - How would you get to certainty rather than 0.945 without changing N?
+      - Your oracle is given as a bit-flip oracle writing f(x) into an ancilla. How do you turn it into the phase oracle this circuit expects?
+    commonMistakes:
+      - Quoting (pi/4)*sqrt(N) as the iteration count without rounding it, or without noticing the exact formula is pi/(4*theta) - 1/2.
+      - Running three or more iterations on the assumption that more amplification is always better. At k = 3 the success probability collapses to 0.330.
+      - Encoding the marked state with the bitstring reversed. With qubit 0 as the most significant bit, marked = 5 is |101>, so qubit 1 is the one that gets the X conjugation.
+    references:
+      - label: Grover, A fast quantum mechanical algorithm for database search
+        url: https://arxiv.org/abs/quant-ph/9605043
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+
+  - id: iq-032
+    title: Write the phase oracle for a single marked bitstring
+    kind: coding
+    prompt: |
+      Given a three-bit target string, say 101, write the phase oracle that
+      maps |x> to -|x> when x equals the target and leaves every other basis
+      state alone. You may use X, H, CZ and CCZ, and you get no ancilla
+      qubits. Show that your circuit is diagonal, and say how the construction
+      generalises to n qubits.
+    difficulty: easy
+    pattern: Grover search on three qubits
+    topics: [oracle, phase-kickback, diagonal-unitaries, ccz]
+    companies: [IBM, Microsoft Azure Quantum, Quantinuum, IonQ]
+    modelAnswer: |
+      CCZ already is the oracle for the target 111: it multiplies |111> by -1
+      and fixes the other seven basis states. Every other target is CCZ
+      conjugated by X gates that relabel the target as 111.
+
+      Concretely, for target t with bits t0 t1 t2 (qubit 0 most significant),
+      apply X to every qubit i where ti = 0, then CCZ, then the same X gates
+      again. The first X layer maps |t> to |111>, CCZ stamps the minus sign,
+      and the second X layer undoes the relabelling. Since X is its own
+      inverse, the conjugation is exact, and because CCZ is diagonal the whole
+      product is diagonal in the computational basis: it can only apply phases,
+      never move amplitude between basis states.
+
+      ```python
+      import cirq
+
+      def phase_oracle(target: int, n: int = 3) -> cirq.Circuit:
+          q = cirq.LineQubit.range(n)
+          bits = [(target >> (n - 1 - i)) & 1 for i in range(n)]
+          flips = [cirq.X(q[i]) for i in range(n) if bits[i] == 0]
+          return cirq.Circuit(flips, cirq.Z(q[-1]).controlled_by(*q[:-1]), flips)
+      ```
+
+      Checking the diagonal directly: the unitary is diag(1,1,1,1,1,-1,1,1) for
+      target = 5, and the minus sits at index 5, which is |101> under the
+      convention that qubit 0 is the most significant bit. All eight diagonal
+      entries have modulus 1 and every off-diagonal entry is exactly zero.
+
+      For n qubits the same construction works with an (n-1)-controlled Z in
+      place of CCZ. That is where the cost lives: multi-controlled Z is not a
+      hardware primitive. Without ancillas a k-controlled gate costs O(k^2)
+      elementary gates by the Barenco construction, with one clean ancilla it
+      drops to O(k), and with k-2 dirty ancillas you can do it in a linear
+      number of Toffolis. On three qubits none of that matters, which is
+      exactly why three qubits is the teaching case and not the engineering
+      case.
+    followUps:
+      - Now mark two bitstrings at once. Can you still do it with a single multi-controlled gate?
+      - Your device has no CCZ. Decompose it into CNOT plus single-qubit gates and count the T gates.
+      - How do you test that an oracle handed to you as a black-box circuit really is diagonal?
+    commonMistakes:
+      - Using a bit-flip oracle that writes f(x) into an ancilla and then forgetting the Hadamard on the ancilla that converts it into a phase.
+      - Applying the X conjugation on only one side, which leaves the register permuted and silently corrupts every later iteration.
+      - Reversing the bit order, so target 101 marks index 5 in one convention and index 5 read backwards in the other. Only the asymmetric targets expose the bug.
+    references:
+      - label: Barenco et al, Elementary gates for quantum computation
+        url: https://arxiv.org/abs/quant-ph/9503016
+      - label: Microsoft Quantum Katas
+        url: https://github.com/microsoft/QuantumKatas
+
+  - id: iq-033
+    title: Build the diffusion operator and prove what it actually equals
+    kind: coding
+    prompt: |
+      Write the Grover diffusion operator for three qubits as
+      H^3 X^3 CCZ X^3 H^3 and then tell me precisely what matrix that circuit
+      implements. Is it 2|s><s| - I, where |s> is the uniform superposition?
+      Justify your answer with the actual matrix, not with a hand wave.
+    difficulty: easy
+    pattern: Grover search on three qubits
+    topics: [diffusion-operator, global-phase, reflection, grover]
+    companies: [IBM, Google Quantum AI, Quantinuum, Classiq]
+    modelAnswer: |
+      The circuit does not equal 2|s><s| - I. It equals minus that operator.
+      Simulating the eight by eight unitary and comparing entry by entry:
+
+          H^3 X^3 CCZ X^3 H^3  ==  -(2|s><s| - I)
+
+      is exact to machine precision, while the comparison against
+      +(2|s><s| - I) fails on every entry.
+
+      The reason is easy to see once you write the inner reflection properly.
+      X^3 CCZ X^3 is the diagonal operator that puts a minus sign on |000> and
+      leaves everything else alone, that is I - 2|000><000|. Conjugating by
+      H^3 sends |000> to |s>, so the circuit is I - 2|s><s|, which is exactly
+      the negative of the textbook diffusion operator 2|s><s| - I.
+
+      This does not matter for Grover. The two differ by a global phase of -1,
+      and after k iterations the accumulated factor is (-1)^k multiplying the
+      entire state, which is unobservable: every measurement probability is
+      identical. It matters enormously the moment the diffusion operator is
+      used as a controlled subroutine, because a controlled -(2|s><s| - I) is
+      not a controlled 2|s><s| - I. The relative phase between the control
+      branches is real and it will show up in the interference. Amplitude
+      estimation, which controls a Grover operator from a counting register, is
+      exactly where this bites.
+
+      The fix when you need the honest sign is a single Z on any one qubit
+      wrapped around the block, or equivalently a global phase gate, and on a
+      controlled version that becomes a phase gate on the control line.
+
+      ```python
+      import cirq
+
+      def diffusion() -> cirq.Circuit:
+          q = cirq.LineQubit.range(3)
+          return cirq.Circuit(
+              cirq.H.on_each(*q), cirq.X.on_each(*q),
+              cirq.CCZ(*q),
+              cirq.X.on_each(*q), cirq.H.on_each(*q),
+          )
+      ```
+    followUps:
+      - Where in an algorithm does the sign of the diffusion operator become observable?
+      - Rewrite the reflection about |s> using a multi-controlled X and an ancilla instead of CCZ. Does the sign change?
+      - The initial state is not uniform but produced by some A. What replaces H^3 in the reflection?
+    commonMistakes:
+      - Asserting the circuit equals 2|s><s| - I without checking, then being surprised when a controlled version of it produces the wrong interference pattern.
+      - Treating the global sign as always irrelevant. It is irrelevant only while the operator is applied unconditionally.
+      - Putting the X layer outside the H layer rather than inside, which reflects about |111> in the Hadamard basis and gives a different operator entirely.
+    references:
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+      - label: Cirq documentation
+        url: https://quantumai.google/cirq
+
+  - id: iq-034
+    title: Two marked items on three qubits reaches certainty
+    kind: coding
+    prompt: |
+      Same three-qubit register, but now the oracle marks two basis states
+      instead of one, say 011 and 110. How many Grover iterations do you run,
+      and what is the exact success probability? Explain why the answer is
+      surprising, and what it tells you about tuning Grover in general.
+    difficulty: medium
+    pattern: Grover search on three qubits
+    topics: [grover, multiple-solutions, exact-search, rotation-angle]
+    companies: [IBM, Google Quantum AI, IonQ, Quantinuum]
+    modelAnswer: |
+      With N = 8 and M = 2 the rotation angle is
+      theta = 2*arcsin(sqrt(2/8)) = 2*arcsin(1/2) = pi/3, exactly 1.0471976
+      radians. Success after k iterations is sin((2k+1)*theta/2)^2 =
+      sin((2k+1)*pi/6)^2:
+
+          k = 0  ->  0.25
+          k = 1  ->  1.000000000
+          k = 2  ->  0.25
+          k = 3  ->  0.25
+
+      One iteration gives certainty. Simulating the circuit confirms it: after
+      a single oracle plus diffusion, the amplitude on each of |011> and |110>
+      has modulus exactly 1/sqrt(2), giving probability 0.5 each and 1.0
+      combined, and every unmarked state has amplitude exactly zero, not merely
+      small.
+
+      This happens because M/N = 1/4 makes the initial angle theta/2 = pi/6 and
+      three rotations of pi/3 land exactly on the good subspace: 3*(pi/3) =
+      pi/2. Grover reaches certainty precisely when N/M = 4, which for a
+      three-qubit register means exactly two marked items. The lesson is not
+      that Grover is exact, it is that Grover's success probability is a
+      sinusoid in k with period set by M/N, and the peak is only at 1 when the
+      geometry happens to be commensurate.
+
+      The practical consequence is that you cannot tune k without knowing M.
+      Going from one marked item to two changes the answer from k = 2 to
+      k = 1, and running k = 2 with two marked items throws away three quarters
+      of the amplitude. When M is unknown you do not guess: you use the BBHT
+      exponential search, drawing k uniformly from [0, m) with m growing
+      geometrically by a factor around 6/5, which finds a solution in expected
+      O(sqrt(N/M)) queries without knowing M in advance.
+    followUps:
+      - What if four of the eight states are marked? Work out theta and k.
+      - Describe the BBHT schedule you would implement when M is unknown.
+      - How would you estimate M itself rather than just find one solution?
+    commonMistakes:
+      - Reusing the single-solution iteration count of 2 when M = 2, which drops success from 1.0 to 0.25.
+      - Assuming more marked items always make the problem easier for a fixed circuit. They make the rotation faster, so a fixed k can overshoot badly.
+      - Reporting 0.5 as the success probability because that is the probability of one specific marked state, when the question asks for the probability of finding any solution.
+    references:
+      - label: Grover, A fast quantum mechanical algorithm for database search
+        url: https://arxiv.org/abs/quant-ph/9605043
+      - label: Quantum Algorithm Zoo
+        url: https://quantumalgorithmzoo.org/
+
+  - id: iq-035
+    title: Convert a bit-flip oracle into a phase oracle
+    kind: coding
+    prompt: |
+      I hand you an oracle Uf that acts on three data qubits and one ancilla,
+      mapping |x>|b> to |x>|b xor f(x)>. Your Grover implementation needs a
+      phase oracle. Turn one into the other, explain exactly where the minus
+      sign comes from, and say what state the ancilla must be left in.
+    difficulty: medium
+    pattern: Grover search on three qubits
+    topics: [phase-kickback, oracle, ancilla, uncomputation]
+    companies: [IBM, Microsoft Azure Quantum, Google Quantum AI, Classiq]
+    modelAnswer: |
+      Prepare the ancilla in |-> = (|0> - |1>)/sqrt(2), which is X then H on a
+      fresh |0>. Then
+
+          Uf |x> |-> = |x> (|0 xor f(x)> - |1 xor f(x)>)/sqrt(2)
+                     = (-1)^f(x) |x> |->.
+
+      When f(x) = 0 the ancilla is untouched. When f(x) = 1 the two terms swap,
+      which is the same state multiplied by -1. The ancilla is unchanged in
+      both cases, so the minus sign has nowhere to go except onto the data
+      register. That is phase kickback, and it is the reason |-> is the right
+      ancilla state rather than |0> or |+>.
+
+      Two consequences matter in practice. First, the ancilla is still exactly
+      |-> at the end, unentangled with the data. You can reuse it across all
+      Grover iterations without resetting it, which saves a reset and its
+      associated latency on hardware that needs a measurement to reset. Second,
+      if Uf internally uses scratch qubits, they must be uncomputed before Uf
+      returns. Leaving scratch entangled with x turns the phase into which-path
+      information, decoheres the superposition, and Grover stops amplifying.
+      This is the single most common reason a hand-built oracle silently fails.
+
+      ```python
+      import cirq
+
+      def phase_from_bitflip(uf: cirq.Circuit, data, anc) -> cirq.Circuit:
+          return cirq.Circuit(
+              cirq.X(anc), cirq.H(anc),   # ancilla in |->
+              uf,
+              cirq.H(anc), cirq.X(anc),   # restore |0> at the very end only
+          )
+      ```
+
+      The wrapping H and X at the end are only needed once, after the final
+      iteration, if you want the ancilla back in |0>. Inside the loop you leave
+      it in |->.
+
+      A quick diagnostic: run the composed circuit on a uniform superposition
+      and take the partial trace over the ancilla. If the data register is not
+      pure, the oracle has leaked scratch and needs uncomputation.
+    followUps:
+      - Show the same trick for an oracle that computes a multi-bit function into a register.
+      - How would you detect, at runtime, that an oracle has failed to uncompute its scratch?
+      - What is the cost of uncomputation, and when is it cheaper to use measurement-based uncomputation instead?
+    commonMistakes:
+      - Preparing the ancilla in |0> or |+> and expecting a phase. Only |-> produces the kickback.
+      - Resetting the ancilla between Grover iterations, which is wasted work because Uf leaves |-> invariant.
+      - Forgetting to uncompute scratch qubits inside the oracle, which entangles them with the data and destroys the interference.
+    references:
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+      - label: Microsoft Quantum Katas
+        url: https://github.com/microsoft/QuantumKatas
+
+  - id: iq-036
+    title: Explain and demonstrate Grover overshoot
+    kind: coding
+    prompt: |
+      A colleague reports that their three-qubit Grover search "gets worse the
+      longer it runs" and asks whether the hardware is broken. They are running
+      six iterations on a noiseless simulator with one marked item. Diagnose
+      it, give them the exact numbers, and tell them the rule they should have
+      applied.
+    difficulty: medium
+    pattern: Grover search on three qubits
+    topics: [grover, overshoot, rotation, debugging]
+    companies: [IBM, IonQ, Q-CTRL, Google Quantum AI]
+    modelAnswer: |
+      Nothing is broken. Grover is a rotation in the two-dimensional plane
+      spanned by the marked state and the uniform superposition of the unmarked
+      states, and each iteration rotates by a fixed angle theta = 0.722734248
+      radians. Success probability is sin((2k+1)*theta/2)^2, a sinusoid, so it
+      rises, peaks, and falls.
+
+      The exact values on a noiseless simulator, one marked item, N = 8:
+
+          k = 0  ->  0.125000000
+          k = 1  ->  0.781250000
+          k = 2  ->  0.945312500
+          k = 3  ->  0.330078125
+          k = 4  ->  0.012207031
+          k = 5  ->  0.547973633
+          k = 6  ->  0.999786377
+
+      At six iterations they happen to be getting 0.999786, but that is luck:
+      had they stopped at four they would have measured the
+      marked state 1.2 percent of the time, which is worse than a uniform
+      random guess. The curve is periodic in k with period 2*pi/theta = 8.694,
+      so it comes back up again, which is why the symptom looks erratic rather
+      than monotone.
+
+      The rule: k = floor(pi/(4*arcsin(sqrt(M/N)))), or
+      equivalently round(pi/(4*arcsin(sqrt(M/N))) - 1/2). For N = 8, M = 1 both
+      give 2, since pi/(4*arcsin(sqrt(1/8))) = 2.173408. Never run more than that "just to be
+      safe". On real hardware overshoot and decoherence pull in the same
+      direction, so the practical optimum is at or below the ideal k, never
+      above.
+
+      The right diagnostic to hand them is a sweep: run k = 0 through 8, plot
+      success against k, and confirm the sinusoid. If the measured curve has
+      the right period but a damped envelope, that is noise. If it has the
+      wrong period, the oracle is marking a different number of states than
+      they think.
+    followUps:
+      - The measured curve has the right shape but the peak is at 0.62 rather than 0.945. What do you check first?
+      - How would you use the observed period of the curve to estimate how many states the oracle actually marks?
+      - Is there a variant of Grover that does not overshoot?
+    commonMistakes:
+      - Blaming hardware for a purely algorithmic effect that reproduces exactly on a noiseless simulator.
+      - Believing success probability increases monotonically with iterations, which is true only up to the first peak.
+      - Using the large-N form (pi/4)*sqrt(N) at N = 8 without checking that it rounds to the same integer as the exact expression.
+    references:
+      - label: Grover, A fast quantum mechanical algorithm for database search
+        url: https://arxiv.org/abs/quant-ph/9605043
+      - label: PennyLane Codebook
+        url: https://pennylane.ai/codebook
+
+  - id: iq-037
+    title: Decompose CCZ for a device with only CNOT and single-qubit gates
+    kind: coding
+    prompt: |
+      Your target device exposes CNOT, arbitrary single-qubit rotations, and
+      nothing else. Both the Grover oracle and the diffusion operator need CCZ.
+      Give a concrete decomposition, count the two-qubit gates and the T gates,
+      and tell me what the whole two-iteration Grover circuit costs.
+    difficulty: medium
+    pattern: Grover search on three qubits
+    topics: [gate-decomposition, t-count, clifford-t, resource-counting]
+    companies: [IBM, Rigetti, Quantinuum, IonQ]
+    modelAnswer: |
+      CCZ is a Toffoli conjugated by Hadamards on the target: CCZ(a,b,c) =
+      H(c) CCX(a,b,c) H(c). I verified this identity numerically; the two eight
+      by eight unitaries agree to machine precision.
+
+      The standard ancilla-free Toffoli is the seven-T, six-CNOT circuit:
+
+          H(c)
+          CX(b,c) Tdg(c) CX(a,c) T(c) CX(b,c) Tdg(c) CX(a,c) T(b) T(c)
+          H(c) CX(a,b) T(a) Tdg(b) CX(a,b)
+
+      I built that circuit and compared it against CCX directly: it matches
+      exactly, with T-count 7 and CNOT-count 6. Since CCZ is the same circuit
+      with the outer Hadamards cancelled against the ones already present, CCZ
+      also costs 6 CNOTs and 7 T gates. T-depth is 3 for this arrangement; if
+      you need T-depth 1 you pay for it with ancillas.
+
+      Now the whole Grover circuit. Two iterations, each with one oracle CCZ
+      and one diffusion CCZ, is four CCZ instances:
+
+          two-qubit gates: 4 * 6 = 24 CNOTs
+          T gates:         4 * 7 = 28
+          single-qubit Clifford: 3 initial H, plus per iteration 6 H and up to
+                                 10 X for the oracle conjugation and 6 X for
+                                 the diffusion
+
+      Twenty-four CNOTs is the number that decides whether this runs. On a
+      device with 1 percent two-qubit error, the circuit fidelity ceiling is
+      roughly 0.99^24 = 0.785 before you account for readout or idling, which
+      is already below the 0.945 algorithmic success probability. That is the
+      honest answer to "will Grover on three qubits beat random guessing on
+      your hardware": it depends almost entirely on the two-qubit error rate,
+      not on the algorithm.
+
+      If the device has a native CZ or a native Molmer-Sorensen gate, say so
+      and re-derive: with a native three-body interaction, as trapped-ion
+      systems can offer, the CCZ cost collapses and the analysis changes.
+    followUps:
+      - The device has one spare qubit. How much does an ancilla save you on the multi-controlled gate?
+      - Rewrite the count for a device whose native two-qubit gate is CZ rather than CNOT.
+      - At what two-qubit error rate does the three-qubit Grover circuit stop beating a uniform random guess?
+    commonMistakes:
+      - Quoting a T-count for the Toffoli from memory without stating the decomposition it belongs to. Different constructions trade T-count against T-depth and ancillas.
+      - Counting the oracle CCZ but forgetting the diffusion CCZ, halving the true cost.
+      - Ignoring that the X conjugation layers are free in gate count terms but not in depth on hardware with slow single-qubit gates.
+    references:
+      - label: Barenco et al, Elementary gates for quantum computation
+        url: https://arxiv.org/abs/quant-ph/9503016
+      - label: Amy, Maslov and Mosca, Polynomial-time T-depth Optimization of Clifford+T circuits via Matroid Partitioning
+        url: https://arxiv.org/abs/1303.2042
+
+  - id: iq-038
+    title: Generalise to amplitude amplification with a non-uniform start
+    kind: coding
+    prompt: |
+      Grover assumes you start from the uniform superposition. Suppose instead
+      you have a state preparation circuit A that produces a state with
+      amplitude a on the good subspace, where a is not 1/sqrt(N). Write the
+      amplification operator, give the iteration count in terms of a, and work
+      a numeric example.
+    difficulty: hard
+    pattern: Grover search on three qubits
+    topics: [amplitude-amplification, oracle, reflection, generalisation]
+    companies: [IBM, Google Quantum AI, Classiq, Quantinuum]
+    modelAnswer: |
+      Replace the reflection about the uniform state with a reflection about
+      A|0>. The amplification operator is
+
+          Q = -A S_0 A^dagger S_f
+
+      where S_f is the phase oracle flipping the sign of the good subspace and
+      S_0 = I - 2|0><0| flips the sign of the all-zero state. When A = H^n this
+      reduces exactly to the usual Grover operator, which is the sanity check
+      you should state.
+
+      The geometry is unchanged: Q rotates by theta = 2*arcsin(a) in the plane
+      spanned by the normalised good and bad components of A|0>. The optimal
+      iteration count is k = round(pi/(2*theta) - 1/2) and the success
+      probability is sin((2k+1)*theta/2)^2.
+
+      Three worked cases, computed rather than recalled:
+
+          a = 1/sqrt(8) = 0.353553  ->  theta = 0.722734, k = 2, P = 0.945313
+          a = 0.5                   ->  theta = 1.047198, k = 1, P = 1.000000
+          a = 0.9                   ->  theta = 2.239539, k = 0, P = 0.810000
+
+      The last row is the interesting one. When a is already large the optimal
+      number of amplification rounds is zero: A|0> is closer to the good
+      subspace than one rotation would leave it, and applying Q overshoots past
+      the target. A good preparation circuit can make amplification pointless,
+      and candidates who reflexively "apply Grover" miss that.
+
+      The cost accounting also changes. Each Q costs one oracle call plus two
+      applications of A, so if A is expensive the query complexity in oracle
+      calls is still O(1/a) but the gate complexity is O(cost(A)/a). This is
+      exactly the trade in QAOA-warm-started search and in amplitude estimation,
+      where A is a whole state-preparation subroutine rather than a Hadamard
+      layer.
+
+      One practical warning: A^dagger must be the exact inverse. If A contains
+      a measurement, a reset, or any non-unitary step, Q is not well defined and
+      the algorithm silently degrades rather than failing loudly.
+    followUps:
+      - How does this change if you only know a to within a factor of two?
+      - Derive the query complexity of amplitude estimation from this operator.
+      - What happens to Q if A is only approximately invertible on hardware?
+    commonMistakes:
+      - Reflecting about the uniform state rather than about A|0>, which makes the two reflections non-commuting in the wrong way and stops the rotation from closing.
+      - Forgetting that Q costs two calls to A per iteration, so the gate count is not the same as the query count.
+      - Applying at least one iteration by reflex even when a is already close to 1, which reduces success probability.
+    references:
+      - label: Quantum Algorithm Zoo
+        url: https://quantumalgorithmzoo.org/
+      - label: Gilyen et al, Quantum singular value transformation and beyond
+        url: https://arxiv.org/abs/1806.01838
+
+  - id: iq-039
+    title: Grover under depolarising noise, with numbers
+    kind: coding
+    prompt: |
+      Model each Grover iteration on your three-qubit register as followed by a
+      global depolarising channel with parameter eps. Compute the success
+      probability at the optimal iteration count as a function of eps, and tell
+      me at what eps the algorithm stops being worth running.
+    difficulty: hard
+    pattern: Grover search on three qubits
+    topics: [depolarising-noise, density-matrix, grover, noise-analysis]
+    companies: [IBM, Q-CTRL, Google Quantum AI, Rigetti]
+    modelAnswer: |
+      Model the state as a density matrix and apply, after each Grover step G,
+      the channel rho -> (1-eps)*rho + eps*I/8. Because the channel is a convex
+      mixture with the maximally mixed state and G is unitary, the two commute
+      in the sense that mixing survives every later step untouched: after k
+      iterations the state is (1-eps)^k * G^k rho0 (G^k)^dagger plus a mixture
+      of maximally mixed contributions.
+
+      Simulating this exactly for one marked item, marked = 5:
+
+          eps = 0.00  ->  k=1: 0.781250  k=2: 0.945313  k=3: 0.330078
+          eps = 0.01  ->  k=1: 0.774687  k=2: 0.928988  k=3: 0.323987
+          eps = 0.05  ->  k=1: 0.748437  k=2: 0.865332  k=3: 0.300829
+          eps = 0.10  ->  k=1: 0.715625  k=2: 0.789453  k=3: 0.274502
+          eps = 0.20  ->  k=1: 0.650000  k=2: 0.650000  k=3: 0.230000
+          eps = 0.50  ->  k=1: 0.453125  k=2: 0.330078  k=3: 0.150635
+
+      Read the eps = 0.20 row carefully. One iteration and two iterations give
+      identical success, 0.650. That is the crossover: above eps = 0.2 the
+      second iteration costs more in decoherence than it gains in amplitude, so
+      the optimal k drops from 2 to 1. This is the general shape of noisy
+      Grover: the optimal depth is set by noise, not by the algorithm, and it
+      falls as noise rises.
+
+      For "worth running", pick a baseline. A single classical query succeeds
+      with probability 1/8 = 0.125. Grover at k = 2 stays above 0.25, which is
+      twice the classical single-query rate, until eps = 0.6096. That number is
+      deceptively encouraging: it comes from a global depolarising model that
+      never produces coherent errors. Real devices have coherent over-rotation
+      and crosstalk, which accumulate quadratically rather than linearly, so the
+      practical cliff arrives far earlier.
+
+      The honest framing for an interview: at three qubits Grover is a
+      calibration test, not an application. It has 24 CNOTs after decomposition,
+      and a 1 percent two-qubit error already caps circuit fidelity near 0.785.
+    followUps:
+      - Redo the analysis with per-gate depolarising noise rather than per-iteration.
+      - How would zero-noise extrapolation change the picture, and what does it cost in shots?
+      - Coherent over-rotation instead of depolarising noise. Does the optimal k still drop?
+    commonMistakes:
+      - Simulating with pure states and adding noise as a scalar fidelity multiplier, which misses that the optimal iteration count itself shifts.
+      - Comparing noisy Grover against the ideal 0.945 rather than against a classical baseline, which is the only comparison that answers the question asked.
+      - Treating depolarising noise as representative. It is the friendliest noise model there is, and it flatters the algorithm.
+    references:
+      - label: Preskill, Quantum Computing in the NISQ era and beyond
+        url: https://arxiv.org/abs/1801.00862
+      - label: Temme, Bravyi and Gambetta, Error mitigation for short-depth quantum circuits
+        url: https://arxiv.org/abs/1612.02058
+
+  - id: iq-040
+    title: Verify a Grover implementation someone else wrote
+    kind: coding
+    prompt: |
+      You inherit a three-qubit Grover implementation with no tests. It runs,
+      it returns plausible bitstrings, and the author has left. Design the test
+      suite that convinces you it is correct, and tell me which single test you
+      would write first if you only had time for one.
+    difficulty: hard
+    pattern: Grover search on three qubits
+    topics: [testing, verification, oracle, debugging]
+    companies: [IBM, Microsoft Azure Quantum, Classiq, Quantinuum]
+    modelAnswer: |
+      The single most valuable test is a full sweep of the marked index against
+      the measured distribution. Run the implementation for every marked value
+      0 through 7 at the optimal k = 2 and assert that the argmax of the
+      distribution equals the marked value and that its probability is
+      0.945313 to within simulation tolerance, with each of the other seven
+      states at 0.0078125. This one test catches the three highest-frequency
+      bugs at once: an oracle that marks the bit-reversed index, an oracle that
+      marks the wrong state entirely, and an iteration count that is off.
+
+      A symmetric marked value such as 000 or 111 will pass even with the bit
+      order reversed, so the sweep must include asymmetric values like 101 and
+      011. That is the reason to sweep rather than to spot-check.
+
+      The rest of the suite, in order of value:
+
+      1. Iteration sweep. Run k = 0 through 6 with one marked item and assert
+         the sequence 0.125, 0.781250, 0.945313, 0.330078, 0.012207, 0.547974,
+         0.999786. Matching the whole sinusoid pins down the rotation angle,
+         which pins down the oracle and the diffusion together.
+      2. Oracle diagonality. Extract the oracle unitary and assert every
+         off-diagonal entry is zero and every diagonal entry has modulus 1 with
+         exactly one entry equal to -1.
+      3. Diffusion identity. Assert the diffusion unitary equals I - 2|s><s|,
+         and record explicitly that this is the negative of 2|s><s| - I so
+         nobody later "fixes" the sign.
+      4. Two marked items. Assert that marking 011 and 110 with k = 1 gives
+         probability 1.0 on the two marked states and exactly zero elsewhere.
+         An exact-zero assertion is a very strong test of the interference.
+      5. Ancilla hygiene, if the oracle uses one. Trace out the ancilla and
+         assert the data register is pure.
+      6. Unitarity. Assert U^dagger U = I to 1e-12 on the whole circuit, which
+         catches an accidental measurement or reset in the middle.
+
+      Note what is not on the list: sampling. Shot-based tests on a simulator
+      buy nothing except flakiness. Use exact statevectors for correctness and
+      save sampling for the separate question of whether the hardware run
+      matches the simulator.
+    followUps:
+      - How would you adapt this suite to run against hardware rather than a simulator?
+      - Which of these tests would you keep in a fast pre-commit hook, and which in a nightly job?
+      - The implementation is parameterised over n. What changes in the suite?
+    commonMistakes:
+      - Testing only the symmetric marked values 000 and 111, which are invariant under bit reversal and hide the most common convention bug.
+      - Using shot-based assertions on a simulator, which makes tests flaky without testing anything the statevector does not already tell you.
+      - Testing the end-to-end success probability only, so that an oracle bug and a diffusion sign bug that cancel each other go undetected.
+    references:
+      - label: Microsoft Quantum Katas
+        url: https://github.com/microsoft/QuantumKatas
+      - label: IBM Quantum Learning courses
+        url: https://quantum.cloud.ibm.com/learning/en/courses

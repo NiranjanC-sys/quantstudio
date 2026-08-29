@@ -1,35 +1,45 @@
 /*
- * Design tokens, transcribed from DESIGN.md.
+ * The web app does not own a palette.
  *
- * Light theme lives on bare :root. Dark is redefined under BOTH the media
- * query (guarded so an explicit light choice wins) and the explicit
- * [data-theme="dark"] attribute, so the toggle wins in both directions. No
- * colour is ever defined only inside a media query.
+ * It consumes @redquant/design, which derives every value from DESIGN.md and
+ * enforces the contrast floor with 205 tests. This file only maps that
+ * package's --rq-* names onto the shorter names the app's stylesheet uses, so
+ * there is exactly one place a colour is decided.
+ *
+ * Aliases reference the tokens rather than copying them, so every theme switch
+ * the package performs propagates here for free.
  */
 
-:root {
-  color-scheme: light dark;
+@import '@redquant/design/tokens.css';
 
-  --canvas: #FBFAF8;
-  --surface-1: #FFFFFF;
-  --surface-2: #F4F2EE;
-  --surface-3: #EAE7E1;
-  --surface-inset: #F7F5F1;
-  --hairline: #E2DED7;
-  --hairline-strong: #CFC9C0;
-  --ink: #131518;
-  --ink-muted: #4A4F57;
-  --ink-subtle: #6E747D;
-  --ink-faint: #9AA0A8;
-  --accent: #E23A10;
-  --accent-hover: #C7300B;
-  --accent-press: #A82808;
-  --accent-wash: rgba(226, 58, 16, 0.08);
-  --on-accent: #FFFFFF;
-  --success: #1E7A4C;
-  --warning: #A56F0E;
-  --danger: #C0392F;
-  --info: #2A6BA8;
+:root {
+  --canvas: var(--rq-canvas);
+  --surface-1: var(--rq-surface-1);
+  --surface-2: var(--rq-surface-2);
+  --surface-3: var(--rq-surface-3);
+  --surface-inset: var(--rq-surface-inset);
+  --hairline: var(--rq-hairline);
+  --hairline-strong: var(--rq-hairline-strong);
+
+  --ink: var(--rq-ink);
+  --ink-muted: var(--rq-ink-muted);
+  --ink-subtle: var(--rq-ink-subtle);
+  --ink-faint: var(--rq-ink-faint);
+
+  /* `accent` is the indicator hue. `accent-strong` is the one that is legible
+     as text and as a button ground in both themes, which in light mode is a
+     darker derivation. Anything a reader has to read uses accent-strong. */
+  --accent: var(--rq-accent);
+  --accent-strong: var(--rq-accent-strong);
+  --accent-hover: var(--rq-accent-hover);
+  --accent-press: var(--rq-accent-press);
+  --accent-wash: var(--rq-accent-wash);
+  --on-accent: var(--rq-on-accent);
+
+  --success: var(--rq-success);
+  --warning: var(--rq-warning);
+  --danger: var(--rq-danger);
+  --info: var(--rq-info);
 
   --radius-xs: 4px;
   --radius-sm: 6px;
@@ -52,82 +62,48 @@
   --font-mono: var(--font-plex-mono), 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --canvas: #08090B;
-    --surface-1: #0E1013;
-    --surface-2: #14171B;
-    --surface-3: #1A1E23;
-    --surface-inset: #0A0B0D;
-    --hairline: #22262C;
-    --hairline-strong: #2F343B;
-    --ink: #F4F5F7;
-    --ink-muted: #B4BAC3;
-    --ink-subtle: #7C848F;
-    --ink-faint: #525963;
-    --accent: #FF4A1C;
-    --accent-hover: #FF6740;
-    --accent-press: #E23A10;
-    --accent-wash: rgba(255, 74, 28, 0.10);
-    --on-accent: #0A0A0A;
-    --success: #2FA36B;
-    --warning: #D99420;
-    --danger: #E2453B;
-    --info: #3D8BD4;
-  }
-}
-
-:root[data-theme='dark'] {
-  --canvas: #08090B;
-  --surface-1: #0E1013;
-  --surface-2: #14171B;
-  --surface-3: #1A1E23;
-  --surface-inset: #0A0B0D;
-  --hairline: #22262C;
-  --hairline-strong: #2F343B;
-  --ink: #F4F5F7;
-  --ink-muted: #B4BAC3;
-  --ink-subtle: #7C848F;
-  --ink-faint: #525963;
-  --accent: #FF4A1C;
-  --accent-hover: #FF6740;
-  --accent-press: #E23A10;
-  --accent-wash: rgba(255, 74, 28, 0.10);
-  --on-accent: #0A0A0A;
-  --success: #2FA36B;
-  --warning: #D99420;
-  --danger: #E2453B;
-  --info: #3D8BD4;
-}
-
 /*
  * Register lock. DESIGN.md defines two registers, and THE INSTRUMENT (the lab,
  * the builder, contests, dashboards) is a near-black laboratory surface by
  * definition. The reader's light or dark preference governs THE MONOGRAPH
- * (lessons and theory), not this. Scoping the dark palette to the register
- * rather than to the document keeps both registers correct on one site.
+ * (lessons and theory), not this. Pinning data-theme on the subtree makes the
+ * design package resolve its own dark palette here, so the instrument never
+ * carries a second copy of the colours.
  */
 [data-register='instrument'] {
-  --canvas: #08090B;
-  --surface-1: #0E1013;
-  --surface-2: #14171B;
-  --surface-3: #1A1E23;
-  --surface-inset: #0A0B0D;
-  --hairline: #22262C;
-  --hairline-strong: #2F343B;
-  --ink: #F4F5F7;
-  --ink-muted: #B4BAC3;
-  --ink-subtle: #7C848F;
-  --ink-faint: #525963;
-  --accent: #FF4A1C;
-  --accent-hover: #FF6740;
-  --accent-press: #E23A10;
-  --accent-wash: rgba(255, 74, 28, 0.10);
-  --on-accent: #0A0A0A;
-  --success: #2FA36B;
-  --warning: #D99420;
-  --danger: #E2453B;
-  --info: #3D8BD4;
+  /* Copied from the design package's dark block at build time by
+     scripts/sync-instrument-tokens.mjs; do not hand edit. */
+  --rq-canvas: #08090b;
+  --rq-surface-1: #0e1013;
+  --rq-surface-2: #14171b;
+  --rq-surface-3: #1a1e23;
+  --rq-surface-inset: #0a0b0d;
+  --rq-hairline: #22262c;
+  --rq-hairline-strong: #2f343b;
+  --rq-ink: #f4f5f7;
+  --rq-ink-muted: #b4bac3;
+  --rq-ink-subtle: #7c848f;
+  --rq-ink-faint: #525963;
+  --rq-accent: #ff4a1c;
+  --rq-accent-strong: #ff4a1c;
+  --rq-accent-hover: #ff6740;
+  --rq-accent-press: #e23a10;
+  --rq-accent-wash: rgba(255, 74, 28, 0.1);
+  --rq-on-accent: #0a0a0a;
+  --rq-success: #2fa36b;
+  --rq-success-strong: #2fa36b;
+  --rq-success-wash: rgba(47, 163, 107, 0.1);
+  --rq-warning: #d99420;
+  --rq-warning-strong: #d99420;
+  --rq-warning-wash: rgba(217, 148, 32, 0.1);
+  --rq-danger: #e2453b;
+  --rq-danger-strong: #e4473d;
+  --rq-danger-wash: rgba(226, 69, 59, 0.1);
+  --rq-info: #3d8bd4;
+  --rq-info-strong: #3d8bd4;
+  --rq-info-wash: rgba(61, 139, 212, 0.1);
+  --rq-shadow-panel: none;
+  --rq-shadow-overlay: 0 16px 40px -12px rgba(0, 0, 0, 0.72);
 
   color-scheme: dark;
   background: var(--canvas);

@@ -1,0 +1,234 @@
+---
+id: t1.m9.l2
+title: Rotate, Compute, Rotate
+type: concept
+track: t1
+module: t1.m9
+level: L1
+minutes: 14
+objectives:
+  - Recognise the Hadamard-oracle-Hadamard sandwich as a change of basis around a computation
+  - Apply the pattern to derive the output of a one-qubit phase oracle
+  - Explain why the second rotation is what converts phases into measurable amplitudes
+prerequisites:
+  - t1.m9.l1
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: Matuschak & Nielsen, Quantum Computing for the Very Curious
+    url: https://quantum.country/qcvc
+tags: [phase, pattern]
+---
+
+Look at the circuit for Deutsch, Deutsch-Jozsa, Bernstein-Vazirani, Simon,
+Grover's diffuser and the quantum Fourier transform side by side and one shape
+repeats: a layer of Hadamards, something, a layer of Hadamards. It is not a
+coincidence or a convention. It is a single design pattern with a clean reason
+behind it, and once you see it the four algorithms in T1.M10 stop being four
+things to memorise.
+
+## The pattern
+
+$$
+\text{output} = R\dg \, C \, R \, \ket{0 \cdots 0}
+$$
+
+**Rotate.** Apply $R = H^{\otimes n}$ to $\ket{0 \cdots 0}$. This produces the
+uniform superposition $\frac{1}{\sqrt{2^n}} \sum_x \ket{x}$, so every input to the
+computation is present at once, with equal amplitude and equal phase.
+
+**Compute.** Apply the operation you want to learn about. In this module it is
+always a phase oracle: a diagonal unitary that leaves every basis state where it
+is and attaches a sign or a phase, $O_f\ket{x} = (-1)^{f(x)}\ket{x}$. Nothing
+about the *probabilities* changed. Every basis state still has magnitude
+$1/\sqrt{2^n}$.
+
+**Rotate back.** Apply $H^{\otimes n}$ again. Hadamard is its own inverse, so this
+returns to the computational basis, and in doing so it turns the phase pattern
+into an amplitude pattern that a measurement can see.
+
+<Margin label="Why Hadamard twice">
+$H^{\otimes n}$ is a change of basis between the computational basis and the
+$\{\ket{+}, \ket{-}\}^{\otimes n}$ basis. Sandwiching an operator between $R$ and
+$R\dg$ is conjugation, the standard way of asking "what does this operator look
+like in the other basis". Phase kickback is what makes the middle operator
+diagonal in the first basis, so the conjugation is worth doing.
+</Margin>
+
+## The one-qubit case, in full
+
+One qubit and one Boolean function $f: \{0,1\} \to \{0,1\}$. There are four such
+functions, and each gives a diagonal phase oracle:
+
+| $f$ | $(-1)^{f(0)}, (-1)^{f(1)}$ | $O_f$ | type |
+| --- | --- | --- | --- |
+| $f(x) = 0$ | $+1, +1$ | $I$ | constant |
+| $f(x) = 1$ | $-1, -1$ | $-I$ | constant |
+| $f(x) = x$ | $+1, -1$ | $Z$ | balanced |
+| $f(x) = 1 - x$ | $-1, +1$ | $-Z$ | balanced |
+
+Run the sandwich on the constant case $O_f = I$. Then $HIH = H^2 = I$, so the
+output is $\ket{0}$ and the measurement returns 0 with certainty.
+
+<Circuit
+  caption="Rotate, do nothing, rotate back. The two Hadamards cancel and the qubit returns to |0>."
+  show={['probabilities']}
+  ir={{
+    version: 1,
+    name: "sandwich-constant",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "r1", gate: "h", targets: [0] },
+      { id: "r2", gate: "h", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+Now the balanced case $O_f = Z$. Work it out on paper first:
+
+$$
+HZH = \half
+\begin{pmatrix} 1 & 1 \\ 1 & -1 \end{pmatrix}
+\begin{pmatrix} 1 & 0 \\ 0 & -1 \end{pmatrix}
+\begin{pmatrix} 1 & 1 \\ 1 & -1 \end{pmatrix}
+= \half \begin{pmatrix} 1 & 1 \\ 1 & -1 \end{pmatrix}
+\begin{pmatrix} 1 & 1 \\ -1 & 1 \end{pmatrix}
+= \begin{pmatrix} 0 & 1 \\ 1 & 0 \end{pmatrix} = X.
+$$
+
+So the whole sandwich is an $X$ gate and the output is $\ket{1}$ with certainty.
+
+<Circuit
+  caption="Rotate, apply the balanced oracle Z, rotate back. H Z H equals X, so the outcome is 1."
+  show={['probabilities']}
+  ir={{
+    version: 1,
+    name: "sandwich-balanced",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "r1", gate: "h", targets: [0] },
+      { id: "o", gate: "z", targets: [0] },
+      { id: "r2", gate: "h", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+Constant gives 0 with certainty, balanced gives 1 with certainty, and the oracle
+was consulted once. The two remaining functions differ from these by an overall
+minus sign, which is a global phase and changes nothing. One query decides a
+property that classically needs two.
+
+## Delete the second rotation and it all vanishes
+
+This is the experiment that shows the last Hadamard is not decoration. Run the
+identical circuits with the final $H$ removed.
+
+<Simulate
+  show="probabilities"
+  ir={{
+    version: 1,
+    name: "no-second-rotation-balanced",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "r1", gate: "h", targets: [0] },
+      { id: "o", gate: "z", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $0$ | $0.500000$ |
+| $1$ | $0.500000$ |
+
+</Simulate>
+
+<Simulate
+  show="probabilities"
+  ir={{
+    version: 1,
+    name: "no-second-rotation-constant",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "r1", gate: "h", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $0$ | $0.500000$ |
+| $1$ | $0.500000$ |
+
+</Simulate>
+
+Two identical distributions. The oracle ran, the phase is sitting there in the
+statevector, and the measurement cannot see it. Switch either figure to the
+amplitude view and the difference is plain: the balanced run has amplitudes
+$+0.7071$ and $-0.7071$, the constant run has $+0.7071$ and $+0.7071$. The Born
+rule squares the magnitude and the sign dies.
+
+<Callout tone="note" title="The three steps, restated as jobs">
+The first rotation makes every input present. The oracle writes the answer into
+relative phases, where measurement cannot reach it. The second rotation is a
+change of basis into one where those phases have become amplitudes. Skip any one
+of the three and you have a random number generator.
+</Callout>
+
+## Scaling the pattern
+
+Nothing above used $n = 1$. Take two qubits and the phase oracle
+$O_s\ket{x} = (-1)^{s \cdot x}\ket{x}$ for a hidden string $s$, which on two
+qubits is $Z$ applied to the positions where $s$ has a 1. For $s = 11$ that is
+$Z \otimes Z$:
+
+<Circuit
+  caption="Rotate, apply Z to both qubits, rotate back. The output is the basis state |11>, which is the hidden string."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "sandwich-bv-11",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "r0", gate: "h", targets: [0] },
+      { id: "r1", gate: "h", targets: [1] },
+      { id: "o0", gate: "z", targets: [0] },
+      { id: "o1", gate: "z", targets: [1] },
+      { id: "s0", gate: "h", targets: [0] },
+      { id: "s1", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+Output $\ket{11}$ with probability 1. Apply $Z$ to qubit 0 only and the output is
+$\ket{10}$; apply it to qubit 1 only and the output is $\ket{01}$; apply neither
+and the output is $\ket{00}$. The sandwich reads the hidden string off in one
+query, which is Bernstein-Vazirani, three lessons early.
+
+<Check question="You run the sandwich but replace the second $H^{\otimes n}$ with $H^{\otimes n}$ applied to only the first qubit of two. What goes wrong?">
+The unmeasured qubit is left in the $\pm$ basis, so its phase information never
+becomes amplitude information and its measurement is a fair coin regardless of the
+oracle. In the $s = 11$ figure you would read qubit 0 as 1 with certainty and
+qubit 1 as $\tfrac12$ and $\tfrac12$, so you learn one bit of $s$ instead of two.
+The rotation has to cover every qubit whose phase the oracle touched, which is why
+the layer is written $H^{\otimes n}$ and not $H$ on the qubit you happen to care
+about.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), whose
+  lecture on this pattern is where the name "rotate, compute, rotate" comes from,
+  and which uses it as the organising idea for the whole oracle-algorithm section.
+- [Matuschak & Nielsen, *Quantum Computing for the Very Curious*](https://quantum.country/qcvc),
+  for the insistence that the last rotation is the step learners skip and the
+  step that does the work.

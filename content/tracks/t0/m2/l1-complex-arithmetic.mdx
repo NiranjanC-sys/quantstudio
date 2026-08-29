@@ -29,8 +29,7 @@ rotation is multiplication.
 
 ## Rectangular form and the one new rule
 
-A complex number is a pair of reals written $z = a + bi$, with $a =
-\operatorname{Re} z$ and $b = \operatorname{Im} z$. Addition is componentwise.
+A complex number is a pair of reals written $z = a + bi$, with $a = \operatorname{Re} z$ and $b = \operatorname{Im} z$. Addition is componentwise.
 Multiplication is ordinary expansion plus one substitution, $i^2 = -1$:
 
 $$
@@ -111,17 +110,14 @@ r_1(\cos\theta_1 + i\sin\theta_1) \cdot r_2(\cos\theta_2 + i \sin\theta_2)
 = r_1 r_2 \big[\cos(\theta_1+\theta_2) + i \sin(\theta_1 + \theta_2)\big].
 $$
 
-Moduli multiply, arguments add. Check it on our example: $\arg z + \arg w =
-0.927295 - 1.107149 = -0.179853$, and $\arg(11 - 2i) =
-\operatorname{atan2}(-2, 11) = -0.179853$. They agree to every digit shown.
+Moduli multiply, arguments add. Check it on our example: $\arg z + \arg w = 0.927295 - 1.107149 = -0.179853$, and $\arg(11 - 2i) = \operatorname{atan2}(-2, 11) = -0.179853$. They agree to every digit shown.
 
 ## The multiplicative property of the modulus
 
 The claim $|zw| = |z||w|$ deserves a proof, because everything about
 normalisation in T1 depends on it.
 
-**Proof.** Conjugation distributes over products, $\overline{zw} = \bar z \bar
-w$, which you can check by expanding both sides. Then
+**Proof.** Conjugation distributes over products, $\overline{zw} = \bar z \bar w$, which you can check by expanding both sides. Then
 
 $$
 |zw|^2 = (zw)\overline{(zw)} = z w \bar z \bar w = (z \bar z)(w \bar w)
@@ -144,8 +140,7 @@ $|z||w| = 5\sqrt{5} = 11.180340$.
 
 ## What this buys a qubit
 
-A qubit state is $\alpha\ket{0} + \beta\ket{1}$ with $\alpha, \beta \in
-\mathbb{C}$ and $|\alpha|^2 + |\beta|^2 = 1$. Measurement probabilities are
+A qubit state is $\alpha\ket{0} + \beta\ket{1}$ with $\alpha, \beta \in \mathbb{C}$ and $|\alpha|^2 + |\beta|^2 = 1$. Measurement probabilities are
 squared moduli, so multiplying an amplitude by any number of modulus 1 leaves
 every probability untouched while changing the state. The $S$ gate does exactly
 that to the $\ket{1}$ amplitude, multiplying it by $i$.
