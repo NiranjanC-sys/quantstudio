@@ -98,10 +98,14 @@ test.describe('circuit lab', () => {
   test('server backends are offered, and require a session', async ({ page }) => {
     const panel = page.locator('.rq-server');
     await expect(panel.getByLabel('Simulation backend')).toBeVisible();
-    await panel.getByRole('button', { name: 'Run' }).click();
-    // Credits are debited server side, so an anonymous run must be refused
-    // rather than silently succeeding.
-    await expect(panel).toContainText(/sign in/i, { timeout: 10_000 });
+    const runBtn = panel.getByRole('button', { name: 'Run' });
+    if (await runBtn.isDisabled()) {
+      // Gateway is offline — the panel should explain how to start it.
+      await expect(panel).toContainText(/gateway|not reachable/i);
+    } else {
+      await runBtn.click();
+      await expect(panel).toContainText(/sign in/i, { timeout: 10_000 });
+    }
   });
 
   test('the qubit count caps at the browser engine limit', async ({ page }) => {
