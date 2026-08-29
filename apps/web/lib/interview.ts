@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'yaml';
 import { CONTENT_ROOT } from './content';
+import type { InterviewQuestion as InterviewQuestionShape } from '@redquant/content';
 
 /**
  * Reads the interview bank off disk.
@@ -11,21 +12,17 @@ import { CONTENT_ROOT } from './content';
  * is skipped with a warning rather than taking the whole page down.
  */
 
-export interface InterviewQuestion {
-  id: string;
-  title: string;
-  kind?: 'coding' | 'system-design' | 'concept';
-  prompt: string;
-  difficulty: 'easy' | 'medium' | 'hard';
+/**
+ * The question shape comes from the content package's Zod schema, not from a
+ * local guess. A local copy read `followups` and `mistakes` while every one of
+ * the 240 authored questions uses `followUps` and `commonMistakes`, so the
+ * detail page silently dropped both sections. Optional fields made the mistake
+ * invisible to the type checker.
+ */
+export type InterviewQuestion = InterviewQuestionShape & {
+  /** Present on the coding files, absent on system-design. */
   pattern?: string;
-  topics: string[];
-  companies: string[];
-  modelAnswer?: string;
-  answer?: string;
-  followups?: string[];
-  mistakes?: string[];
-  references?: { label: string; url?: string }[];
-}
+};
 
 export interface Company {
   id: string;

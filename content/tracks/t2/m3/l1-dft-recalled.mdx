@@ -1,0 +1,170 @@
+---
+id: t2.m3.l1
+title: DFT, Recalled
+type: concept
+track: t2
+module: t2.m3
+level: L2
+minutes: 12
+objectives:
+  - Write the N-point DFT matrix in terms of the primitive N-th root of unity and verify it is unitary after normalisation
+  - Compute the DFT of a length-8 periodic sequence by hand and locate its peaks
+  - State the O(N log N) cost of the classical FFT and identify what the quantum version does differently
+prerequisites:
+  - t0.m2.l3
+  - t0.m3.l2
+sources:
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: Watrous, Quantum Computation lecture notes
+    url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+tags: [fourier]
+---
+
+Every exponential quantum speedup that is not Simon's algorithm runs through one
+matrix. Before building it out of gates it is worth being precise about what it
+does classically, because the quantum version computes exactly the same transform
+and the entire difficulty is that you cannot read the answer out.
+
+## The matrix
+
+Let $\omega = e^{2\pi i / N}$, a primitive $N$-th root of unity, so $\omega^N = 1$
+and $\omega^m \ne 1$ for $0 < m < N$. The **discrete Fourier transform** on $N$
+points is the matrix
+
+$$
+F_{jk} = \frac{1}{\sqrt N}\, \omega^{jk}, \qquad 0 \le j, k < N ,
+$$
+
+which sends a vector $x$ to $\hat x_k = \frac{1}{\sqrt N}\sum_j x_j \omega^{jk}$.
+The $1/\sqrt N$ is the normalisation that makes it unitary; engineering
+conventions often put $1/N$ on one side and nothing on the other, which is fine
+for signal processing and useless here.
+
+Unitarity is one geometric series. The $(j, j')$ entry of $F F\dg$ is
+
+$$
+\frac{1}{N}\sum_{k=0}^{N-1}\omega^{jk}\overline{\omega^{j'k}}
+= \frac{1}{N}\sum_{k=0}^{N-1}\omega^{(j-j')k} .
+$$
+
+If $j = j'$ every term is 1 and the sum is $N$, giving 1. If $j \ne j'$ then
+$\omega^{j-j'} \ne 1$ and the geometric series closes:
+
+$$
+\sum_{k=0}^{N-1} z^k = \frac{z^N - 1}{z - 1} = 0
+\quad \text{with } z = \omega^{j-j'} ,
+$$
+
+since $z^N = \omega^{N(j-j')} = 1$. So $F F\dg = I$: the roots of unity cancel
+each other exactly, which is the only fact about them this module ever needs.
+
+<Margin label="One symbol, two readings">
+$F$ is symmetric, $F^{T} = F$, so there is no ambiguity about which index is
+"time" and which is "frequency": the transform looks the same both ways. The
+inverse is $F\dg$, which replaces $\omega$ by $\overline\omega = \omega^{-1}$.
+Getting the sign of that exponent wrong is the single most common bug in a
+hand-written QFT, and it is invisible on real-valued inputs.
+</Margin>
+
+## A periodic sequence and its peaks
+
+Take $N = 8$ and the sequence supported at $j = 0$ and $j = 4$, normalised:
+
+$$
+x = \frac{1}{\sqrt2}\big(e_0 + e_4\big) .
+$$
+
+It is periodic with period 4. Its transform is
+
+$$
+\hat x_k = \frac{1}{\sqrt2 \cdot \sqrt8}\left(\omega^{0} + \omega^{4k}\right)
+= \frac14\left(1 + (-1)^k\right)
+$$
+
+because $\omega^4 = e^{i\pi} = -1$. So $\hat x_k = 1/2$ for even $k$ and $0$ for
+odd $k$: four equal peaks at $k = 0, 2, 4, 6$, spaced $N/4 = 2$ apart.
+
+That spacing is the rule. **A period of $r$ in $j$ becomes peaks spaced $N/r$
+apart in $k$**, whenever $r$ divides $N$. Period 4 gives 4 peaks two apart; period
+2 would give 2 peaks four apart. This reciprocity is the entire mechanism of
+order finding: hide a period in a register, transform, and read a peak whose
+position tells you the period.
+
+The quantum version of the same computation, on three qubits, prepares
+$(\ket{000} + \ket{100})/\sqrt2$ with a single Hadamard on the most significant
+qubit and then applies the QFT.
+
+<Circuit
+  caption="A period-4 sequence on eight points, transformed. Four peaks at k = 0, 2, 4 and 6, each with amplitude 0.5 and probability 0.25."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "dft-period-4",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "prep", gate: "h", targets: [0] },
+      { id: "f0", gate: "h", targets: [0] },
+      { id: "f1", gate: "p", targets: [0], controls: [1], params: [1.5707963267948966] },
+      { id: "f2", gate: "p", targets: [0], controls: [2], params: [0.7853981633974483] },
+      { id: "f3", gate: "h", targets: [1] },
+      { id: "f4", gate: "p", targets: [1], controls: [2], params: [1.5707963267948966] },
+      { id: "f5", gate: "h", targets: [2] },
+      { id: "f6", gate: "swap", targets: [0, 2] }
+    ]
+  }}
+/>
+
+Amplitude $0.5$ on $\ket{000}$, $\ket{010}$, $\ket{100}$ and $\ket{110}$, which are
+$k = 0, 2, 4, 6$, and nothing anywhere else. The hand computation and the circuit
+agree exactly, as they must.
+
+## What the quantum version changes, and what it does not
+
+The naive matrix-vector product costs $O(N^2)$ multiplications. The fast Fourier
+transform exploits the factorisation of $\omega^{jk}$ into even and odd index
+halves, recursing to
+
+$$
+T(N) = 2T(N/2) + O(N) = O(N \log N) .
+$$
+
+The quantum Fourier transform on $n = \log_2 N$ qubits does the *same* linear
+algebra with $O(n^2) = O(\log^2 N)$ gates, exponentially fewer operations than
+even the FFT. That sounds like an exponential speedup for signal processing. It is
+not, for two reasons that you should memorise now and re-derive in the next
+lesson.
+
+First, the input has to already be a quantum state. Loading $N$ classical numbers
+into amplitudes costs $\Omega(N)$ unless the vector has structure a circuit can
+generate. Second, and fatally, the output is a quantum state. You cannot read
+$\hat x_k$; you can only measure, which returns one index $k$ drawn with
+probability $|\hat x_k|^2$, and destroys the state.
+
+<Callout tone="gotcha" title="The QFT is not a subroutine for computing Fourier transforms">
+If you want the coefficients of a signal, the QFT gives you nothing: extracting
+all $N$ of them to reasonable accuracy needs $\Omega(N)$ measurements, wiping out
+the advantage. The QFT is useful only when the answer you want is a *single
+property* of the spectrum, robust enough to survive being sampled. In practice
+that means one thing: the spectrum has a small number of sharp peaks and you want
+their positions. Order finding, phase estimation and Simon are all instances of
+that one pattern.
+</Callout>
+
+<Check question="You transform a length-8 sequence and find peaks at $k = 0$ and $k = 4$ only. What was the period, and how would you distinguish that from a sequence with peaks at every $k$?">
+Peaks spaced 4 apart mean $N/r = 4$, so $r = 2$: the sequence repeats every two
+positions. A spectrum with weight at every $k$ means the opposite extreme, a
+sequence concentrated at a single $j$, since a delta in one domain is flat in the
+other. The two extremes are the reason sampling works at all: a hidden period
+produces a spectrum with $r$ sharp spikes, so a single measurement lands on one of
+them, whereas a spectrum spread over all $N$ points tells you almost nothing per
+sample.
+</Check>
+
+## Where this comes from
+
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 5.1, for the DFT conventions used throughout this track.
+- [Watrous, Quantum Computation notes](https://cs.uwaterloo.ca/~watrous/QC-notes/),
+  for the readout argument that separates the QFT from a fast classical transform.

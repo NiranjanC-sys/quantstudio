@@ -1,0 +1,190 @@
+---
+id: t2.m2.l5
+title: Amplitude Amplification in General
+type: concept
+track: t2
+module: t2.m2
+level: L2
+minutes: 14
+objectives:
+  - "Generalise Grover to an arbitrary state-preparation unitary A in place of H^n"
+  - "Show that the query cost falls to O(1/sqrt(a)) when A prepares a good state with probability a"
+  - Apply the generalisation to amplitude estimation and state the resulting precision-versus-cost trade-off
+prerequisites:
+  - t2.m2.l4
+sources:
+  - label: Quantum Algorithm Zoo
+    url: https://quantumalgorithmzoo.org/
+  - label: Watrous, Quantum Computation lecture notes
+    url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [amplitude-amplification]
+---
+
+Nothing in the two-reflection derivation used the fact that $\ket{s}$ was
+uniform. Replace the Hadamard layer with any state-preparation unitary and the
+geometry is unchanged, which turns Grover from an algorithm about search into a
+primitive about *any* randomised procedure whose successes you can recognise.
+That primitive, amplitude amplification, is the reason Grover shows up inside
+algorithms that have nothing to do with databases.
+
+## The general iterate
+
+Let $A$ be any unitary with $A\ket{0} = \ket{\psi}$, and let $\Pi$ project onto a
+subspace of outcomes you call **good**. Split the prepared state:
+
+$$
+\ket{\psi} = \sin\theta_a \ket{\psi_{\mathrm{good}}} + \cos\theta_a \ket{\psi_{\mathrm{bad}}},
+\qquad
+a = \sin^2\theta_a = \| \Pi \ket{\psi} \|^2 .
+$$
+
+$a$ is the probability that running $A$ once and measuring gives a good outcome.
+Define two reflections exactly as before:
+
+$$
+S_\chi = I - 2\Pi , \qquad S_0 = I - 2\ketbra{0}{0} ,
+$$
+
+and set
+
+$$
+Q = -A\, S_0\, A\dg\, S_\chi .
+$$
+
+$S_\chi$ reflects about $\ket{\psi_{\mathrm{bad}}}$. The middle product
+$A S_0 A\dg = I - 2\ketbra{\psi}{\psi}$ reflects about the plane orthogonal to
+$\ket{\psi}$, so with the leading minus sign it reflects *about* $\ket{\psi}$.
+Two reflections at angle $\theta_a$, so $Q$ is a rotation by $2\theta_a$ in the
+plane they span, and
+
+$$
+Q^k \ket{\psi} = \sin\big((2k+1)\theta_a\big)\ket{\psi_{\mathrm{good}}}
++ \cos\big((2k+1)\theta_a\big)\ket{\psi_{\mathrm{bad}}} .
+$$
+
+Grover is the case $A = H^{\otimes n}$, $\Pi = \sum_{x \in S}\ketbra{x}{x}$,
+$a = M/N$. Everything else in Module 2 was a corollary of this.
+
+<Margin label="What you must be able to do">
+Amplitude amplification needs three things a classical randomised algorithm does
+not provide: a *unitary* $A$ rather than a sampler, the ability to run $A\dg$,
+and a reversible checker for goodness. Any classical randomised algorithm can be
+made unitary by keeping its coin flips as qubits in superposition, which is what
+makes the primitive so widely applicable, but the cost of that reversibility is
+real and is where the constant factors go.
+</Margin>
+
+## Why the cost is $O(1/\sqrt a)$
+
+The optimal count is $k = \lfloor \pi/(4\theta_a) \rfloor$, and for small $a$,
+$\theta_a \approx \sqrt a$, so
+
+$$
+k \approx \frac{\pi}{4\sqrt a} .
+$$
+
+Classically you would run $A$ until it succeeded, which takes $1/a$ attempts in
+expectation. Quantumly you run $A$ and $A\dg$ about $\pi/(4\sqrt a)$ times each.
+That is a quadratic saving in the *number of runs of your own subroutine*, whatever
+the subroutine is.
+
+| $a$ | classical expected runs $1/a$ | amplifications $\lfloor \pi/(4\theta_a)\rfloor$ |
+| --- | --- | --- |
+| $0.25$ | $4$ | $1$ |
+| $0.01$ | $100$ | $7$ |
+| $10^{-4}$ | $10^{4}$ | $78$ |
+| $10^{-6}$ | $10^{6}$ | $785$ |
+
+The smallest exact instance takes one qubit. Let $A = R_y(\pi/3)$, so
+$\ket{\psi} = \cos(\pi/6)\ket{0} + \sin(\pi/6)\ket{1}$ and the good outcome
+$\ket{1}$ has $a = 1/4$. Then $\theta_a = \pi/6$, $\pi/(4\theta_a) = 1.5$, and one
+amplification is exactly right.
+
+<Circuit
+  caption="A = Ry(pi/3) alone: the good outcome |1> has probability 0.25 and the bad outcome 0.75."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "prepare-a-quarter",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "A", gate: "ry", targets: [0], params: [1.0471975511965976] }
+    ]
+  }}
+/>
+
+<Circuit
+  caption="One full iterate Q = A S0 A-dagger S-chi on the same preparation. The good outcome now has probability 1."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "amplify-once",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "A", gate: "ry", targets: [0], params: [1.0471975511965976] },
+      { id: "schi", gate: "z", targets: [0] },
+      { id: "Adg", gate: "ry", targets: [0], params: [-1.0471975511965976] },
+      { id: "s0a", gate: "x", targets: [0] },
+      { id: "s0b", gate: "z", targets: [0] },
+      { id: "s0c", gate: "x", targets: [0] },
+      { id: "A2", gate: "ry", targets: [0], params: [1.0471975511965976] }
+    ]
+  }}
+/>
+
+Amplitude $-1$ on $\ket{1}$, probability 1. Here $S_\chi$ is a single $Z$, which
+negates $\ket{1}$, and $S_0$ is $XZX$, which negates $\ket{0}$. Two calls to the
+preparation and one to its inverse have turned a one-in-four procedure into a
+certainty.
+
+## Amplitude estimation
+
+$Q$ is a rotation by $2\theta_a$ in a two-dimensional invariant subspace, so its
+eigenvalues there are $e^{\pm 2i\theta_a}$. Feed $Q$ to phase estimation, which is
+T2.M4, and you read $\theta_a$ off a counting register. With $t$ counting qubits
+you learn $\theta_a$ to additive accuracy about $2^{-t}$, using $2^t - 1$
+applications of $Q$. Writing $\varepsilon$ for the target accuracy in $a$ itself,
+
+$$
+\text{queries} = O\!\left(\frac{1}{\varepsilon}\right)
+\quad\text{versus classical}\quad
+O\!\left(\frac{1}{\varepsilon^{2}}\right)
+$$
+
+from the Chernoff bound on $1/\varepsilon^2$ samples. That is the quadratic
+speedup behind every "quantum Monte Carlo" claim: not a faster simulation, a
+faster *estimator* of an expectation you could already sample.
+
+<Callout tone="warning" title="The quadratic saving is fragile in practice">
+Amplitude estimation needs coherent, controlled applications of $Q$, so the
+circuit depth grows as $1/\varepsilon$ rather than the width growing as
+$1/\varepsilon^2$. Under any realistic error rate the depth is the binding
+constraint, and the crossover against a classical Monte Carlo on a modern CPU sits
+at accuracies far beyond what near-term hardware can hold coherently. The
+asymptotics are real; the break-even point is the thing to report.
+</Callout>
+
+<Check question="Your subroutine $A$ succeeds with probability $a = 0.4$, so $\theta_a = 0.684719$ and $\pi/(4\theta_a) = 1.147$. You run one amplification. What do you get, and would running zero have been better?">
+One iterate gives $P(1) = \sin^2(3\theta_a) = \sin^2(2.054157) = 0.784$, so
+amplification helps: $0.4$ goes to $0.784$. But notice how little room there is.
+When $a$ is already large, $\theta_a$ is large, one step of $2\theta_a$ overshoots
+easily, and the ideal count $k^\star = 0.647$ is not close to any integer. The
+standard fix when $a$ is large and known is exact amplitude amplification: replace
+the two $\pi$ phase flips by tuned angles so that a whole number of iterations
+lands exactly on $\pi/2$. With $a$ unknown, randomise $k$ as in the unknown-$M$
+schedule of the previous lesson.
+</Check>
+
+## Where this comes from
+
+- [Quantum Algorithm Zoo](https://quantumalgorithmzoo.org/), which catalogues
+  amplitude amplification and estimation as the primitives behind a large
+  fraction of the quadratic-speedup entries.
+- [Watrous, Quantum Computation notes](https://cs.uwaterloo.ca/~watrous/QC-notes/),
+  for the general two-reflection statement with an arbitrary $A$.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 6.1.4, for the counting application of amplitude estimation.

@@ -1,0 +1,229 @@
+---
+id: t2.m2.l6
+title: Grover for SAT
+type: lab
+track: t2
+module: t2.m2
+level: L2
+minutes: 35
+objectives:
+  - Compile a four-clause Boolean formula into a phase oracle on three qubits with no ancillas
+  - Choose the iteration count that maximises the success probability for one marked item out of eight
+  - "Reproduce the marked amplitude 11*sqrt(2)/16 predicted by the rotation picture"
+prerequisites:
+  - t2.m2.l5
+  - t0.m6.l1
+  - t1.m4.l6
+sources:
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+tags: [grover, sat, lab]
+---
+
+SAT is the canonical NP-complete problem, and Grover is the only general-purpose
+quantum tool that touches it. This lab builds the smallest complete instance:
+three variables, four clauses, one satisfying assignment, and a circuit that finds
+it with probability $121/128$ from two oracle calls. It also makes visible the
+thing most Grover demonstrations quietly skip, which is where the oracle came from.
+
+## The instance
+
+$$
+\varphi = (\lnot x_0 \lor x_2) \land (x_0 \lor x_1)
+\land (\lnot x_1 \lor \lnot x_2) \land (x_0 \lor \lnot x_1 \lor x_2) .
+$$
+
+Map $x_0$ to qubit 0, $x_1$ to qubit 1, $x_2$ to qubit 2, with qubit 0 the most
+significant bit, so the assignment $x_0 x_1 x_2$ reads left to right as the basis
+label. Enumerating all eight assignments:
+
+| $x_0x_1x_2$ | $\lnot x_0 \lor x_2$ | $x_0 \lor x_1$ | $\lnot x_1 \lor \lnot x_2$ | $x_0 \lor \lnot x_1 \lor x_2$ | $\varphi$ |
+| --- | --- | --- | --- | --- | --- |
+| $000$ | 1 | 0 | 1 | 1 | 0 |
+| $001$ | 1 | 0 | 1 | 1 | 0 |
+| $010$ | 1 | 1 | 1 | 0 | 0 |
+| $011$ | 1 | 1 | 0 | 1 | 0 |
+| $100$ | 0 | 1 | 1 | 1 | 0 |
+| $101$ | 1 | 1 | 1 | 1 | **1** |
+| $110$ | 0 | 1 | 1 | 1 | 0 |
+| $111$ | 1 | 1 | 0 | 1 | 0 |
+
+Exactly one satisfying assignment, $101$. So $N = 8$, $M = 1$,
+$\sin\theta = 1/\sqrt8$, and T2.M2.L3 gives $\lfloor \pi/(4\theta)\rfloor = 2$
+iterations with success probability $121/128 = 0.9453125$.
+
+## Building the oracle without ancillas
+
+The honest compilation of $\varphi$ evaluates each clause into its own ancilla
+with an OR gadget, ANDs the four ancillas into the target, then uncomputes: four
+ancillas, one target, eight qubits in total. The lab caps you at three, which
+forces the other route. Since the solution set is the single string $101$, the
+phase oracle is a masked multi-controlled $Z$, exactly the construction of
+T2.M1.L3:
+
+$$
+O_\varphi = X_1 \cdot \mathrm{CCZ} \cdot X_1 ,
+$$
+
+where $X_1$ flips qubit 1 because $101$ has its only zero there. Two $X$ gates and
+one CCZ, and no ancilla anywhere.
+
+<Callout tone="gotcha" title="This oracle was built by solving the problem first">
+Marking the solution set requires knowing the solution set. That is fine as a
+demonstration of the amplification machinery and dishonest as a demonstration of
+a speedup. A real SAT oracle evaluates the formula: it costs ancillas and gates
+proportional to the clause count, and it works without anyone knowing the answer.
+When you read a paper that "solves SAT with Grover" on a handful of qubits, check
+which oracle it built. On this instance the clause-evaluating oracle needs eight
+qubits and roughly forty gates per call rather than three gates.
+</Callout>
+
+## What the finished circuit produces
+
+<Circuit
+  caption="Three qubits, marked assignment 101, two Grover iterations. Marked amplitude 0.972272 = 11*sqrt(2)/16 and probability 121/128."
+  show={['amplitudes', 'probabilities']}
+  ir={{
+    version: 1,
+    name: "grover-sat-101",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "o3", gate: "x", targets: [1] },
+      { id: "o4", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "o5", gate: "x", targets: [1] },
+      { id: "d6", gate: "h", targets: [0] },
+      { id: "d7", gate: "h", targets: [1] },
+      { id: "d8", gate: "h", targets: [2] },
+      { id: "d9", gate: "x", targets: [0] },
+      { id: "d10", gate: "x", targets: [1] },
+      { id: "d11", gate: "x", targets: [2] },
+      { id: "d12", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "d13", gate: "x", targets: [0] },
+      { id: "d14", gate: "x", targets: [1] },
+      { id: "d15", gate: "x", targets: [2] },
+      { id: "d16", gate: "h", targets: [0] },
+      { id: "d17", gate: "h", targets: [1] },
+      { id: "d18", gate: "h", targets: [2] },
+      { id: "o19", gate: "x", targets: [1] },
+      { id: "o20", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "o21", gate: "x", targets: [1] },
+      { id: "d22", gate: "h", targets: [0] },
+      { id: "d23", gate: "h", targets: [1] },
+      { id: "d24", gate: "h", targets: [2] },
+      { id: "d25", gate: "x", targets: [0] },
+      { id: "d26", gate: "x", targets: [1] },
+      { id: "d27", gate: "x", targets: [2] },
+      { id: "d28", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "d29", gate: "x", targets: [0] },
+      { id: "d30", gate: "x", targets: [1] },
+      { id: "d31", gate: "x", targets: [2] },
+      { id: "d32", gate: "h", targets: [0] },
+      { id: "d33", gate: "h", targets: [1] },
+      { id: "d34", gate: "h", targets: [2] }
+    ]
+  }}
+/>
+
+Every other amplitude is $-\sqrt2/16 = -0.088388$, so each wrong answer carries
+$1/128 = 0.0078125$ and the seven of them together carry $7/128 = 0.0546875$.
+
+## Your task
+
+```python
+from qiskit import QuantumCircuit
+
+# x0 -> qubit 0, x1 -> qubit 1, x2 -> qubit 2. Qubit 0 is the most significant bit.
+
+def build() -> QuantumCircuit:
+    qc = QuantumCircuit(3)
+    qc.h(range(3))
+    # mark the unique satisfying assignment, then reflect about the mean
+    # decide the iteration count yourself
+    return qc
+```
+
+Return the circuit with no measurements; the grader reads the three-qubit
+statevector. The public tests check that the amplitude vector matches the
+two-iteration Grover state to $10^{-6}$ and that you used three qubits with no
+ancillas. The hidden tests tighten the amplitude tolerance to $10^{-9}$, sample
+8192 shots and require $101$ at $121/128$ with every other string at $1/128$, and
+impose a budget of fifty gates on three qubits. Two iterations of a masked-CCZ
+oracle plus the standard diffuser come to 43 gates; a third iteration would come
+to 63 and is rejected on cost before it is rejected on accuracy.
+
+Qiskit numbers its qubits with qubit 0 least significant, so `qc.h(range(3))` is
+harmless but the *label* of the marked state is reversed relative to this track's
+convention. The grader canonicalises to qubit 0 most significant, so build the
+mask against the string $101$ read left to right as $(x_0, x_1, x_2)$ and let the
+harness handle the rest.
+
+<Check question="You implement the diffuser as `h(all); x(all); h(2); ccx(0,1,2); h(2); x(all); h(all)` but forget the two X layers. What does the circuit compute, and what does the histogram look like?">
+Without the $X$ layers the middle block is $\mathrm{CCZ}$ rather than
+$I - 2\ketbra{000}{000}$, so instead of reflecting about $\ket{000}$ you reflect
+about $\ket{111}$. Conjugating by Hadamards then reflects about
+$H^{\otimes 3}\ket{111} = \ket{{-}{-}{-}}$, not about $\ket{s}$. The two
+reflections still compose into a rotation, but in a plane that does not contain
+$\ket{s}$, so the amplitude on $101$ wanders instead of climbing: two iterations
+leave it at $12.5\%$, indistinguishable from doing nothing. The histogram looks
+*plausible*, which is what makes this the most expensive Grover bug there is.
+</Check>
+
+<Solution>
+Marking and diffusing share the same masked-CCZ shape, so write one helper for
+each and call them twice.
+
+```python
+from qiskit import QuantumCircuit
+
+MARKED = "101"
+
+def mark(qc: QuantumCircuit) -> None:
+    for q, b in enumerate(MARKED):
+        if b == "0":
+            qc.x(q)
+    qc.h(2); qc.ccx(0, 1, 2); qc.h(2)
+    for q, b in enumerate(MARKED):
+        if b == "0":
+            qc.x(q)
+
+def diffuser(qc: QuantumCircuit) -> None:
+    qc.h(range(3)); qc.x(range(3))
+    qc.h(2); qc.ccx(0, 1, 2); qc.h(2)
+    qc.x(range(3)); qc.h(range(3))
+
+def build() -> QuantumCircuit:
+    qc = QuantumCircuit(3)
+    qc.h(range(3))
+    for _ in range(2):
+        mark(qc)
+        diffuser(qc)
+    return qc
+```
+
+`qc.h(2); qc.ccx(0, 1, 2); qc.h(2)` is the $X = HZH$ identity of T2.M1.L2 turning
+a Toffoli into a CCZ, which is what a marking oracle needs. The resulting
+statevector has $11\sqrt2/16$ on $\ket{101}$ and $-\sqrt2/16$ on the other seven,
+which is the reference vector the hidden test compares against at $10^{-9}$.
+
+To see the over-rotation for yourself, change `range(2)` to `range(3)` and
+re-simulate: the marked probability falls from $0.9453125$ to $0.330078$, and the
+resource test rejects the circuit before the statevector test gets a chance to.
+</Solution>
+
+## Where this comes from
+
+- [Microsoft Quantum Katas](https://github.com/microsoft/QuantumKatas), whose SAT
+  kata builds clause oracles with ancillas and is the honest counterpart to the
+  ancilla-free shortcut used here.
+- [PennyLane Codebook](https://pennylane.ai/codebook), for the mask-CCZ-unmask
+  oracle and the standard diffuser decomposition.
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses), whose
+  Grover course runs the same three-qubit instance end to end.

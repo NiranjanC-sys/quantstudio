@@ -1,0 +1,175 @@
+---
+id: t2.m3.l2
+title: The QFT Circuit and Its Cost
+type: concept
+track: t2
+module: t2.m3
+level: L2
+minutes: 15
+objectives:
+  - Derive the product-form factorisation of the QFT that yields the Hadamard plus controlled-phase circuit
+  - "Count the gates: n Hadamards, n(n-1)/2 controlled phases, and the final qubit reversal"
+  - Explain why the QFT alone gives no speedup because its output amplitudes cannot be read out directly
+prerequisites:
+  - t2.m3.l1
+  - t1.m3.l2
+  - t1.m8.l1
+sources:
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+tags: [qft, circuit]
+---
+
+An $N \times N$ matrix normally needs $N^2$ numbers to describe and $N^2$
+multiplications to apply. The QFT needs $O(\log^2 N)$ gates. That collapse is not
+magic and it is not compression: it is the observation that $\omega^{jk}$
+factorises across the bits of $k$, so the transform is a *product* of
+single-qubit states and therefore a product of single-qubit gates.
+
+## The factorisation
+
+Work on $n$ qubits, $N = 2^n$, with qubit 0 the most significant bit. Write the
+output index in binary as $k = k_1 k_2 \cdots k_n$, so that
+
+$$
+\frac{k}{N} = \sum_{l=1}^{n} k_l\, 2^{-l} .
+$$
+
+Substitute into the definition:
+
+$$
+\mathrm{QFT}\ket{j}
+= \frac{1}{\sqrt N}\sum_{k} e^{2\pi i j k / N}\ket{k}
+= \frac{1}{\sqrt N}\sum_{k_1 \cdots k_n} \prod_{l=1}^{n} e^{2\pi i j k_l 2^{-l}} \ket{k_1 \cdots k_n} .
+$$
+
+The sum over all $k$ is a sum over each bit independently, and the summand is a
+product with one factor per bit, so the sum factorises:
+
+$$
+\mathrm{QFT}\ket{j}
+= \bigotimes_{l=1}^{n} \frac{\ket{0} + e^{2\pi i j / 2^{l}}\ket{1}}{\sqrt2} .
+$$
+
+**The transform of a basis state is a product state.** No entanglement is created
+at all, which is exactly why $n$ separate qubits can hold the answer.
+
+Now note that $e^{2\pi i j / 2^l}$ only depends on $j \bmod 2^l$, that is, on the
+*last* $l$ bits of $j$. Writing $0.j_a j_{a+1}\cdots$ for the binary fraction,
+factor $l$ is
+
+$$
+\frac{\ket{0} + e^{2\pi i\, 0.j_{n-l+1}\cdots j_n}\ket{1}}{\sqrt2} .
+$$
+
+<Margin label="Where the reversal comes from">
+Factor 1 depends on one bit of $j$, the last; factor $n$ depends on all $n$. The
+circuit naturally builds the all-bits factor on qubit 0 and the one-bit factor on
+qubit $n-1$, which is the reverse of the order the formula wants. Hence the swap
+layer at the end. Some implementations drop the swaps and relabel the wires
+instead, which is free on paper and free in a simulator, and costs real routing on
+hardware.
+</Margin>
+
+## The circuit
+
+Apply $H$ to qubit 0. That turns $\ket{j_1}$ into
+$(\ket 0 + e^{2\pi i\, 0.j_1}\ket 1)/\sqrt2$, because $e^{2\pi i \cdot 0.j_1}$ is
+$+1$ when $j_1 = 0$ and $-1$ when $j_1 = 1$. Then, for each later qubit $m$, apply
+a controlled phase $R_{m+1}$ with angle $2\pi/2^{m+1}$, controlled by qubit $m$
+and targeting qubit 0. Each one appends the next binary digit, until qubit 0 holds
+$0.j_1 j_2 \cdots j_n$. Repeat starting at qubit 1, then qubit 2, and finish with
+the swap layer.
+
+<Circuit
+  caption="The QFT on three qubits applied to |001>, that is j = 1. Every probability is 0.125 and the amplitudes walk once around the unit circle in steps of 45 degrees."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "qft3-of-1",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "prep", gate: "x", targets: [2] },
+      { id: "f0", gate: "h", targets: [0] },
+      { id: "f1", gate: "p", targets: [0], controls: [1], params: [1.5707963267948966] },
+      { id: "f2", gate: "p", targets: [0], controls: [2], params: [0.7853981633974483] },
+      { id: "f3", gate: "h", targets: [1] },
+      { id: "f4", gate: "p", targets: [1], controls: [2], params: [1.5707963267948966] },
+      { id: "f5", gate: "h", targets: [2] },
+      { id: "f6", gate: "swap", targets: [0, 2] }
+    ]
+  }}
+/>
+
+Read the amplitudes as $\frac{1}{\sqrt8}e^{2\pi i k / 8}$: $0.353553$ at $k = 0$,
+$0.25 + 0.25i$ at $k = 1$, pure $0.353553 i$ at $k = 2$, $-0.353553$ at $k = 4$,
+and so on around the circle. That phase ramp is the entire content of the
+transform, and it is entirely invisible in the probability column.
+
+## The gate count
+
+| ingredient | count |
+| --- | --- |
+| Hadamards | $n$ |
+| controlled phases | $n(n-1)/2$ |
+| swaps | $\lfloor n/2 \rfloor$ |
+
+For $n = 3$ that is 3, 3 and 1, which is the seven-gate circuit above. For
+$n = 10$ it is 10, 45 and 5. The controlled-phase term dominates, so the QFT is
+$\Theta(n^2)$ gates, or $\Theta(\log^2 N)$ in the dimension. Depth is also
+$\Theta(n)$ if you schedule the rotations greedily, since disjoint pairs commute.
+
+The trouble arrives at scale. Factoring a 2048-bit modulus needs a QFT on roughly
+$2n = 4096$ qubits, hence about $8.4$ million controlled-phase gates, and the
+smallest of those rotations is by $2\pi/2^{4096}$, an angle no physical device can
+distinguish from zero. Both problems are solved by the same observation, which is
+the subject of T2.M3.L4.
+
+## Why this is not yet an algorithm
+
+The QFT computes the transform of whatever amplitude vector you hand it. It does
+not hand you the answer. Two obstructions, both fundamental:
+
+**Input.** Preparing an arbitrary $N$-amplitude state costs $\Omega(N)$ gates in
+general. The states the QFT is used on in practice are never arbitrary: they are
+periodic superpositions produced by an oracle, or phase ramps produced by
+controlled unitaries, both of which a small circuit generates.
+
+**Output.** The result is a state, and measuring it samples one index $k$ with
+probability $|\hat x_k|^2$. To learn all the coefficients you would need
+$\Omega(N)$ samples and full tomography. So the QFT is only ever the *second to
+last* step of an algorithm, and the last step is always a measurement whose single
+outcome is already the answer.
+
+<Callout tone="note" title="The pattern to look for">
+Every QFT-based algorithm has the same shape: get a state whose amplitudes carry a
+periodicity or a phase, transform, measure once, post-process classically. Simon,
+Bernstein-Vazirani, order finding, discrete log and phase estimation are all that
+shape with different first steps. When you meet a new "quantum Fourier" proposal,
+find those four stages; if the third one needs many samples of many different
+coefficients, the speedup is not there.
+</Callout>
+
+<Check question="You apply the QFT to $\ket{000}$ on three qubits. What comes out, and how many gates did the circuit waste?">
+$\mathrm{QFT}\ket{0} = \frac{1}{\sqrt8}\sum_k \ket{k}$, the uniform superposition,
+identical to what three Hadamards produce. Every controlled phase acted trivially
+because the control qubit was $\ket 0$, so all three rotations and the swap were
+wasted: four of the seven gates did nothing. This is not a curiosity but the base
+case of the whole construction, and it is a useful test: if your QFT
+implementation does not reduce to $H^{\otimes n}$ on the all-zeros input, the
+controls or the angles are wrong.
+</Check>
+
+## Where this comes from
+
+- [PennyLane Codebook](https://pennylane.ai/codebook), whose QFT module builds the
+  circuit qubit by qubit in exactly this order.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 5.1, for the product-form derivation and the gate count.
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses), for
+  the resource estimates that motivate the approximate version.

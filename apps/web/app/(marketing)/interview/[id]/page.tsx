@@ -21,7 +21,7 @@ export default async function QuestionPage({ params }: { params: Promise<{ id: s
   const q = await getQuestion(id);
   if (!q) notFound();
 
-  const answer = q.modelAnswer ?? q.answer ?? '';
+  const answer = q.modelAnswer;
 
   return (
     <>
@@ -53,17 +53,21 @@ export default async function QuestionPage({ params }: { params: Promise<{ id: s
             </section>
           )}
 
-          {q.followups?.length ? (
+          {q.followUps?.length ? (
             <section className="rq-iv-block">
               <h2 className="rq-eyebrow">Likely follow ups</h2>
-              <ul className="rq-lesson-ul">{q.followups.map((f) => <li key={f}>{f}</li>)}</ul>
+              <ul className="rq-lesson-ul">
+                {q.followUps.map((f: string) => <li key={f}>{f}</li>)}
+              </ul>
             </section>
           ) : null}
 
-          {q.mistakes?.length ? (
+          {q.commonMistakes?.length ? (
             <section className="rq-iv-block">
               <h2 className="rq-eyebrow">Common wrong turns</h2>
-              <ul className="rq-lesson-ul">{q.mistakes.map((m) => <li key={m}>{m}</li>)}</ul>
+              <ul className="rq-lesson-ul">
+                {q.commonMistakes.map((m: string) => <li key={m}>{m}</li>)}
+              </ul>
             </section>
           ) : null}
 

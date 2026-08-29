@@ -1,0 +1,727 @@
+questions:
+  - id: iq-196
+    title: Take a business optimisation problem to an annealer end to end
+    kind: system-design
+    prompt: |
+      A logistics customer wants to assign 60 delivery orders to 6 vehicles,
+      minimising total route cost, with every order assigned exactly once and
+      no vehicle over its capacity. They have heard annealers are good at this
+      and want it on a D-Wave Advantage-class machine with about 5,000 qubits
+      on a Pegasus graph of degree 15. Walk me through the whole pipeline:
+      modelling to a QUBO, choosing the penalty weights, minor embedding,
+      sampling, and decoding the samples back into an answer the dispatcher
+      can act on. Tell me the number of binary variables you end up with and
+      whether it fits. If it does not fit, say so plainly and say what you do
+      instead.
+    difficulty: easy
+    pattern: Annealer and HPC pipeline
+    topics: [qubo, penalty-weights, minor-embedding, annealing, decoding]
+    companies: [D-Wave, Multiverse Computing, AWS Braket, Terra Quantum]
+    modelAnswer: |
+      The decision that matters comes at the sizing step, and it is negative: 60
+      orders by 6 vehicles is 360 binary variables with dense order-to-order
+      interaction terms, and a dense 360-variable problem does not embed on a
+      5,000-qubit Pegasus chip. I will show the arithmetic and then say what to
+      build instead, because pretending it fits is how these projects fail in month
+      four.
+
+      Modelling. One-hot encode assignment: x_{i,v} = 1 when order i goes to vehicle
+      v, for i in 1..60 and v in 1..6, giving 360 binaries. The QUBO is
+
+          H = H_cost + A * H_onehot + B * H_capacity
+
+          H_cost     = sum over v, sum over i<j of  d_ij * x_iv * x_jv
+          H_onehot   = sum over i of ( 1 - sum over v of x_iv )^2
+          H_capacity = sum over v of ( slack_v + sum over i of w_i x_iv - C )^2
+
+      H_cost approximates route cost by pairwise distance between orders sharing a
+      vehicle, which is a clustering proxy rather than a true routing objective. Say
+      that out loud: a QUBO cannot express the sequencing part of a vehicle routing
+      problem without a time index, and adding one multiplies the variable count by
+      the number of stops.
+
+      Penalty weights. The rule is that breaking a constraint must never pay. Set A
+      greater than the largest objective gain available from a single violation. If
+      pairwise distances are normalised so max d_ij = 1 and an order interacts with
+      at most 59 others, the largest gain from dropping one order out of every
+      vehicle is bounded by 59, so A = 1.5 * 59 = 89 is safe and A = 100 is a round
+      number. Now the problem: the hardware couplers have finite analogue precision,
+      of order 4 to 5 effective bits, and everything is rescaled into the range the
+      hardware accepts. With A = 100 and objective coefficients around 1, the
+      objective differences the machine must resolve sit at 1 percent of full scale,
+      below the analogue noise floor. The machine then finds feasible solutions with
+      essentially random objective value. That tension, penalties large enough to
+      enforce feasibility versus small enough to leave the objective visible, is the
+      central practical difficulty of QUBO modelling and it is why A should be tuned
+      downward until infeasibility appears, not set conservatively high.
+
+      Minor embedding, and the sizing arithmetic. Pegasus has degree 15, so a
+      logical variable with more than 15 neighbours needs a chain of physical qubits
+      acting as one. Here x_{i,v} couples to x_{j,v} for all other 59 orders on the
+      same vehicle and to x_{i,v'} for the 5 other vehicles, so degree 64. A fully
+      connected problem of n variables costs of order n^2/4 physical qubits on a
+      Chimera-like graph and somewhat better on Pegasus. Take the optimistic end:
+
+          n = 360, dense:  360^2 / 12  = 10,800 physical qubits
+          available:                      about 5,000
+
+      It does not fit, by roughly a factor of two even on the generous estimate.
+      Empirically the largest fully connected problem that embeds on an
+      Advantage-class chip is of order 150 to 180 variables, and treat that as an
+      order-of-magnitude statement rather than a specification. So 360 dense
+      variables is out of range.
+
+      What I build instead:
+      1. Reduce the model. Cluster the 60 orders geographically into 20
+         super-orders, giving 20 * 6 = 120 variables, which is inside the
+         embeddable range. Solve the assignment at that granularity on the
+         annealer and split super-orders classically.
+      2. Or decompose. Fix five vehicles' assignments and optimise one at a
+         time in a large-neighbourhood search loop, so each annealer call sees
+         a 60-variable subproblem, which embeds comfortably with short chains.
+      3. Or, and this is the honest baseline that must be measured before
+         either of the above is funded, hand the whole thing to a classical
+         solver. A 360-binary assignment problem with a quadratic objective is
+         routine for a modern MIQP solver and will return a solution with a
+         proven optimality gap in seconds to minutes.
+
+      Sampling and decoding, for whichever subproblem reaches the QPU:
+      - Anneal time 20 microseconds, 1,000 reads, spread-spectrum or
+        pause-and-quench schedules only after the default is characterised.
+      - Decode: each logical variable's value is the majority vote over its
+        chain. Record the chain break fraction per sample. Above 0.1 the
+        samples are not informative and chain strength needs raising.
+      - Repair: majority vote can produce an infeasible assignment, so run a
+        greedy feasibility repair, then a short classical local search from
+        each of the best 50 samples. That post-processing routinely improves
+        the objective by a large margin and is not optional.
+      - Report the best feasible solution found, with its objective, and the
+        classical baseline's objective next to it.
+
+      The trade-off I accepted: clustering to 20 super-orders throws away resolution
+      the customer cares about, and it does so specifically to make the problem fit
+      hardware rather than because the business wants it. That is a bad reason to
+      change a model, and I would only ship it if the annealer path demonstrably
+      beat the classical baseline at that granularity. If the fleet grew to 600
+      orders, nothing about the annealer path improves and the classical solver
+      keeps working, so scale argues against the quantum route rather than for it.
+    followUps:
+      - How would you add a time index so the model captures sequencing, and what does that do to the variable count?
+      - How would you tune the penalty weight A empirically rather than bounding it from above?
+      - Which of the three fallback designs would you pilot first, and what result would make you abandon the annealer entirely?
+    commonMistakes:
+      - Setting the penalty weight far larger than necessary to guarantee feasibility, which compresses the objective coefficients below the analogue precision of the couplers so the machine returns feasible but arbitrary solutions.
+      - Assuming a 360-variable QUBO fits a 5,000-qubit chip because 360 is much smaller than 5,000, when a dense problem costs of order n squared over four physical qubits and needs roughly 10,000.
+      - Reading raw samples as answers without majority-voting the chains, repairing infeasibility and running classical local search, which throws away most of the achievable objective improvement.
+    references:
+      - label: D-Wave system documentation
+        url: https://docs.dwavesys.com/
+      - label: Amazon Braket documentation
+        url: https://docs.aws.amazon.com/braket/
+
+  - id: iq-197
+    title: Make minor embedding work at scale and know when it fails
+    kind: system-design
+    prompt: |
+      Design the embedding stage of a production annealing pipeline. Problems
+      arrive with between 50 and 200 logical variables and interaction graphs
+      ranging from sparse to fully connected, targeting a Pegasus graph with
+      about 5,000 qubits and degree 15. Specify how you find embeddings, how
+      you choose chain strength, what you do with chain breaks, and how you
+      cache embeddings across jobs. Give me chain lengths for a dense
+      150-variable problem. Then give me the criterion that tells you the
+      embedding has destroyed the problem, expressed so it can be a hard gate
+      in the pipeline rather than a judgement call.
+    difficulty: medium
+    pattern: Annealer and HPC pipeline
+    topics: [minor-embedding, chain-strength, chain-breaks, pegasus, admission-control]
+    companies: [D-Wave, Multiverse Computing, Terra Quantum, AWS Braket]
+    modelAnswer: |
+      The decision that matters is the hard gate: reject any job whose median
+      chain length exceeds 12 or whose measured chain break fraction exceeds
+      0.10 at the best chain strength found. Above those thresholds you have
+      converted the customer's 150-variable problem into a 2,000-qubit spin
+      glass that is harder for the annealer than the original was for a
+      classical solver, and the pipeline should say so rather than return
+      samples.
+
+      Finding embeddings. Two paths, chosen by graph structure:
+      - Clique embedding. If the interaction graph is dense, use the precomputed
+        clique embedding for the target chip. It is deterministic, instant, and
+        gives uniform chain lengths, which makes chain strength selection
+        tractable. The right default above about 60 percent density.
+      - Heuristic search. For sparse or structured graphs, run the minorminer
+        heuristic with several random restarts and keep the best by total physical
+        qubits, then by maximum chain length. It is stochastic and slow, minutes
+        for a 150-variable problem, and it can fail outright. Budget a wall-clock
+        ceiling and fall back to the clique embedding when it expires.
+
+      Chain lengths for a dense 150-variable problem. A fully connected n costs of
+      order n^2/4 physical qubits on a Chimera-like graph and better on Pegasus, so
+      between n^2/12 and n^2/4:
+
+          n = 150:  150^2 / 12 = 1,875  to  150^2 / 4 = 5,625 qubits
+          chain length ~ qubits / n  =  12.5  to  37.5
+
+      The optimistic end already sits at the gate threshold, and the pessimistic end
+      does not fit the chip at all. So a dense 150-variable problem is right at the
+      edge of what an Advantage-class machine can hold, and 175 to 180 is roughly
+      the ceiling. Both figures are order-of-magnitude, not specifications.
+
+      Chain strength. J_chain must be strong enough that breaking a chain costs
+      more than any problem term can pay, and weak enough that the problem terms
+      stay visible after everything is rescaled into the hardware's range. Two
+      rules, used together:
+      - Lower bound: |J_chain| >= the sum of incident problem coupling magnitudes
+        on that qubit, so no single local move breaks the chain profitably.
+      - Uniform torque compensation: set |J_chain| to the root-mean-square of the
+        incident coupling magnitudes times the square root of the average degree.
+        With couplings normalised to [-1, 1] and degree around 149, that lands
+        J_chain between 1 and 3 for typical instances.
+      Then sweep 5 values at 200 reads each before the production run, measure
+      break fraction and best objective, and pick the value minimising objective at
+      break fraction below 0.05. The sweep costs about 1 second of QPU time and
+      routinely changes the result more than any other tunable.
+
+      The trap to name explicitly: raising J_chain always reduces breaks, and it is
+      tempting to raise it until breaks vanish. But everything is rescaled so the
+      largest magnitude fits the hardware range, so a J_chain of 5 against problem
+      couplings of 1 compresses the objective into a fifth of the available dynamic
+      range, which is already only 4 to 5 effective bits. You end up with intact
+      chains encoding a problem the machine cannot see. Zero chain breaks with a
+      flat objective is a failure mode that looks like success.
+
+      Chain break handling, in order of preference:
+      - Majority vote. The default. Cheap, unbiased when breaks are rare.
+      - Discard broken samples. Statistically cleanest, and unusable above a
+        break fraction of about 0.2 because you discard most of the run.
+      - Minimise-energy repair. Set broken chains to the value minimising the
+        QUBO given the intact ones. Better objective than majority vote,
+        costs classical time proportional to the number of broken chains.
+      Whichever is used, record the break fraction per sample and per logical
+      variable. A single variable with a persistently high break rate points
+      at a specific long chain and is fixable by re-embedding, which a global
+      break fraction hides.
+
+      Caching. Embedding is expensive and deterministic given (interaction graph
+      topology, target chip working graph). Key the cache on the hash of the graph's
+      canonical form plus the chip's working-graph id, since the working graph
+      changes when qubits are taken out of service. Store the embedding, the tuned
+      chain strength and the observed break statistics. A customer re-solving the
+      same structure with new coefficients every hour then pays the embedding cost
+      once, which is often the difference between a 3-minute pipeline and a 3-second
+      one. Invalidate on any working-graph change, and keep the old entry for
+      reproducing past runs.
+
+      The hard gate, stated so it can be code:
+
+          reject if median_chain_length > 12
+          reject if best_break_fraction > 0.10
+          reject if physical_qubits > 0.85 * working_graph_size
+          warn   if J_chain / max|J_problem| > 3
+
+      The trade-off I accepted: this gate rejects jobs that would have returned
+      something, and some of those would have been usable. I take that because a
+      sample set with 30 percent chain breaks is indistinguishable to the customer
+      from a good one, and a quiet bad answer in an optimisation pipeline costs more
+      than a refusal that points at decomposition instead. I would loosen the median
+      chain length gate to 20 for a research user who reads break statistics and
+      understands what they are buying.
+    followUps:
+      - Why does raising chain strength until breaks vanish produce a worse result, and what metric would reveal it?
+      - Your cached embedding is invalidated because one qubit went out of service. What is the cheapest correct response?
+      - One logical variable breaks in 40 percent of samples while the global fraction is 6 percent. What do you do?
+    commonMistakes:
+      - Raising chain strength until chain breaks reach zero, which compresses the problem couplings below the four to five effective bits of analogue precision and leaves the annealer optimising a landscape it cannot resolve.
+      - Using the global chain break fraction alone, which hides a single pathological long chain that a per-variable breakdown would identify and a re-embedding would fix.
+      - Re-running the embedding heuristic on every job, which costs minutes per submission for a result that is deterministic given the graph topology and the chip working graph and should be cached.
+    references:
+      - label: D-Wave system documentation
+        url: https://docs.dwavesys.com/
+      - label: Redis documentation
+        url: https://redis.io/docs/latest/
+
+  - id: iq-198
+    title: Design the hybrid loop that puts an annealer inside a classical solver
+    kind: system-design
+    prompt: |
+      Design a hybrid solver where a quantum annealer sits inside a classical
+      decomposition loop, for problems with 5,000 to 50,000 binary variables
+      that cannot possibly be embedded whole. Specify what the classical side
+      owns, how subproblems are chosen, the handoff to the QPU, and the
+      termination criterion. I want the latency arithmetic for one QPU call
+      against one classical improvement pass on the same subproblem, because
+      that ratio determines the whole architecture. Then tell me honestly
+      where the solution quality comes from in a system like this, and how you
+      would find out.
+    difficulty: medium
+    pattern: Annealer and HPC pipeline
+    topics: [hybrid-solvers, decomposition, latency-budget, large-neighbourhood-search, attribution]
+    companies: [D-Wave, Multiverse Computing, AWS Braket, Terra Quantum]
+    modelAnswer: |
+      The decision that matters is set by a latency ratio of about 1,000 to 1, and
+      it forces the architecture: the QPU is an asynchronous batched subproblem
+      oracle called from a classical large-neighbourhood search, never a step inside
+      a tight loop. Here is the arithmetic that fixes it.
+
+      One QPU call:
+
+          programming the chip           10 to 15 ms   (once per problem)
+          anneal                         20 microseconds per read
+          readout and inter-sample delay 100 to 200 microseconds per read
+          1,000 reads                    0.12 to 0.22 s
+          cloud round trip and queue     tens of ms to seconds
+          -------------------------------------------------------------
+          realistic wall clock per call  0.2 s best case, often 1 s or more
+
+      One classical improvement pass on a 150-variable subproblem: a tabu search or
+      a simulated annealing sweep over 150 variables with 30 neighbours each touches
+      about 4,500 evaluations per sweep, and 1,000 sweeps is 4.5e6 delta
+      evaluations, which is milliseconds of one CPU core. Call it 5 ms.
+
+          ratio = 200 ms / 5 ms = 40 per call, and 1,000 if the call queues
+
+      So in the wall-clock time of one QPU call you can run 40 to 1,000 classical
+      passes on the same subproblem. Any architecture alternating one QPU call with
+      one classical pass wastes almost all of its budget waiting. The consequences
+      are structural:
+      - Batch. Send many independent subproblems per programming cycle where the
+        chip allows it, and always request many reads per call, not many calls.
+      - Overlap. The classical search continues on other regions while a call is in
+        flight, so the loop is asynchronous with a work queue and a future per call.
+      - Be selective. Send a subproblem to the QPU only when classical search looks
+        stuck on it, for example after k passes with no improvement.
+
+      What the classical side owns, which is nearly everything:
+      - Ingestion, presolve, variable fixing and constraint handling. Hard
+        constraints stay constraints and are repaired, not turned into penalties,
+        because penalties force the dynamic range problem onto the hardware.
+      - The incumbent solution and the entire search state.
+      - Subproblem selection: a subset of 100 to 175 variables chosen by impact,
+        the ones with the largest potential objective change given the incumbent
+        plus their strongly coupled neighbours, so the subgraph is dense enough to
+        be interesting and small enough to embed.
+      - Building the subproblem QUBO by fixing everything outside the subset to
+        incumbent values and folding their contributions into linear biases.
+      - Embedding, chain strength, decoding, repair and local search on samples.
+      - Termination: a time budget, a target objective, or no improvement across a
+        fixed number of neighbourhoods.
+
+      The handoff contract, which is the only place the QPU appears:
+
+          submit(subproblem_qubo, embedding_id, chain_strength, num_reads)
+             -> future<samples>
+          on completion: majority-vote chains, repair infeasibility,
+                         local-search each of the best 20 samples,
+                         accept if better than incumbent, else discard
+
+      Every accepted improvement is tagged with its origin, and that tag is the
+      answer to the honest question at the end of the prompt.
+
+      Where the quality actually comes from. In published hybrid solvers most of
+      it comes from the classical side: presolve, the neighbourhood selection
+      heuristic and the post-processing local search. The QPU contributes a diverse
+      set of starting points on hard subregions. That is a real contribution and it
+      is not the contribution the marketing implies. To find out for your own
+      system, run a standing ablation rather than a one-off:
+      1. Run the full hybrid loop and record the objective trajectory.
+      2. Replace the QPU oracle with a classical sampler on identical subproblems,
+         at the same wall-clock budget per call including simulated latency.
+      3. Replace the QPU oracle with random restarts.
+      4. Remove the oracle and let the classical search run the same wall clock.
+      If (1) does not beat (2) by more than run-to-run variance across at least 30
+      instances, the QPU is not contributing, and the honest thing is to say so
+      internally before a customer discovers it.
+
+      Attribution telemetry to ship with the loop: fraction of accepted improvements
+      originating from QPU samples versus classical passes, mean objective gain per
+      accepted improvement by origin, and QPU wall-clock share of total runtime.
+      Those three numbers make the ablation continuous rather than an occasional
+      audit.
+
+      The trade-off I accepted: the asynchronous overlapped design is much more
+      complex than a synchronous loop, with futures, a work queue, and returned
+      samples that may refer to an incumbent which has since moved. I validate each
+      returned sample against the current incumbent and reject stale improvements,
+      which occasionally wastes a QPU call. That waste is worth it because the
+      synchronous alternative leaves the CPU idle for 95 percent of the run. If QPU
+      latency fell to 1 ms the ratio inverts and a synchronous loop wins.
+    followUps:
+      - What subproblem selection heuristic would you use, and how do you stop it returning the same neighbourhood repeatedly?
+      - A returned sample improves a stale incumbent. What are your options and which do you pick?
+      - Your ablation shows the QPU contributes 3 percent of accepted improvements. What do you tell the customer and what do you change?
+    commonMistakes:
+      - Building a synchronous loop that alternates one QPU call with one classical pass, which leaves the CPU idle for the 200 ms to 1 s of each call while 40 to 1,000 classical passes could have run.
+      - Encoding hard constraints as penalties inside the subproblem, which forces the dynamic range conflict onto the hardware when the classical side could simply repair infeasible samples.
+      - Shipping the hybrid solver without an ablation against a classical sampler on identical subproblems, so nobody in the company can say what the quantum part contributes.
+    references:
+      - label: D-Wave system documentation
+        url: https://docs.dwavesys.com/
+      - label: Slurm workload manager documentation
+        url: https://slurm.schedmd.com/documentation.html
+
+  - id: iq-199
+    title: Benchmark an annealer honestly against classical baselines
+    kind: system-design
+    prompt: |
+      Your company is about to publish a speedup claim for the annealing
+      pipeline. Design the benchmark that would let that claim survive
+      scrutiny. Choose the classical baselines and defend each one. Define the
+      metric precisely. State what must be held constant across arms and what
+      must be reported per instance rather than aggregated. Then enumerate the
+      specific ways a speedup claim in this field goes wrong, with the
+      arithmetic showing how large each distortion can be. Assume a hostile
+      but fair reviewer who has seen every previous claim in this area
+      collapse under examination.
+    difficulty: medium
+    pattern: Annealer and HPC pipeline
+    topics: [benchmarking, time-to-solution, baselines, reproducibility, speedup-claims]
+    companies: [D-Wave, Multiverse Computing, Google Quantum AI, AWS Braket]
+    modelAnswer: |
+      The decision that matters is the definition of time: total wall clock from
+      submission to a validated solution, including embedding, programming, readout
+      and every classical pre and post-processing step. Anneal-time-only comparisons
+      are the single reason most speedup claims in this field have collapsed, and
+      the arithmetic below shows they overstate performance by 1e3 to 1e4.
+
+      Baselines, each defended:
+      - Well-tuned simulated annealing, the minimum credible baseline. Tuned means
+        the temperature schedule and sweep count were optimised on a held-out
+        instance set, not left at defaults.
+      - Parallel tempering with isoenergetic cluster moves, the strongest
+        general-purpose heuristic for Ising spin glasses and the one that has
+        historically closed claimed gaps. Omitting it is a red flag.
+      - Tabu search. Fast, deterministic given a seed, and the workhorse inside the
+        hybrid loop, so it is the incumbent this has to beat.
+      - An exact solver on the equivalent quadratic programme, run to a proven
+        optimality gap. It gives ground truth on small instances and a dual bound
+        on larger ones, turning "found a good solution" into "within 0.4 percent".
+      - The best specialised heuristic for the actual application class, which on a
+        vehicle assignment problem beats every general solver here.
+
+      The metric. Report time-to-target at a stated success probability:
+
+          TTS(t_f) = t_f * ceil( ln(1 - 0.99) / ln(1 - p_s(t_f)) )
+
+      where t_f is the single-run time including all overheads and p_s is the
+      measured probability of reaching the target energy in one run. Two
+      requirements that are usually skipped:
+      - Optimise over t_f. TTS has a minimum over run time, so reporting it at an
+        arbitrary anneal time is not a measurement. If the optimum lies below the
+        shortest settable anneal time, say so: the true TTS is then unmeasured and
+        any scaling exponent fitted from that data is unsupported.
+      - Define the target independently of the solvers, from a long-running
+        reference, fixed before the arms are run.
+
+      Held constant across arms:
+      - The same instances from a documented, published generator, seeds recorded.
+      - The same target energy per instance, and the same success definition and
+        validation code.
+      - A stated hardware envelope for the classical arms: core count, clock,
+        memory, threading. Report both a single-core number and a number at the
+        core count that costs the same as the QPU access.
+      - The same total wall-clock accounting boundary for every arm.
+
+      Reported per instance, not aggregated: TTS, success probability, best
+      objective, and the classical dual bound. A method that wins on 5 percent of
+      instances and loses on 95 can still show a favourable geometric mean, and the
+      per-instance scatter with the diagonal drawn is the first figure a reviewer
+      looks for.
+
+      The specific distortions, with sizes:
+
+      1. Anneal time only. Quoting 20 microseconds of anneal against a classical
+      wall clock, when the real per-sample cost including readout and delay is 100
+      to 200 microseconds and the per-call cost including programming and network
+      is 0.2 to 1 s. Distortion: 1e4 per sample, 5e4 per call.
+
+      2. Embedding time excluded. A minorminer search for a 150-variable problem
+      takes minutes. If the classical arm solves the instance in 10 s and the
+      quantum arm quotes 0.2 s while hiding a 180 s embedding, the claim inverts.
+      Distortion: up to 1e3.
+
+      3. Untuned classical baseline. Default-parameter simulated annealing can be
+      10 to 100 times slower than a tuned implementation. Distortion: 1e1 to 1e2.
+
+      4. Instance selection. Planted-solution instances and instances engineered to
+      match the annealer's native topology are not the customer's problems, and the
+      gap between native-topology and application-shaped instances has repeatedly
+      been the whole story.
+
+      5. Scaling fitted over too narrow a range. An exponent fitted to n between
+      100 and 175, a factor of 1.75, cannot separate exponential from polynomial
+      growth. A scaling claim needs a decade in n and a confidence interval.
+
+      6. Suboptimal-run-time bias and aggregation. If every arm runs at a fixed
+      time rather than at its own TTS optimum, the arm whose optimum is nearest
+      that time wins for no interesting reason; and a mean over instances hides a
+      method that loses on most of them.
+
+      What I would publish: the per-instance scatter against each baseline, the
+      TTS-versus-t_f curves showing the optimum was found, the timing decomposition
+      per arm as a stacked bar, the instance generator, seeds, and the classical
+      solver configurations. The instances where the annealer loses go in the same
+      figure as the ones where it wins.
+
+      The trade-off I accepted: this benchmark is expensive, takes weeks of QPU and
+      CPU time, and will very likely show no speedup on application-shaped
+      instances. I would run it anyway, because the alternative is a claim that
+      collapses in public, and a negative result naming which instance families are
+      close is worth more to the roadmap than a number nobody believes.
+    followUps:
+      - Your TTS optimum lies below the minimum settable anneal time. What can you still claim and what must you drop?
+      - How would you design the instance generator so a reviewer cannot accuse you of selecting for your hardware topology?
+      - What core count for the classical baseline makes the comparison fair on a cost basis, and how would you justify it?
+    commonMistakes:
+      - Comparing anneal time against classical wall clock, which ignores 100 to 200 microseconds of readout per sample and 10 to 15 ms of programming per call and overstates the result by three to four orders of magnitude.
+      - Excluding embedding time from the quantum arm, which can hide minutes of computation behind a sub-second reported runtime and reverse the direction of the claim.
+      - Fitting a scaling exponent across a factor of two in problem size, which cannot separate exponential from polynomial growth and produces an extrapolation with no support.
+    references:
+      - label: D-Wave system documentation
+        url: https://docs.dwavesys.com/
+      - label: Preskill, Quantum computing in the NISQ era and beyond
+        url: https://arxiv.org/abs/1801.00862
+
+  - id: iq-200
+    title: Put a stochastic optimiser behind a production SLA
+    kind: system-design
+    prompt: |
+      Turn the annealing pipeline into a product. Customers submit
+      optimisation jobs through an API and expect an answer within a stated
+      time with a stated quality. The underlying solver is stochastic, the QPU
+      is a single shared resource with maintenance and calibration windows,
+      and the same input can return a different answer on two consecutive
+      runs. Design the service. Tell me exactly what you put in the SLA and
+      what you refuse to put in it. Tell me what you promise a customer whose
+      answer changed between Monday and Tuesday. Cover reproducibility,
+      capacity, and what happens when the QPU is simply unavailable for six
+      hours.
+    difficulty: hard
+    pattern: Annealer and HPC pipeline
+    topics: [sla, stochastic-solvers, reproducibility, capacity-planning, degradation]
+    companies: [D-Wave, Multiverse Computing, AWS Braket, Microsoft Azure Quantum]
+    modelAnswer: |
+      The decision that matters is that the service never returns the annealer's
+      answer alone. Every job runs a classical solver in parallel on the same
+      problem with the same deadline, and the service returns the better of the two
+      along with a dual bound. That single choice converts a stochastic accelerator
+      into a service you can write an SLA against, because the floor on quality is
+      now set by a deterministic solver and the QPU can only improve it.
+
+          submit
+            |
+            +--> classical arm (tabu + LNS, deterministic given seed) --+
+            |                                                            |
+            +--> hybrid arm (classical loop + QPU oracle) --------------+--> pick best
+            |                                                            |
+            +--> relaxation arm (LP or Lagrangian dual bound) ----------+
+                                    return {solution, objective, bound, gap}
+
+      What goes in the SLA:
+      - API availability: 99.9 percent monthly.
+      - A feasible solution within the requested deadline for 99.9 percent of jobs,
+        where deadline is a required request field.
+      - An objective no worse than the classical arm's, which is deterministic
+        given the recorded seed and therefore contractually checkable.
+      - A reported optimality gap against the dual bound wherever the relaxation is
+        computable, so the customer gets a quality statement, not a promise.
+      - Run-to-run objective stability: for the same input and deadline the
+        objective falls within a stated band, say 1 percent, in 95 percent of runs.
+        A measured property, backed by a nightly regression over a fixed corpus.
+
+      What I refuse to put in the SLA:
+      - Optimality. The solver is a heuristic and can only prove anything through
+        the relaxation arm, which is reported as a bound, not promised.
+      - A bit-identical solution for a repeated input. The QPU is an analogue
+        device subject to flux noise and integrated control errors and is not
+        reproducible even with an identical program and seed, so promising
+        determinism would promise what the physics does not allow.
+      - Any statement that the quantum path improved the answer. That varies per
+        instance and is telemetry, never a guarantee.
+      - A quantum-specific latency figure, since queueing on a shared resource is
+        outside the service's control.
+
+      The Monday-to-Tuesday conversation, scripted because it happens weekly.
+      "Monday returned objective 41,208 and Tuesday returned 41,190. Both are
+      feasible and both are inside the 1 percent stability band in your contract.
+      The dual bound for this instance is 40,900, so both are within 0.8 percent of
+      the best possible answer, and the 0.04 percent between them is smaller than
+      the gap either has to optimality. If you need a fixed answer for downstream
+      reproducibility, set `deterministic: true` and we return the classical arm's
+      solution, byte-identical for a given seed, at a small cost in objective."
+      That switch is the important product feature: some customers have audit
+      trails that need stability more than the last half percent.
+
+      Reproducibility, layered honestly:
+      - Fully reproducible: the classical arm, given the recorded seed, input hash
+        and pinned solver version.
+      - Reproducible as a pipeline: embedding, chain strength, decomposition
+        schedule, annealing parameters, chip working-graph id and calibration id
+        are all recorded, so the experiment can be re-run. The samples differ.
+      - Not reproducible: the QPU samples themselves.
+      Record all three tiers per job in Postgres with raw sample sets in object
+      storage. When a customer disputes a result you replay the classical arm
+      exactly, re-run the quantum arm under identical configuration, and the record
+      shows which arm produced the shipped answer.
+
+      Capacity. One QPU is a shared resource delivering, in round numbers, a few
+      thousand seconds of usable access per day after calibration and maintenance.
+      That is the binding constraint and it must be scheduled explicitly:
+      - A token-bucket quota per customer in QPU seconds per day, with burst.
+      - Two priority classes, interactive and batch, interactive preempting batch
+        in the queue and batch backfilling the gaps.
+      - Admission control that projects QPU seconds from the decomposition schedule
+        before accepting and rejects with a quote when quota cannot cover it.
+      - A hard per-job QPU ceiling so one pathological job cannot eat a day.
+
+      Six hours of QPU unavailability. A non-event, and the parallel-arm design is
+      what makes it one. The classical arm serves 100 percent of traffic alone. The
+      response names which arms ran, so a customer sees the quantum arm was skipped,
+      and the SLA's quality floor is unchanged because that floor was always the
+      classical arm. What degrades is the fraction of jobs where the quantum arm won,
+      which telemetry shows historically and which customers should be given as an
+      expectation rather than a promise. Operationally: health check every 60
+      seconds, circuit break after three consecutive failures, drain the queue into
+      classical-only mode, alarm, and stop charging quantum quota.
+
+      The trade-off I accepted: running a full classical solver on every job doubles
+      the compute cost and means the quantum arm is redundant on most jobs. I take
+      that because it is what makes the SLA writable, and the classical arm is cheap
+      next to QPU access anyway. I would remove it only if the quantum arm beat the
+      classical arm on a large majority of production instances, and the telemetry
+      above is exactly the evidence that would justify it. Nothing I have seen
+      does.
+    followUps:
+      - What does the nightly regression that measures your stability band look like, and how many instances and runs does it need?
+      - A customer wants a contractual optimality guarantee. What can you actually offer them instead, and for which problem classes?
+      - How would you price QPU seconds so that the quota mechanism reflects real scarcity rather than an arbitrary number?
+    commonMistakes:
+      - Writing an optimality guarantee into the SLA for a heuristic solver, which cannot be met and cannot be checked without solving the problem exactly anyway.
+      - Promising bit-identical results for identical inputs, when the QPU is an analogue device whose samples are not reproducible even with the same program and seed.
+      - Making the QPU a hard dependency of the request path, so a six-hour maintenance window becomes a six-hour outage instead of a period of slightly worse objectives.
+    references:
+      - label: D-Wave system documentation
+        url: https://docs.dwavesys.com/
+      - label: Prometheus monitoring documentation
+        url: https://prometheus.io/docs/
+
+  - id: iq-201
+    title: Choose between annealing, QAOA and a classical solver with numbers
+    kind: system-design
+    prompt: |
+      A manufacturer brings you a weekly production scheduling problem that
+      reduces to a QUBO with about 2,000 binary variables and roughly 30,000
+      quadratic terms, so an average variable degree of 30. They want to know
+      whether to run it on a quantum annealer, on gate-model QAOA, or on a
+      classical solver. Decide, and defend the decision with numbers for all
+      three: qubit and gate counts, achievable circuit fidelity, embedding
+      cost, expected runtime, and expected solution quality. Say plainly if
+      the honest answer is a classical solver. Then tell me what would have to
+      change for your answer to flip, and how you would monitor for that
+      change without re-running this analysis every quarter.
+    difficulty: hard
+    pattern: Annealer and HPC pipeline
+    topics: [solver-selection, qaoa, annealing, classical-baselines, roadmap-triggers]
+    companies: [D-Wave, IBM, Multiverse Computing, Quantinuum]
+    modelAnswer: |
+      The decision: use a classical solver. Gurobi or CPLEX on the equivalent
+      quadratic programme, with a domain heuristic for warm starts. Neither
+      quantum route is competitive on this problem today and the gap is not
+      close. Here are the three sets of numbers.
+
+      Classical. A 2,000-binary quadratic problem with 30,000 quadratic terms
+      is a mid-sized instance for a modern branch-and-cut solver. Linearise
+      the products or hand it to the solver as a binary quadratic programme.
+      Expected behaviour: a good feasible solution within seconds, a
+      solution within roughly 1 percent of the dual bound within minutes on 32
+      cores, and a proven bound throughout. Cost: order 1 to 5 US dollars of
+      cloud CPU per run, once a week. Crucially you get a bound, so the
+      customer knows how good the answer is. That is a property neither
+      quantum route provides.
+
+      Annealer. Two thousand logical variables at average degree 30. The
+      Pegasus graph has degree 15, so every variable needs a chain even in the
+      best case, and the interaction graph is not a Pegasus subgraph. Sizing:
+
+          sparse case, chains of length 3 to 4:  6,000 to 8,000 qubits
+          available on Advantage-class chips:    about 5,000
+
+      It does not fit even on the optimistic sparse estimate, and if the
+      degree-30 structure is not locally embeddable the chains are far longer.
+      So the annealer cannot take this problem whole. It could take it through
+      the hybrid decomposition of the earlier design, sending 150-variable
+      subproblems, and then the honest expectation from the ablation is that
+      the QPU contributes a small fraction of accepted improvements while the
+      classical loop does the work. You would be paying for a shared QPU to
+      accelerate a solver that already solves the problem in minutes.
+
+      QAOA. This is the clearest arithmetic of the three.
+
+          cost layer at p = 1:  one ZZ rotation per quadratic term = 30,000
+          two-qubit gates:      2 per ZZ if the native gate is CX, so 60,000
+          qubits:               2,000, all-to-all interaction required
+
+      Then routing. The interaction graph has average degree 30; a heavy-hex
+      superconducting device has degree 2 to 3. Routing a degree-30 graph onto
+      a degree-3 coupling map costs a large SWAP overhead, conservatively a
+      further factor of 3 to 10 in two-qubit gate count, so 2e5 to 6e5
+      two-qubit gates for a single QAOA layer.
+
+          total expected errors at 1e-3 per two-qubit gate:
+              2e5 * 1e-3 = 200
+          signal suppression:  exp(-200), which is zero to any precision
+
+      Even at a per-gate error of 1e-4, which is a per-pair best case on
+      specific demonstrations rather than a device average, the total is 20
+      and exp(-20) = 2e-9. The circuit produces noise. Beyond fidelity, no
+      current device offers 2,000 qubits with the connectivity this needs, and
+      QAOA at p = 1 on general graphs has approximation ratios that classical
+      algorithms match or beat, so even a perfect device at p = 1 would not
+      obviously win. QAOA on this problem is not a close call; it is four to
+      five orders of magnitude from runnable.
+
+      So: classical solver. Say it to the customer directly, and add that the
+      quantum options were evaluated with numbers rather than dismissed.
+
+      What would have to change for the answer to flip, with a trigger for
+      each so this analysis does not have to be redone quarterly:
+
+      | Route | Condition that flips the answer | Monitored trigger |
+      |---|---|---|
+      | Annealer | A chip whose native graph has degree 30 or higher, or 30,000+ qubits at current degree | Vendor topology announcements; recompute embedding feasibility automatically on each new working graph |
+      | Annealer | The problem class shifts to something with no good classical structure and n small enough to embed natively | The classical solver's optimality gap on production instances exceeds 5 percent |
+      | QAOA | Two-qubit error at 1e-6 with 2,000 qubits, or error correction making logical gates available at that count | Published logical two-qubit error rates and logical qubit counts |
+      | QAOA | A problem whose graph matches the device's native connectivity, removing the routing multiplier | Instance graph degree, tracked per submission |
+      | Any | Instance size grows so classical runtime exceeds the weekly window | The classical arm's time-to-1-percent-gap, tracked per run |
+
+      The monitoring principle worth stating: do not track vendor roadmaps as
+      the trigger. Track the quantity that would actually change the decision.
+      The single most informative one here is the classical solver's
+      optimality gap and runtime on real production instances, recorded every
+      week. As long as that gap sits under a percent and the runtime sits in
+      minutes, no plausible quantum development changes the answer, because
+      there is nothing left to win. The day that gap opens up, because the
+      customer's problem grew or its structure changed, is the day to
+      re-evaluate, and it will be visible in a dashboard rather than in a
+      press release.
+
+      The trade-off I accepted: recommending the classical solver means this
+      customer buys no quantum product from us, and it means we learn nothing
+      about their instances on quantum hardware. I would mitigate that by
+      running the hybrid arm in shadow mode at low priority, off the critical
+      path and at our own cost, purely to build the instance library and the
+      ablation record. That is how you earn the right to make the opposite
+      recommendation later, with evidence, on a problem where it is true.
+    followUps:
+      - What does the QAOA arithmetic give for 200 variables at average degree 4 on a heavy-hex device, and does the answer change?
+      - The classical optimality gap on production instances opens to 8 percent. What is your first move, and is it quantum?
+      - How would you build the shadow-mode instance library so it is useful evidence rather than a pile of logs?
+    commonMistakes:
+      - Comparing quantum routes only against each other and never against a tuned classical solver with a dual bound, which hides that the classical answer is already within a percent of optimal.
+      - Counting QAOA qubits and ignoring routing, when mapping a degree-30 interaction graph onto a degree-3 coupling map multiplies the two-qubit gate count by three to ten and moves the total expected error count from 60 to several hundred.
+      - Tracking vendor roadmap announcements as the trigger for re-evaluation instead of tracking the classical solver's own optimality gap and runtime, which is the quantity that actually determines whether anything is left to win.
+    references:
+      - label: Farhi, Goldstone and Gutmann, A quantum approximate optimization algorithm
+        url: https://arxiv.org/abs/1411.4028
+      - label: D-Wave system documentation
+        url: https://docs.dwavesys.com/

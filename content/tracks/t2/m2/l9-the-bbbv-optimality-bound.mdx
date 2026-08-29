@@ -1,0 +1,200 @@
+---
+id: t2.m2.l9
+title: The BBBV Optimality Bound
+type: concept
+track: t2
+module: t2.m2
+level: L2
+minutes: 15
+objectives:
+  - State the hybrid argument of Bennett, Bernstein, Brassard and Vazirani for unstructured search
+  - "Derive the Omega(sqrt(N)) query lower bound from the total query magnitude on a hidden index"
+  - Explain why the bound forbids a general quantum algorithm for NP-complete problems in polynomial time
+prerequisites:
+  - t2.m2.l5
+  - t2.m1.l4
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: Watrous, Quantum Computation lecture notes
+    url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [lower-bound, grover]
+---
+
+Could a cleverer algorithm find the needle in $\log N$ queries? The answer is no,
+and it was known before Grover published the algorithm that meets the bound.
+Bennett, Bernstein, Brassard and Vazirani proved in 1994 that $\Omega(\sqrt N)$
+queries are necessary, which makes unstructured search one of the very few
+problems where the quantum complexity is pinned from both sides.
+
+## The setup
+
+An algorithm making $T$ queries has the normal form of T2.M1.L4:
+
+$$
+\ket{\psi_T^{(x)}} = U_T O_x U_{T-1} O_x \cdots U_1 O_x U_0 \ket{0} .
+$$
+
+Run it instead against the **empty** oracle $O_\varnothing$, which marks nothing,
+and write $\ket{\phi_t}$ for the state just before query $t+1$ on that run. These
+states depend on the algorithm alone, not on any hidden index.
+
+Now measure how much the algorithm looks at index $x$ during that run. Let $P_x$
+project onto the part of the register holding the query index equal to $x$, and
+define the **query magnitude**
+
+$$
+q_x = \sum_{t=0}^{T-1} \left\| P_x \ket{\phi_t} \right\|^2 .
+$$
+
+Each $\ket{\phi_t}$ is a unit vector and the projectors $P_x$ are orthogonal and
+sum to the identity, so $\sum_x \|P_x\ket{\phi_t}\|^2 = 1$ for each $t$, and
+therefore
+
+$$
+\sum_{x=0}^{N-1} q_x = T .
+$$
+
+<Margin label="A budget, not a schedule">
+This is the whole idea. The algorithm has a total attention budget of exactly $T$
+to spread over $N$ indices, however it likes: all on one index, spread evenly, or
+anything between. It cannot create attention. Everything else is the observation
+that a lightly attended index is one the algorithm cannot have noticed.
+</Margin>
+
+Averaging, at least $N/2$ of the indices satisfy $q_x \le 2T/N$. Call these the
+**neglected** indices.
+
+## The hybrid step
+
+Fix a neglected $x$ and compare two runs: one against $O_\varnothing$, one against
+$O_x$, which negates only $\ket{x}$. The two oracles differ only on the $x$
+component, so a single query moves the state by at most
+$2\|P_x\ket{\phi_t}\|$. Unitaries preserve distance, so the errors from the $T$
+queries add:
+
+$$
+\big\| \ket{\psi_T^{(x)}} - \ket{\psi_T^{(\varnothing)}} \big\|
+\;\le\; 2\sum_{t=0}^{T-1} \big\| P_x \ket{\phi_t} \big\| .
+$$
+
+Apply Cauchy-Schwarz to the sum of $T$ terms:
+
+$$
+\sum_{t} \big\| P_x \ket{\phi_t} \big\|
+\le \sqrt{T \sum_t \big\| P_x \ket{\phi_t} \big\|^2} = \sqrt{T q_x}
+\le \sqrt{\frac{2T^2}{N}} .
+$$
+
+So for every neglected $x$,
+
+$$
+\big\| \ket{\psi_T^{(x)}} - \ket{\psi_T^{(\varnothing)}} \big\| \le 2T\sqrt{\frac{2}{N}} .
+$$
+
+An algorithm that finds the marked index with probability at least $2/3$ must
+produce noticeably different final states for $O_x$ and $O_\varnothing$, which
+forces that distance to exceed a fixed constant $c$. Hence
+
+$$
+2T\sqrt{\frac{2}{N}} \ge c
+\quad\Longrightarrow\quad
+T \ge \frac{c}{2\sqrt2}\sqrt N = \Omega(\sqrt N) .
+$$
+
+The argument never opens the algorithm. It works for every $U_j$, every ancilla
+count, and every amount of entanglement, because all it uses is that a query is
+one unitary and unitaries preserve distance.
+
+## Grover is not merely within a constant
+
+The bound says $\Omega(\sqrt N)$; Grover achieves $\lfloor \frac{\pi}{4}\sqrt N
+\rfloor$. Zalka closed the remaining gap: for one marked item among $N$, the
+*exact* maximum success probability of any $T$-query algorithm is
+$\sin^2((2T+1)\theta)$, which is precisely what Grover attains. There is no room
+left at all, not even in the constant.
+
+<Circuit
+  caption="Three qubits, one query, one diffuser. 78.125% on the marked string, which Zalka's analysis shows is the maximum any single-query algorithm can achieve on eight items."
+  show={['probabilities']}
+  ir={{
+    version: 1,
+    name: "one-query-optimal",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "m1", gate: "x", targets: [1] },
+      { id: "oz", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "m2", gate: "x", targets: [1] },
+      { id: "d0", gate: "h", targets: [0] },
+      { id: "d1", gate: "h", targets: [1] },
+      { id: "d2", gate: "h", targets: [2] },
+      { id: "e0", gate: "x", targets: [0] },
+      { id: "e1", gate: "x", targets: [1] },
+      { id: "e2", gate: "x", targets: [2] },
+      { id: "ez", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "f0", gate: "x", targets: [0] },
+      { id: "f1", gate: "x", targets: [1] },
+      { id: "f2", gate: "x", targets: [2] },
+      { id: "g0", gate: "h", targets: [0] },
+      { id: "g1", gate: "h", targets: [1] },
+      { id: "g2", gate: "h", targets: [2] }
+    ]
+  }}
+/>
+
+$0.78125 = \sin^2(3\theta)$ with $\sin\theta = 1/\sqrt8$, and no rearrangement of
+the one query and the free unitaries around it can do better.
+
+## What this means for NP
+
+Read the bound as a statement about SAT. A SAT formula on $n$ variables has
+$N = 2^n$ assignments. If the only thing an algorithm knows how to do with the
+formula is test assignments, BBBV says it needs $\Omega(2^{n/2})$ tests, so
+brute-force quantum search on a 256-bit key costs $2^{128}$ oracle calls: better
+than $2^{256}$, and still out of reach forever.
+
+Formally, BBBV constructs an oracle $A$ relative to which
+$\mathrm{NP}^A \not\subseteq \mathrm{BQP}^A$. That does not prove
+$\mathrm{NP} \not\subseteq \mathrm{BQP}$ in the real world, because relativised
+results can be misleading, but it does prove something sharp: **no relativising
+technique can put NP inside BQP**. Any polynomial-time quantum algorithm for an
+NP-complete problem would have to read the *structure* of the formula, not query
+it as a black box. Every quantum algorithm that beats brute force today,
+including Shor, does exactly that: order finding is not search, it is an
+eigenvalue problem on a structured unitary.
+
+<Callout tone="warning" title="Halving the key length is not the headline">
+Grover turns $2^{256}$ into $2^{128}$, which is why post-quantum guidance doubles
+symmetric key lengths and leaves the algorithms alone. But the $\sqrt N$ savings
+are *sequential*: the $2^{128}$ iterations cannot be parallelised well, since
+splitting the search across $p$ machines only gives $\sqrt{N/p}$ each, a
+$\sqrt p$ return on $p$ machines. Classical brute force parallelises perfectly.
+Under any realistic accounting of coherent runtime, Grover's advantage against
+symmetric cryptography is much smaller than the exponent suggests.
+</Callout>
+
+<Check question="A colleague proposes an algorithm that queries a superposition weighted towards indices it thinks likely, spending most of its magnitude on a few thousand of the $N$ indices. Does that evade the bound?">
+No, and the reason is the counting step. Concentrating magnitude on a few
+thousand indices leaves *even less* for the rest, so the neglected set stays at
+least $N/2$ in size and the bound $q_x \le 2T/N$ still holds on it. If the
+suspicion is right the algorithm wins, but the adversary in the proof simply hides
+the marked index among the neglected ones. A heuristic that is usually right is
+still valuable; it is just not a worst-case query bound, and the two are what
+Module 9 spends its time separating.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), for the
+  hybrid argument in the query-magnitude form used here.
+- [Watrous, Quantum Computation notes](https://cs.uwaterloo.ca/~watrous/QC-notes/),
+  for the careful statement of the oracle separation and what it does and does not
+  prove.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 6.6, for the optimality proof and its relation to Grover's constant.

@@ -1,0 +1,762 @@
+questions:
+  - id: iq-148
+    title: Map a 12-qubit chemistry ansatz onto a heavy-hex lattice
+    kind: system-design
+    prompt: |
+      You have a 12-qubit hardware-efficient chemistry ansatz whose entangling
+      layer touches every pair of qubits, and a 127-qubit IBM heavy-hex device
+      whose native two-qubit gate is ECR. Two-qubit gates take about 300 to 500
+      nanoseconds, single-qubit gates 20 to 50 nanoseconds, and T2 on this
+      device sits in the 100 to 300 microsecond range. You are not allowed to
+      change the ansatz. Tell me how you choose the initial layout, why the
+      heavy-hex graph has qubits of degree 2 and degree 3 and nothing higher,
+      and what the routing overhead costs you in two-qubit gates and in depth.
+      Give me the numbers for a single entangling layer, then tell me whether
+      the circuit still fits inside coherence and inside a usable fidelity.
+    difficulty: easy
+    pattern: Topology and QEC mapping
+    topics: [heavy-hex, qubit-routing, swap-networks, initial-layout, coupling-map]
+    companies: [IBM, Q-CTRL, Classiq, Rigetti]
+    modelAnswer: |
+      The decision that matters happens before layout runs at all: replace the
+      all-to-all entangling layer with an explicit linear swap network, and only
+      then pick twelve physical qubits. If you hand a complete interaction graph
+      to a generic router on a degree-3 device you get whatever the heuristic
+      finds on that trial, and the spread across trials is large enough that the
+      answer is not reproducible. The swap network is a construction you can
+      write down, count and defend.
+
+      Why the graph has degree 2 and degree 3 only. Heavy-hex is a hexagonal
+      lattice with one extra qubit placed in the middle of every edge. The
+      original lattice vertices keep three neighbours; the added link qubits
+      have exactly two.
+
+          *---o---*---o---*        * = degree-3 vertex qubit
+          |               |        o = degree-2 link qubit
+          o               o
+          |               |
+          *---o---*---o---*
+
+      The reason is not aesthetics. These are fixed-frequency transmons driven
+      by cross resonance, and every neighbour adds constraints to the frequency
+      allocation problem plus a static ZZ term with a spectator. The yield of a
+      collision-free frequency assignment falls sharply as degree rises, so the
+      vendor traded connectivity for manufacturability. The degree-2 link qubits
+      double as flag qubits in the heavy-hex code, so the same choice serves the
+      error-correction roadmap. What you pay for it is routing depth, which is
+      exactly the bill this question asks you to add up.
+
+      Now the numbers for one entangling layer.
+
+          all-to-all hardware   66 pairs, 11 layers  (K12 splits into 11
+                                perfect matchings of 6 disjoint gates)
+          heavy-hex, path       66 fused gates in 12 rounds, 3 ECR each
+
+      Twelve qubits give C(12,2) = 66 pairs. On all-to-all hardware that is 66
+      two-qubit gates in 11 layers. On heavy-hex, embed the twelve qubits as an
+      induced path and run an odd-even transposition swap network: 12 rounds,
+      each round applying 6 disjoint gates that each perform one interaction and
+      one SWAP on the same pair. Every pair meets exactly once, so 66 fused
+      gates. A fused gate is a generic SU(4) element, and the Cartan
+      decomposition needs 3 two-qubit gates for a generic SU(4) element, so:
+
+          two-qubit gates   198 ECR versus 66        3.0x overhead
+          depth             36 ECR layers versus 11  3.3x overhead
+          duration          36 x 400 ns = 14.4 microseconds, call it 16
+                            with the single-qubit layers folded in
+
+      Against a T2 of 100 to 300 microseconds you spend 5 to 16 percent of
+      coherence on one entangling layer, so two layers plus readout of 300
+      nanoseconds to a few microseconds still fits and four layers does not.
+
+      Fidelity is the binding constraint, not coherence. Take 5e-3 as a device
+      median ECR error, with the best pairs near 1e-3; that median is an
+      assumption you should read off the calibration file, not a constant. Then
+      198 gates carry an expected 198 x 5e-3 = 0.99 accumulated error and a
+      layer success of exp(-0.99) = 0.37. One entangling layer already costs you
+      two thirds of your signal. State that plainly rather than reporting the
+      depth and stopping.
+
+      Choosing the layout itself is then a small scored search. Run exact
+      subgraph isomorphism for a 12-vertex induced path over the coupling map,
+      which typically returns tens of candidates on a 127-qubit device. Score
+      each candidate as the sum over its edges of -log(1 - e_edge) plus the sum
+      over measured qubits of -log(1 - e_readout), and take the minimum. Rerun
+      the scoring after routing, because routing decides which edges actually
+      carry gates.
+
+      The trade-off I accepted: 3x the two-qubit gates in exchange for a device
+      whose frequencies can be assigned without collisions and whose spectator
+      ZZ is small. I would decide the other way on hardware with tunable
+      couplers at degree 4 and comparable error, where the swap network needs
+      fewer rounds, or on a device exposing a fractional RZZ gate, where the
+      fused interact-and-swap gate costs 2 native gates rather than 3 and the
+      overhead drops from 3.0x to 2.0x. The honest fix, if the science allows
+      it, is to stop using an all-to-all hardware-efficient ansatz and use a
+      fermionic swap network matched to the actual Hamiltonian term structure.
+    followUps:
+      - How does the overhead change if the twelve qubits are embedded as a tree rather than a path, and why is a path usually the right shape here?
+      - Your calibration file marks two edges of the chosen path as failing. What does the layout selector do, and what does it do to the transpile cache?
+      - The ansatz is symmetric under permuting the qubits. How would you exploit that when scoring candidate layouts?
+    commonMistakes:
+      - Reporting only the SWAP count and not the fused gate count, which hides the factor of 3 that the Cartan decomposition of a generic SU(4) element imposes on an ECR machine.
+      - Assuming heavy-hex is a sparse grid. It is degree 2 and 3 by construction, so a router that expects degree 4 will produce embeddings that do not exist.
+      - Quoting a single T2 number for the device. T2 varies qubit to qubit and week to week, so a layout scored against one point estimate is not reproducible next week.
+    references:
+      - label: IBM Quantum transpilation guide
+        url: https://docs.quantum.ibm.com/guides/transpile
+      - label: Shende, Bullock and Markov, Synthesis of quantum logic circuits
+        url: https://arxiv.org/abs/quant-ph/0406176
+
+  - id: iq-149
+    title: Choose between an ion chain and a shuttling trap for QAOA
+    kind: system-design
+    prompt: |
+      You must run QAOA at p = 3 on a 40-node MaxCut instance, a random 3-regular
+      graph with 60 edges. Two trapped-ion vendors bid. One offers a single
+      linear chain of 40 ions with genuine all-to-all coupling through the shared
+      motional modes. The other offers a QCCD machine with several small gate
+      zones and ion transport between them, so connectivity is all-to-all only
+      after you move ions. Two-qubit gates run 100 microseconds to a few
+      milliseconds, single-qubit gates take microseconds, coherence is seconds to
+      tens of seconds, and state preparation and measurement error is in the low
+      1e-3. Pick one machine. Defend it with the gate count, the wall-clock time
+      for one circuit, the error budget, and the total time for the optimisation.
+    difficulty: medium
+    pattern: Topology and QEC mapping
+    topics: [trapped-ions, qccd, qaoa, connectivity, shot-budget]
+    companies: [IonQ, Quantinuum, Q-CTRL, Classiq]
+    modelAnswer: |
+      Take the QCCD machine. Not because it has better connectivity on paper: it
+      does not, the single chain is the only one of the two that is genuinely
+      all-to-all with no routing. Take it because a 40-ion chain's gate quality
+      and gate speed degrade with chain length, and because the shuttling
+      machine is the only one where two gates can run at the same time.
+
+      The circuit first. A 3-regular graph on 40 nodes has 60 edges. QAOA at
+      p = 3 gives 3 x 60 = 180 ZZ(gamma) rotations plus 3 x 40 = 120 single-qubit
+      mixer rotations. On a Molmer-Sorensen native machine each ZZ is one native
+      two-qubit gate, so 180 two-qubit gates and 120 single-qubit gates, with
+      zero SWAPs on either machine. Routing is not the differentiator here.
+
+      Single chain, wall clock. Gates on a shared motional bus serialise: one
+      entangling gate at a time. At 300 microseconds per gate,
+
+          180 x 300 microseconds = 54 milliseconds of gate time
+          120 x 10 microseconds  =  1.2 milliseconds of single-qubit time
+          plus one readout of order 100 microseconds to a millisecond
+
+      so about 55 milliseconds per shot. Coherence is seconds, so decoherence is
+      not what kills you.
+
+      Single chain, fidelity. A 40-ion chain has 40 axial modes packed into a
+      bandwidth set by the trap, so mode spacing shrinks roughly as 1/N and the
+      pulse shaping has to resolve or suppress ever closer spectator modes. Gate
+      time for a fixed fidelity therefore grows with N, and the highest-fidelity
+      chains demonstrated are in the 20 to 30 ion range. The direction of that
+      scaling is solid; the exponent is not settled, so treat it as a risk, not a
+      formula. If the chain delivers 1e-3 per gate you get an expected 180 x 1e-3
+      = 0.18 accumulated error and a circuit success of exp(-0.18) = 0.84. If it
+      degrades to 5e-3 at 40 ions you get 0.90 accumulated, success 0.41, and the
+      measured cut value contracts towards the random-guess value of 0.5 x 60 =
+      30 edges, which is exactly the regime where the optimiser stops seeing
+      signal and reports convergence on noise.
+
+      QCCD, wall clock. With four two-ion gate zones you can run four gates at
+      once, so the 180 gates become 45 serial slots. But every gate needs its two
+      ions co-located, so per gate you pay a split, a transport, a merge and a
+      recooling step, of order 200 microseconds to 1 millisecond. Take 500
+      microseconds and assume half of it overlaps with gates in other zones:
+
+          gate time        45 slots x 300 microseconds     = 13.5 milliseconds
+          transport time   180 x 500 microseconds x 0.5    = 45 milliseconds
+          total per shot                                   about 60 milliseconds
+
+      So QCCD is not faster. It is roughly the same wall clock, slightly worse.
+      You choose it for error, not for time: gate fidelity in a two-ion or
+      four-ion crystal does not depend on the other 36 ions, so the 1e-3 number
+      is one you can actually hold at 40 qubits, and SPAM stays in the low 1e-3.
+
+      The number that decides the project is the optimisation, not the circuit.
+      Budget 1000 shots per energy evaluation to get the cut expectation to about
+      1 percent of its range, and 6 parameters over a noisy landscape needs of
+      order 200 evaluations:
+
+          1000 x 60 milliseconds        = 60 seconds per evaluation
+          200 evaluations               = 3.3 hours of pure device time
+          plus queueing and reload      call it a working day
+
+      Say that out loud in the interview. On superconducting hardware with 300
+      nanosecond gates the same run is minutes, and the whole trapped-ion case
+      rests on fidelity per gate, not throughput.
+
+      The trade-off I accepted: transport heating, a recooling budget, and a real
+      compiler problem, because QCCD reintroduces routing as ion scheduling even
+      though the logical connectivity is all-to-all. I would switch to the single
+      chain if the problem were 20 qubits rather than 40, where chains are proven
+      and the compiler becomes trivial, or if the vendor demonstrated sub-1e-3
+      gates across all 780 pairs of a 40-ion chain rather than on a selected
+      subset.
+    followUps:
+      - How would you schedule the 60 edges into gate zones, and what graph problem is that?
+      - The optimiser needs 3.3 hours of device time. What would you change in the algorithm, not the hardware, to cut that by 10x?
+      - How do you detect that transport heating, rather than gate error, is the dominant term in your error budget?
+    commonMistakes:
+      - Claiming the QCCD machine wins on connectivity. Both are effectively all-to-all for this circuit; the single chain needs no routing at all.
+      - Reporting per-circuit time and stopping, when the shot budget times the evaluation count is three orders of magnitude larger and is what the project is costed on.
+      - Using a single 1e-3 gate error for a 40-ion chain. That figure is demonstrated on short chains, and mode crowding is the specific reason it may not hold.
+    references:
+      - label: IonQ documentation
+        url: https://docs.ionq.com/
+      - label: Farhi, Goldstone and Gutmann, A quantum approximate optimization algorithm
+        url: https://arxiv.org/abs/1411.4028
+
+  - id: iq-150
+    title: Derive the surface code distance for a logical error target
+    kind: system-design
+    prompt: |
+      Size a surface code machine for me. The physical two-qubit error rate is
+      1e-3, the threshold is about 1 percent under a circuit-level depolarising
+      model, a syndrome round takes about 1 microsecond, and the algorithm needs
+      100 logical data qubits and runs for 1e10 cycles. The target is a logical
+      error rate of 1e-12. Derive the code distance rather than quoting one.
+      Then give me the physical qubit count for a single logical patch using
+      2*d^2 - 1 in the rotated layout, and the full footprint including routing
+      space. Tell me what the 1e-12 figure actually means, because the spec is
+      ambiguous and the ambiguity is worth a factor of two in distance.
+    difficulty: medium
+    pattern: Topology and QEC mapping
+    topics: [surface-code, code-distance, logical-error-rate, resource-estimation, footprint]
+    companies: [Google Quantum AI, IBM, PsiQuantum, Microsoft Azure Quantum]
+    modelAnswer: |
+      The decision that matters is what 1e-12 is a rate of, because per round and
+      per computation differ by ten orders of magnitude here and the distance
+      moves from 21 to 41. Read it as a per-logical-qubit, per-round rate. Then
+      over 1e10 rounds a single logical qubit fails with probability about 1e-2,
+      which is a sane engineering budget for a run you can repeat. State that
+      reading explicitly before you compute anything.
+
+      The scaling law. Below threshold the logical error per round per patch
+      falls as
+
+          p_L = A * (p / p_th)^((d+1)/2)
+
+      with A of order 0.1 and p_th about 1 percent under a circuit-level
+      depolarising model. That "about 1 percent" is not a precise constant, and
+      the prefactor A is fitted, so treat what follows as accurate to a distance
+      step, not to the last digit.
+
+      With p = 1e-3 and p_th = 1e-2 the ratio is 0.1, so p_L = 0.1 * 0.1^((d+1)/2)
+      = 10^(-1 - (d+1)/2). Tabulating:
+
+          d     (d+1)/2      p_L per round
+          ---   ---------    -------------
+           9        5           1e-6
+          13        7           1e-8
+          17        9           1e-10
+          19       10           1e-11
+          21       11           1e-12
+          23       12           1e-13
+
+      So d = 21. Each step of 2 in distance buys one decade, which is the single
+      most useful fact in this whole area: error suppression is exponential in d
+      and the exponent is (d+1)/2, so ten decades cost twenty units of distance
+      and about 4x the qubits.
+
+      Patch cost. The rotated layout needs 2*d^2 - 1 physical qubits per logical
+      patch, so
+
+          2 * 21^2 - 1 = 2 * 441 - 1 = 881 physical qubits per logical patch
+
+      Full footprint. 100 logical data qubits is 100 patches, but a data block
+      that can actually compute needs ancilla tiles for lattice surgery: routing
+      corridors, a place to land magic states, and space to expand patches. A
+      practical block is between 1.5 and 2 tiles per logical qubit, so:
+
+          data patches        100 x 881               =  88,100
+          routing at 2x       200 tiles x 881         = 176,200
+          idle and spares     add 10 percent          about 194,000
+
+      Call it 2e5 physical qubits, one significant figure, for the data block
+      alone. That excludes magic state factories, which for any non-Clifford
+      workload will add of order the same again; if the algorithm is Clifford
+      only, the factories vanish and 2e5 is the whole machine.
+
+      Now the ambiguity, priced. If instead the whole 1e10-cycle computation must
+      fail with probability at most 1e-12, then across 100 patches you need per
+      round per patch
+
+          1e-12 / (1e10 * 100) = 1e-24
+
+      which needs 10^(-1 - (d+1)/2) <= 1e-24, so (d+1)/2 >= 23 and d = 45. Patch
+      cost jumps to 2 * 2025 - 1 = 4049, and the block goes to about 9e5 physical
+      qubits. Same algorithm, 4.6x the machine, purely from how one sentence in
+      the spec is read. This is why resource estimates get argued about.
+
+      The trade-off I accepted: d = 21 gives a 1 percent failure probability per
+      logical qubit over the run, which means with 100 logical qubits you expect
+      the run to fail outright roughly every time and must either repeat it or
+      make the algorithm verifiable. That is a deliberate choice, because pushing
+      to a whole-computation guarantee costs nearly 5x the hardware. I would
+      decide the other way if the algorithm has no cheap classical verifier, for
+      example a sampling task whose output cannot be checked, because there
+      repeating the run does not recover correctness.
+    followUps:
+      - The device improves to p = 1e-4. What are the new distance and footprint, and what fraction of the machine did you just delete?
+      - How would you spend an error budget across data patches, routing, and magic state distillation rather than giving every patch the same distance?
+      - What experiment would you run on a real device to check that the (d+1)/2 exponent actually holds for your hardware?
+    commonMistakes:
+      - Quoting a distance without stating whether the error target is per round, per logical operation, or per computation. The three answers differ by more than a factor of two in d.
+      - Using d^2 physical qubits per patch. The rotated layout needs 2*d^2 - 1, which is roughly twice as many, and the difference is 100 percent of your budget error.
+      - Presenting the threshold as an exact 1e-2 and the prefactor as exact. Both are fitted under a specific noise model, so the derivation is good to a distance step.
+    references:
+      - label: "Fowler et al, Surface codes: towards practical large-scale quantum computation"
+        url: https://arxiv.org/abs/1208.0928
+      - label: Stim, a fast stabilizer circuit simulator
+        url: https://github.com/quantumlib/Stim
+
+  - id: iq-151
+    title: Design the mapping layer for a lattice-surgery layout
+    kind: system-design
+    prompt: |
+      A logical circuit of 100 logical qubits in Clifford plus T has to run on a
+      surface-code processor at distance 21, with a syndrome round of about 1
+      microsecond. Design the layer that maps that logical circuit onto a
+      two-dimensional lattice-surgery layout. I want the patch placement, the
+      routing channels, how you schedule operations that contend for the same
+      channel, and the cost of one logical CNOT in code cycles and in
+      microseconds. Compare that with a physical CNOT of 300 nanoseconds. Assume
+      magic states arrive at a fixed port on one edge of the block, and tell me
+      what your layout gives up.
+    difficulty: medium
+    pattern: Topology and QEC mapping
+    topics: [lattice-surgery, patch-placement, logical-cnot, routing-channels, scheduling]
+    companies: [PsiQuantum, Google Quantum AI, Microsoft Azure Quantum, IBM]
+    modelAnswer: |
+      The decision that matters is that the mapping layer should not be mapping
+      CNOTs at all. Compile the logical circuit into a sequence of multi-qubit
+      Pauli product measurements and track the Clifford part in a classical Pauli
+      frame. Then the layout problem reduces to one question: can a free ancilla
+      corridor connect the support of the next Pauli measurement? Distance between
+      patches barely matters; corridor availability is everything.
+
+      Placement. Put data patches in two rows with a routing highway between
+      them, each patch one tile, each tile 2*d^2 - 1 = 881 physical qubits at
+      d = 21.
+
+          +----+----+----+----+----+----+----+   <- magic state port edge
+          | D0 | D1 | D2 | D3 | D4 | D5 | D6 |
+          +----+----+----+----+----+----+----+
+          |         routing highway            |  1 to 2 tiles tall
+          +----+----+----+----+----+----+----+
+          | D7 | D8 | D9 |D10 |D11 |D12 |D13 |
+          +----+----+----+----+----+----+----+
+
+      Every data patch has one Z boundary and one X boundary facing the highway,
+      so any subset of patches can be joined by growing an ancilla region along
+      the corridor. That is the whole trick: a shape where every operand is one
+      step from the bus.
+
+      Cost of a logical CNOT. Lattice surgery does it with an ancilla patch, a ZZ
+      merge and split, then an XX merge and split. Each merge must be held for
+      about d rounds so the parity measurement is itself protected to distance d,
+      so:
+
+          logical CNOT      about 2d rounds = 42 rounds at d = 21
+          wall clock        42 rounds x 1 microsecond = 42 microseconds
+          physical CNOT     300 nanoseconds
+          ratio             about 140x slower
+
+      That factor of 140 is the real content of fault tolerance, and it is why T
+      count and not gate count is the currency. In the Pauli-frame formulation a
+      single multi-qubit Pauli measurement also costs about d rounds, so a T gate
+      consuming one magic state costs of order d to 9d rounds depending on how
+      much space you gave the layout.
+
+      Layout families and what they cost, using the standard block designs:
+
+          family        tiles per logical qubit    rounds per T gate
+          -----------   ------------------------   -----------------
+          compact       about 1.5                  about 9d
+          intermediate  about 2                    about 5d
+          fast          about 2 plus a boundary    about 1d
+
+      At 100 logical qubits and 881 physical qubits per tile:
+
+          compact       150 tiles  -> 132,000 physical qubits, 189 microseconds per T
+          fast          about 230 tiles -> 203,000 physical qubits, 21 microseconds per T
+
+      So 1.5x the qubits buys 9x the T throughput. These tile counts are the
+      published order of magnitude for these block designs, not exact constants
+      for an arbitrary circuit.
+
+      Scheduling. Corridor contention is an interval-scheduling problem. Each
+      pending Pauli measurement claims a contiguous segment of the highway for d
+      rounds; two measurements can run concurrently only if their segments are
+      disjoint. Build the conflict graph over the next window of operations and
+      greedily colour it, then commit a schedule of d-round slots. Two practical
+      rules: keep frequently co-measured logical qubits adjacent, since that
+      shortens segments and raises concurrency, and reserve the tiles nearest the
+      magic state port for T gates, because those are on the critical path and
+      everything else can wait.
+
+      What the layout gives up. I chose the fast block, so I pay about 1.7x the
+      qubits compared with the compact block and I hard-code an assumption that T
+      gates dominate. I would take the compact block instead on an early machine
+      where physical qubits are the scarce resource and an experiment that takes
+      nine times longer is still an experiment, or on a circuit whose T count is
+      small enough that the Clifford routing, not distillation, sets the runtime.
+      I would also revisit the two-row shape if the algorithm's interaction graph
+      is strongly clustered, since then several short local highways beat one
+      long shared bus.
+    followUps:
+      - Where does the Pauli frame live, how large is it, and what happens to it when the decoder falls behind?
+      - How would you place patches if the logical circuit's interaction graph is a 2D grid rather than arbitrary?
+      - What changes in this layout if magic states arrive from four ports instead of one?
+    commonMistakes:
+      - Costing a logical CNOT as one operation. It is two merges and two splits, each held for about d rounds, so about 2d rounds, and it occupies a shared corridor for all of that time.
+      - Optimising patch placement for physical distance. In lattice surgery the cost is set by corridor availability and merge duration, not by how far apart two patches sit.
+      - Forgetting that the Clifford part can be commuted into a classical Pauli frame, which leaves the layout doing work that never needed to touch the lattice.
+    references:
+      - label: "Fowler et al, Surface codes: towards practical large-scale quantum computation"
+        url: https://arxiv.org/abs/1208.0928
+      - label: MIT OCW, Quantum Information Science II
+        url: https://ocw.mit.edu/courses/8-371x-quantum-information-science-ii-spring-2018/
+
+  - id: iq-152
+    title: Architect a real-time decoder that never falls behind
+    kind: system-design
+    prompt: |
+      Design the real-time decoding subsystem for a surface-code machine running
+      100 logical patches at distance 21. A syndrome round lands every 1
+      microsecond. The decoder must sustain that rate forever, not on average.
+      Tell me the syndrome bandwidth, what minimum-weight perfect matching
+      actually costs at this rate, what happens when the decoder is slower than
+      the source, and how windowed and parallel decoding change the picture.
+      Then tell me exactly where the FPGA sits, why not inside the fridge, and
+      what the reaction-time budget is for a T gate. Ballpark figures are fine
+      if you say they are ballpark.
+    difficulty: hard
+    pattern: Topology and QEC mapping
+    topics: [real-time-decoding, mwpm, decoder-backlog, fpga, windowed-decoding]
+    companies: [Google Quantum AI, Quantinuum, IBM, Q-CTRL]
+    modelAnswer: |
+      The decision that matters is that this is a throughput problem, not a
+      latency problem. Decode in sliding space-time windows on FPGAs sitting in
+      the readout crate, one decoder pipeline per patch, sized so that the worst
+      case, not the mean, is under 1 microsecond per round. A decoder that is
+      fast on average and slow on a burst is a decoder that eventually stops the
+      machine.
+
+      Bandwidth first, because it eliminates half the candidate architectures. A
+      rotated distance-21 patch has d^2 - 1 = 440 stabilizer measurements per
+      round. So:
+
+          per patch      440 bits per round x 1e6 rounds/s  = 440 Mbit/s
+          100 patches                                       =  44 Gbit/s
+
+      Forty-four gigabits per second of syndrome, continuously, forever. You do
+      not put that on a PCIe link into a host CPU and call it a design. It has to
+      be reduced where it is produced.
+
+      What matching costs. Exact blossom matching is superlinear in the number of
+      defects, and the modern sparse implementations report of order one million
+      measurement rounds per second per CPU core at moderate distance and p near
+      1e-3. That is exactly 1 MHz with zero headroom, for one patch. A hundred
+      patches would need a hundred cores just to break even, with nothing left
+      for a syndrome burst, a leakage event, or a garbage-collection pause. Treat
+      those throughput figures as order of magnitude: they depend strongly on
+      distance, error rate and implementation.
+
+      The backlog problem. If the decoder takes t_dec per round and the source
+      produces a round every t_round, the queue grows at rate (t_dec/t_round - 1)
+      rounds per round, without bound, whenever t_dec > t_round. This is not
+      recoverable by buffering. Worse, the computation cannot outrun it: every
+      non-Clifford gate needs a classically conditioned correction that depends on
+      decoded syndromes, so the algorithm must wait for the decoder at each such
+      gate. A decoder running at 2x too slow does not make the machine 2x slower;
+      the delay compounds across the chain of conditioned gates and the runtime
+      blows up. Say "backlog problem" and give the 1 MHz number.
+
+      The architecture, in three tiers.
+
+          fridge  |  readout crate                    |  host
+                  |                                    |
+          qubits -+-> ADC + FPGA --> predecoder -------+--> slow path
+                  |      |               |             |    (logging,
+                  |      +--> pulse <----+ matcher     |     replay,
+                  |           dispatch      per patch  |     retraining)
+                  |                                    |
+
+      1. Predecoder on the same FPGA as the readout. A cheap local rule cancels
+         isolated defect pairs, which are the large majority of events at
+         p = 1e-3, and forwards only the residual. This is the highest-leverage
+         single optimisation available: it cuts the load on the expensive stage by
+         roughly an order of magnitude, and it is a fixed-latency pipeline stage.
+
+      2. Sliding-window matching, per patch. Take a window of about 3d rounds,
+         commit the middle d rounds, discard and recompute the boundary regions
+         on the next window. Windows are independent, so windows across patches
+         and across time run in parallel on separate fabric. Per-window latency is
+         about 3d microseconds = 63 microseconds at d = 21, which is fine, because
+         the pipeline is what has to sustain 1 MHz, not any single window.
+
+      3. Host, off the critical path. Store raw syndromes for offline replay,
+         recalibrate decoder priors from observed defect rates, and run the
+         expensive exact decoder as a reference to measure how much accuracy the
+         windowing cost you.
+
+      Where the FPGA goes and why not in the fridge. The syndrome already leaves
+      the cryostat as digitised readout, so the decoder belongs beside the ADC in
+      the room-temperature control crate. Cryo-CMOS decoding at the 4 K stage is
+      proposed but is not commodity, and the power budget at that stage is of
+      order a watt, which is not a matcher chewing 44 Gbit/s. What you do gain by
+      being in the crate is the loop: readout of 300 nanoseconds to a few
+      microseconds, cable delay of about 5 nanoseconds per metre, decode, and
+      conditional pulse dispatch. Target the whole reaction loop under 10
+      microseconds. That number multiplies your T count directly: 2.7e9 Toffolis
+      at 10 microseconds is 7.5 hours, and at 100 microseconds it is 75 hours, so
+      the reaction loop is a first-class product requirement.
+
+      The trade-off I accepted. Sliding windows are approximate: an error chain
+      that straddles a window boundary can be mis-corrected, which raises the
+      effective logical error rate by a modest constant factor. I pay for it with
+      distance: budget one extra distance step, d = 21 to d = 23, which takes the
+      patch from 881 to 1105 physical qubits, about 25 percent more hardware, in
+      exchange for a decoder that provably keeps up. I would decide differently if
+      a union-find or neural decoder at comparable accuracy delivered ten times
+      the throughput, in which case I would shrink the window overlap and take the
+      distance back. Union-find is the concrete alternative today: near-linear
+      time, easier to pipeline, and a slightly worse threshold, which is again a
+      distance step.
+    followUps:
+      - How would you test that the decoder sustains 1 MHz in the worst case rather than the mean, and what input would you feed it?
+      - What is your plan when a qubit leaks out of the computational subspace and the matching graph stops describing the noise?
+      - How does the syndrome bandwidth change if you move from distance 21 to distance 41, and what does that do to the crate design?
+    commonMistakes:
+      - Treating decoder speed as a latency requirement. It is a throughput requirement, and any sustained rate slower than the syndrome rate produces an unbounded backlog.
+      - Sizing the decoder for the average defect density. Bursts, leakage and correlated events set the requirement, and a decoder that misses the worst case stalls the whole computation.
+      - Proposing to ship raw syndromes to a host CPU. At 440 bits per round per patch and 1 MHz, 100 patches produce about 44 Gbit/s, which the link cannot carry and the CPU cannot match.
+    references:
+      - label: PyMatching, fast minimum-weight perfect matching decoder
+        url: https://github.com/oscarhiggott/PyMatching
+      - label: Stim, a fast stabilizer circuit simulator
+        url: https://github.com/quantumlib/Stim
+
+  - id: iq-153
+    title: Choose between the surface code and a bivariate bicycle code
+    kind: system-design
+    prompt: |
+      You have a fixed budget of 100,000 physical superconducting qubits and you
+      want the largest number of usable logical qubits at a protection level of
+      about distance 12, with a physical error rate of 1e-3. One option is the
+      surface code, degree 4, nearest neighbour only, with known decoders and a
+      known lattice-surgery toolkit. The other is a qLDPC code of the bivariate
+      bicycle family, for example a [[144, 12, 12]] code. Give me the encoding
+      rate of each, the connectivity each demands, the state of decoding and
+      logical operations for each, and then name the exact hardware change that
+      would make you switch. Say which parts of your comparison are contested.
+    difficulty: hard
+    pattern: Topology and QEC mapping
+    topics: [qldpc, bivariate-bicycle, encoding-rate, connectivity, code-comparison]
+    companies: [IBM, Google Quantum AI, Rigetti, PsiQuantum]
+    modelAnswer: |
+      The decision: on planar, nearest-neighbour-only superconducting hardware
+      today, keep the surface code. The day a vendor ships a long-range coupler
+      that reaches six to ten lattice sites with a two-qubit error inside about
+      2x the local gate, switch to bivariate bicycle, because nothing else in the
+      stack changes the qubit budget by a factor of ten.
+
+      The rate comparison, done arithmetically.
+
+          surface code, d = 13 (use odd d)
+              2 * 13^2 - 1 = 337 physical qubits per logical patch
+              100,000 / 337 = 296 patches
+              at 2 tiles per usable logical qubit -> about 148 logical qubits
+
+          bivariate bicycle [[144, 12, 12]]
+              144 data + 144 check qubits = 288 physical for 12 logical at d = 12
+              288 / 12 = 24 physical qubits per logical qubit
+              100,000 / 24 = about 4,100 logical qubits nominally
+
+      That is a 14x difference in physical qubits per logical qubit at the same
+      distance. It is the single most important number in this comparison and it
+      is why the field takes qLDPC seriously.
+
+      The connectivity each demands.
+
+          code             degree   link range          wiring
+          --------------   ------   ------------------  ---------------------
+          surface, d=13    4        nearest neighbour   one planar layer
+          BB [[144,12,12]] 6        3 local, 3 long     needs a second layer
+
+      The surface code asks for a degree-4 planar grid, which is what the
+      hardware already is. The bicycle code asks each qubit for six couplers, of
+      which about half span several lattice sites on a torus-like layout. On
+      fixed-frequency transmons that is a frequency-collision problem on top of a
+      packaging problem, and the long links are where the error will be worst.
+
+      Decoding. The surface code has matching decoders that are near-linear,
+      hardware-implementable, and demonstrated in real time. Bicycle codes are not
+      matchable: the standard decoder is belief propagation with ordered
+      statistics post-processing, which is slower, has a data-dependent runtime,
+      and is much harder to pipeline into an FPGA at 1 MHz. That is a second,
+      independent reason to wait, and it is not a detail: a code you cannot decode
+      in real time cannot run a computation regardless of its rate.
+
+      Logical operations. The surface code has a complete lattice-surgery
+      toolkit: patch placement, merges, splits, and a costing model in code
+      cycles that you can put in a spreadsheet. Bicycle codes need ancilla systems
+      or code switching to get a universal gate set, and the current proposals
+      spend back a real fraction of the rate advantage on the ancilla blocks. So
+      the honest headline is not 14x. Once you count the machinery needed to
+      compute rather than just to store, the advantage is more like 3x to 10x,
+      and that range is genuinely contested in the literature. Say so rather than
+      quoting 14x as a product claim.
+
+      The hardware change that flips the decision, stated precisely: a coupler
+      that spans six to ten sites, with two-qubit error at most about 2x the
+      nearest-neighbour gate, at a yield that survives a frequency assignment over
+      degree 6. If local gates are 1e-3 and the long links are 2e-3, the code's
+      effective threshold falls but stays comfortably above the physical error
+      rate, so the rate advantage survives the connectivity penalty. Alongside
+      that I would want a BP plus OSD variant demonstrated at sustained 1 MHz on
+      real hardware for the code block in question.
+
+      The trade-off I accepted: 14x the qubits per logical qubit, in exchange for
+      certainty. At a budget of 1e5 qubits and a goal of demonstrating a logical
+      algorithm end to end, certainty is worth more than rate, because the surface
+      code path has no unsolved subproblems left, only engineering. I would decide
+      the other way at a budget of 1e6 qubits and a goal of a useful machine,
+      where the rate is the difference between a machine that exists and one that
+      does not, and where it is worth funding the coupler and the decoder as
+      explicit programmes.
+    followUps:
+      - How would you run a hybrid machine, storing idle logical qubits in a bicycle code and computing in surface-code patches?
+      - What experiment would tell you whether your long-range couplers are good enough, before you commit a fabrication run?
+      - How does the comparison change on neutral atoms, where connectivity is reconfigurable by moving atoms?
+    commonMistakes:
+      - Quoting the storage encoding rate as if it were the computing rate. Logical operations on qLDPC codes need ancilla machinery that spends back a large part of the advantage.
+      - Assuming matching decoders transfer to qLDPC codes. They do not, and the belief-propagation decoders that do apply are much harder to run in real time.
+      - Comparing at different distances. A [[144, 12, 12]] code must be compared with a surface code at distance 12 or 13, or the ratio is meaningless.
+    references:
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+      - label: "Fowler et al, Surface codes: towards practical large-scale quantum computation"
+        url: https://arxiv.org/abs/1208.0928
+
+  - id: iq-154
+    title: Build the calibration-to-layout feedback loop for a fleet
+    kind: system-design
+    prompt: |
+      You run a cloud quantum service with 20 superconducting devices. Every
+      device is calibrated daily, and per-edge two-qubit error rates move by a
+      factor of two to five between calibrations, with a handful of edges failing
+      outright each week. Design the path from calibration data to the layout the
+      transpiler actually chooses. I want the data model, the scoring function,
+      how you stop the layout from flapping day to day and job to job, and how
+      you would A/B test a new layout policy on a device that is drifting
+      underneath you. Customers expect reproducible results within a job, and
+      your transpile cache has to survive all of this.
+    difficulty: hard
+    pattern: Topology and QEC mapping
+    topics: [calibration-feedback, layout-selection, hysteresis, ab-testing, transpile-cache]
+    companies: [IBM, AWS Braket, Q-CTRL, Rigetti]
+    modelAnswer: |
+      The decision that matters: calibration data is an input to a scored layout
+      selector, never a trigger to recompile. Make the compiled artefact a pure
+      function of (circuit, target topology, calibration epoch, policy version,
+      seed) and cache on that key. The epoch advances at most once per
+      calibration cycle, so the cache stays warm, the layout stops flapping, and
+      reproducibility inside a job becomes a property of the key rather than a
+      promise in the docs.
+
+      Data model. The calibration job emits per-edge and per-qubit records:
+
+          edge_id, gate_error, gate_duration_ns, measured_at, method
+          qubit_id, readout_error, T1_us, T2_us, frequency_hz, status
+
+      These are assembled into an immutable, content-addressed device snapshot
+      with a monotone epoch number, published once, and never mutated. Every job
+      record stores the snapshot hash it compiled against. That single decision
+      is what makes an incident investigable six weeks later.
+
+      Scoring. Score a candidate layout after routing, not before, because
+      routing decides which edges carry gates:
+
+          score = sum over routed 2q gates of -log(1 - e_edge)
+                + sum over measured qubits of -log(1 - e_readout)
+                + sum over qubits of (idle_duration / T2)
+
+      and pick the minimum. The exponentiated negative of this is an estimated
+      success probability. Be honest about what it is: a proxy that ignores
+      crosstalk, correlated errors and context dependence, and is systematically
+      optimistic. Measure the gap between predicted and observed success on a
+      benchmark suite and publish the calibration curve internally; do not assume
+      the proxy is unbiased.
+
+      Anti-thrashing, four mechanisms, all of them needed.
+
+      1. Smooth the input. Use an exponentially weighted moving average over the
+         last five calibrations with a half-life of about two days, so one noisy
+         randomised-benchmarking point cannot move the layout. Hard failures
+         bypass the smoother: a failed edge is excluded immediately.
+      2. Hysteresis on the output. Switch away from the incumbent layout only if
+         the candidate beats it by more than a margin, say 10 percent relative in
+         estimated total error. Below the margin, keep the incumbent.
+      3. Pin per job family. Every shot of one experiment, every energy
+         evaluation of one VQE sweep, uses one layout. Comparing two energies
+         computed on two different layouts is a bug that presents to the customer
+         as an optimiser that will not converge, and it is close to impossible to
+         diagnose from the outside.
+      4. Rate limit. At most one layout change per device per epoch, logged with
+         the before and after scores.
+
+      A/B testing a policy on a drifting device. You cannot A/B across time,
+      because the device is a different device tomorrow. Randomise within the
+      window: interleave arm A and arm B batches inside the same job on the same
+      device, so drift becomes a common-mode factor that cancels in the
+      difference. The primary metric has to be computable without knowing the
+      right answer, so use a mirror-circuit success probability on the routed
+      circuit, or the total variation distance between measured and ideal output
+      on a Clifford-substituted twin of the customer circuit. Secondary metrics:
+      routed two-qubit gate count, circuit duration, and transpile wall time.
+
+      Size the experiment rather than eyeballing two runs. If the proxy metric has
+      a per-batch standard deviation of 0.02 and you want to detect a shift of
+      0.01 at conventional power, you need roughly
+
+          n per arm = 2 * (2 * 0.02 / 0.01)^2 = 32 batches
+
+      so about 32 interleaved batches per arm per device, which at 1000 shots per
+      batch is a few minutes of device time. That is cheap, so there is no excuse
+      for shipping a layout policy on a vibe.
+
+      Rollout ladder: shadow mode first, where B computes a layout and logs its
+      predicted score but A runs; then 5 percent of traffic; then 50/50; then
+      default, with the old policy still selectable by a flag for one release. A
+      kill switch keyed on the proxy metric, not on CPU.
+
+      The trade-off I accepted: hysteresis means that on the day a genuinely
+      better layout appears, you take up to one epoch to move to it, and you leave
+      a few percent of fidelity on the table. That is the right trade, because
+      reproducibility inside a job is worth more to customers than the last few
+      percent, and because a flapping layout invalidates the transpile cache on
+      every job. A cache miss costs a 200 millisecond to 2 second transpile, and
+      at fleet scale that is the difference between a warm service and a queue. I
+      would drop the hysteresis margin towards zero for a single-shot research
+      workload where every percent of fidelity matters and nobody is comparing
+      two results.
+    followUps:
+      - How do you detect that your scoring proxy has drifted away from observed fidelity, and what do you do the day it has?
+      - A customer complains that the same circuit gave different results on Tuesday and Wednesday. Which records do you pull, and in what order?
+      - How would you extend the snapshot model to cover crosstalk, which is a property of pairs of gates rather than of one edge?
+    commonMistakes:
+      - Recompiling on every calibration update, which destroys the transpile cache and makes results irreproducible between two shots of the same experiment.
+      - Scoring a layout before routing. Routing decides which edges actually carry gates, so a pre-routing score can pick a layout that routes badly.
+      - A/B testing two layout policies on different days. The device drifts more between days than the policies differ, so the comparison measures the weather.
+    references:
+      - label: IBM Quantum transpilation guide
+        url: https://docs.quantum.ibm.com/guides/transpile
+      - label: Prometheus monitoring documentation
+        url: https://prometheus.io/docs/

@@ -1,0 +1,206 @@
+---
+id: t2.m4.l4
+title: "Lab: Estimate an Eigenphase to Five Bits"
+type: lab
+track: t2
+module: t2.m4
+level: L2
+minutes: 35
+objectives:
+  - "Build a five-bit phase-estimation circuit for the phase gate P(2*pi*5/32) on its eigenstate |1>"
+  - Apply controlled powers by exponentiating the phase angle rather than repeating the gate
+  - Confirm that the counting register collapses deterministically onto 00101
+prerequisites:
+  - t2.m4.l3
+  - t2.m3.l4
+sources:
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+  - label: Watrous, Quantum Computation lecture notes
+    url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+tags: [qpe, lab]
+---
+
+Everything in Module 4 has been derivation. This lab is the assembly: five
+counting qubits, one eigenstate qubit, a phase chosen so that the answer is
+exact, and a resource budget tight enough to force the one implementation choice
+that matters at scale.
+
+## The instance
+
+$U = P(2\pi \cdot 5/32)$, the single-qubit phase gate, whose eigenvectors are
+$\ket0$ with $\varphi = 0$ and $\ket1$ with
+
+$$
+\varphi = \frac{5}{32} = 0.00101_2 .
+$$
+
+Five bits exactly, so five counting qubits give a deterministic answer with no
+leakage. Counting qubits are 0 to 4 with qubit 0 most significant, and the
+eigenstate lives on qubit 5, prepared in $\ket1$ by a single $X$.
+
+<Margin label="Why an exact phase for the lab">
+A deterministic target makes the grading unambiguous: the expected statevector is
+a single basis state and the tolerance can be $10^{-9}$ rather than a
+distribution comparison. Change the phase to $5/33$ and the answer becomes the
+Dirichlet spread of T2.M4.L3, with the best outcome near $68\%$; correct, and much
+harder to grade. Test against the exact case first, then check the leaky one
+yourself.
+</Margin>
+
+## What the finished circuit produces
+
+<Circuit
+  caption="Five-bit phase estimation of 5/32 on its eigenstate. The six-qubit state is |001011>: counting register 00101 and eigenstate 1, with probability 1."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "qpe-five-bits",
+    qubits: 6,
+    clbits: 0,
+    ops: [
+      { id: "e", gate: "x", targets: [5] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "h3", gate: "h", targets: [3] },
+      { id: "h4", gate: "h", targets: [4] },
+      { id: "cu0", gate: "p", targets: [5], controls: [0], params: [15.707963267948966] },
+      { id: "cu1", gate: "p", targets: [5], controls: [1], params: [7.853981633974483] },
+      { id: "cu2", gate: "p", targets: [5], controls: [2], params: [3.9269908169872414] },
+      { id: "cu3", gate: "p", targets: [5], controls: [3], params: [1.9634954084936207] },
+      { id: "cu4", gate: "p", targets: [5], controls: [4], params: [0.9817477042468103] },
+      { id: "i0", gate: "swap", targets: [1, 3] },
+      { id: "i1", gate: "swap", targets: [0, 4] },
+      { id: "i2", gate: "h", targets: [4] },
+      { id: "i3", gate: "p", targets: [3], controls: [4], params: [-1.5707963267948966] },
+      { id: "i4", gate: "h", targets: [3] },
+      { id: "i5", gate: "p", targets: [2], controls: [4], params: [-0.7853981633974483] },
+      { id: "i6", gate: "p", targets: [2], controls: [3], params: [-1.5707963267948966] },
+      { id: "i7", gate: "h", targets: [2] },
+      { id: "i8", gate: "p", targets: [1], controls: [4], params: [-0.39269908169872414] },
+      { id: "i9", gate: "p", targets: [1], controls: [3], params: [-0.7853981633974483] },
+      { id: "i10", gate: "p", targets: [1], controls: [2], params: [-1.5707963267948966] },
+      { id: "i11", gate: "h", targets: [1] },
+      { id: "i12", gate: "p", targets: [0], controls: [4], params: [-0.19634954084936207] },
+      { id: "i13", gate: "p", targets: [0], controls: [3], params: [-0.39269908169872414] },
+      { id: "i14", gate: "p", targets: [0], controls: [2], params: [-0.7853981633974483] },
+      { id: "i15", gate: "p", targets: [0], controls: [1], params: [-1.5707963267948966] },
+      { id: "i16", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+A single surviving amplitude. Read the counting register as
+$00101_2 = 5$, divide by $2^5 = 32$, and you have $\varphi = 5/32$ exactly.
+
+## The one design decision
+
+The controlled powers need $U^{1}, U^{2}, U^{4}, U^{8}, U^{16}$. Written literally
+that is $1 + 2 + 4 + 8 + 16 = 31$ controlled applications of $U$, which busts the
+two-qubit budget on its own. But $U$ is a phase gate, and
+
+$$
+P(\theta)^{m} = P(m\theta) ,
+$$
+
+so each power is a *single* controlled phase with a multiplied angle. Five gates
+instead of thirty-one. Together with the inverse QFT on five qubits, which is ten
+controlled phases and two swaps, the whole circuit is seventeen two-qubit
+operations.
+
+<Callout tone="warning" title="This shortcut is exactly what does not generalise">
+Exponentiating the angle works because $P$ is diagonal and its powers are
+trivial. For the modular multiplication operator of T2.M5, $U^{2^k}$ is a
+different permutation for every $k$ and must be compiled separately, though at
+least it can be compiled by repeated squaring of the *classical* exponent rather
+than by repeating the circuit. For a general $U$ given only as a black box you
+really do pay $2^t$ calls, which is why phase estimation is efficient only for
+unitaries with structure. The lab caps the two-qubit count precisely so that the
+naive implementation fails, and it fails on resources rather than on accuracy,
+which is the honest way for it to fail.
+</Callout>
+
+## Your task
+
+```python
+import cirq
+
+PHI = 5 / 32
+COUNT = 5
+
+def build() -> cirq.Circuit:
+    qs = cirq.LineQubit.range(COUNT + 1)   # qs[0:5] counting, qs[5] eigenstate
+    c = cirq.Circuit([cirq.X(qs[COUNT])])
+    # Hadamard the counting register, kick the phase back with controlled powers,
+    # then apply the inverse QFT to qs[0:5]
+    return c
+```
+
+Return the circuit with no measurement gates; the grader reads the six-qubit
+statevector. Cirq orders its qubits with `LineQubit(0)` most significant, which
+matches this track's convention, so no relabelling is needed.
+
+The public tests check the state against $\ket{001011}$ to $10^{-6}$ and the
+six-qubit width. The hidden tests tighten to $10^{-9}$, sample 4096 shots and
+require $001011$ every time, and cap the circuit at twenty two-qubit gates.
+
+Two details to get right. `cirq.CZPowGate(exponent=e)` applies a phase of
+$e^{i\pi e}$ to $\ket{11}$, so to kick back $2\pi\varphi m$ you need
+$e = 2\varphi m$, not $\varphi m$. And `cirq.qft(..., inverse=True)` already
+includes the qubit reversal, so do not add your own swaps: doing so reverses the
+answer and returns $10100$ instead of $00101$.
+
+<Check question="You build the circuit correctly but prepare the eigenstate register in $\ket0$ instead of $\ket1$. What does the counting register read, and is anything wrong?">
+It reads $00000$, deterministically. $\ket0$ is also an eigenvector of $P(\theta)$,
+with eigenvalue $e^{i \cdot 0} = 1$, so its phase is $\varphi = 0$ and the
+estimate is correct. Nothing is wrong with the phase estimation at all; the bug is
+upstream, in which eigenvector you fed it. This is the single most common failure
+in phase-estimation code and it produces a plausible, confident, useless answer.
+Always check that the eigenstate register is where you think it is before blaming
+the counting register.
+</Check>
+
+<Solution>
+Multiply the angle rather than repeating the gate, and let Cirq supply the inverse
+transform.
+
+```python
+import cirq
+
+PHI = 5 / 32
+COUNT = 5
+
+def build() -> cirq.Circuit:
+    qs = cirq.LineQubit.range(COUNT + 1)
+    c = cirq.Circuit([cirq.X(qs[COUNT])])
+    c.append(cirq.H(q) for q in qs[:COUNT])
+    for k in range(COUNT):
+        reps = 2 ** (COUNT - 1 - k)
+        c.append(cirq.CZPowGate(exponent=2 * PHI * reps)(qs[k], qs[COUNT]))
+    c.append(cirq.qft(*qs[:COUNT], inverse=True))
+    return c
+```
+
+Qubit 0, the most significant counting qubit, carries the largest power
+$2^{4} = 16$, so its exponent is $2 \times \frac{5}{32} \times 16 = 5$, a full
+$5\pi$ which is $\pi$ modulo $2\pi$. Qubit 4 carries $2 \times \frac{5}{32} = 5/16$.
+Simulating gives a statevector with a single non-zero entry at index 11, which is
+$001011$ in six bits.
+
+To see the non-exact case, change `PHI` to `5 / 33` and re-simulate: the best
+outcome is still near $00101$, but it now carries roughly two thirds of the
+probability with the rest spread across the register, exactly the Dirichlet
+distribution of T2.M4.L3.
+</Solution>
+
+## Where this comes from
+
+- [PennyLane Codebook](https://pennylane.ai/codebook), whose phase-estimation
+  exercises use the same exponentiate-the-angle construction.
+- [Watrous, Quantum Computation notes](https://cs.uwaterloo.ca/~watrous/QC-notes/),
+  for the exactness argument when the phase fits the register.
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses), for
+  the resource accounting of controlled powers.

@@ -1,0 +1,278 @@
+---
+id: t2.m2.l8
+title: Grover for Bounded Knapsack
+type: lab
+track: t2
+module: t2.m2
+level: L2
+minutes: 45
+objectives:
+  - Enumerate the sixteen subsets of a four-item knapsack and identify the single feasible high-value one
+  - Build a phase oracle for a decision version of knapsack with a weight cap and a value floor
+  - Show that three iterations reach success probability 63001/65536 and that a fourth lowers it
+prerequisites:
+  - t2.m2.l7
+sources:
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+  - label: Quantum Algorithm Zoo
+    url: https://quantumalgorithmzoo.org/
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+tags: [grover, knapsack, lab]
+---
+
+Knapsack is an optimisation problem, and Grover only answers decision questions.
+The standard bridge is to bolt a threshold onto the objective and search for a
+solution that beats it, which is what this lab does. It is also the first
+instance in the module where the optimal iteration count is 3 rather than 2, so
+the arithmetic of T2.M2.L3 gets a real workout.
+
+## The instance
+
+Four items with weights $[3, 4, 5, 7]$ and values $[4, 7, 6, 5]$, a weight cap of
+10 and a value floor of 12. Qubit $i$ is 1 when item $i$ is taken, qubit 0 most
+significant, so the bitstring is the subset. Enumerate:
+
+| subset | weight | value | feasible | high value |
+| --- | --- | --- | --- | --- |
+| $0011$ | $12$ | $11$ | no | no |
+| $0101$ | $11$ | $12$ | no | yes |
+| $0110$ | $9$ | $13$ | **yes** | **yes** |
+| $0111$ | $16$ | $18$ | no | yes |
+| $1001$ | $10$ | $9$ | yes | no |
+| $1010$ | $8$ | $10$ | yes | no |
+| $1100$ | $7$ | $11$ | yes | no |
+| $1110$ | $12$ | $17$ | no | yes |
+
+The other eight subsets are lighter and worth less. Exactly one subset satisfies
+both constraints: $0110$, items 1 and 2, weight 9 and value 13. The numbers were
+chosen so that the greedy heuristics fail. Greedy by value takes item 1 then item
+2 and stops at weight 9, which happens to be right; greedy by value density
+$v/w$ ranks item 1 at $1.75$, item 0 at $1.333$, item 2 at $1.2$, item 3 at
+$0.714$, so it takes items 1 and 0 for weight 7 and value 11, missing the floor.
+
+<Margin label="Decision versus optimisation">
+Grover needs a predicate. To *optimise* rather than decide, wrap the search in a
+binary search on the value floor, or use the Durr and Hoyer minimum-finding
+routine, which repeatedly searches for anything better than the current best and
+costs $O(\sqrt N)$ oracle calls in total. Both reduce optimisation to a logarithmic
+number of decision searches, so the quadratic saving survives.
+</Margin>
+
+## The iteration count
+
+$N = 16$ and $M = 1$, so $\sin\theta = 1/4$ and $\theta = 0.252680$. Then
+
+$$
+\frac{\pi}{4\theta} = 3.108269 ,
+\qquad
+k_{\mathrm{opt}} = \left\lfloor 3.108269 \right\rfloor = 3 ,
+$$
+
+and the success probability is
+
+$$
+P(3) = \sin^2(7\theta) = \left(\frac{251}{256}\right)^{2} = \frac{63001}{65536} = 0.9613189697 .
+$$
+
+A fourth iteration takes the angle past $\pi/2$ to $9\theta = 2.274$ radians and
+drops the probability to $\sin^2(9\theta) = 0.581704$. Almost 40 percentage points
+lost to one extra query.
+
+<Circuit
+  caption="Four qubits, one marked subset 0110, three Grover iterations. Marked amplitude -251/256 and probability 63001/65536."
+  show={['amplitudes', 'probabilities']}
+  ir={{
+    version: 1,
+    name: "grover-knapsack",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "h3", gate: "h", targets: [3] },
+      { id: "o4", gate: "x", targets: [0] },
+      { id: "o5", gate: "x", targets: [3] },
+      { id: "o6", gate: "z", targets: [3], controls: [0, 1, 2] },
+      { id: "o7", gate: "x", targets: [0] },
+      { id: "o8", gate: "x", targets: [3] },
+      { id: "d9", gate: "h", targets: [0] },
+      { id: "d10", gate: "h", targets: [1] },
+      { id: "d11", gate: "h", targets: [2] },
+      { id: "d12", gate: "h", targets: [3] },
+      { id: "d13", gate: "x", targets: [0] },
+      { id: "d14", gate: "x", targets: [1] },
+      { id: "d15", gate: "x", targets: [2] },
+      { id: "d16", gate: "x", targets: [3] },
+      { id: "d17", gate: "z", targets: [3], controls: [0, 1, 2] },
+      { id: "d18", gate: "x", targets: [0] },
+      { id: "d19", gate: "x", targets: [1] },
+      { id: "d20", gate: "x", targets: [2] },
+      { id: "d21", gate: "x", targets: [3] },
+      { id: "d22", gate: "h", targets: [0] },
+      { id: "d23", gate: "h", targets: [1] },
+      { id: "d24", gate: "h", targets: [2] },
+      { id: "d25", gate: "h", targets: [3] },
+      { id: "o26", gate: "x", targets: [0] },
+      { id: "o27", gate: "x", targets: [3] },
+      { id: "o28", gate: "z", targets: [3], controls: [0, 1, 2] },
+      { id: "o29", gate: "x", targets: [0] },
+      { id: "o30", gate: "x", targets: [3] },
+      { id: "d31", gate: "h", targets: [0] },
+      { id: "d32", gate: "h", targets: [1] },
+      { id: "d33", gate: "h", targets: [2] },
+      { id: "d34", gate: "h", targets: [3] },
+      { id: "d35", gate: "x", targets: [0] },
+      { id: "d36", gate: "x", targets: [1] },
+      { id: "d37", gate: "x", targets: [2] },
+      { id: "d38", gate: "x", targets: [3] },
+      { id: "d39", gate: "z", targets: [3], controls: [0, 1, 2] },
+      { id: "d40", gate: "x", targets: [0] },
+      { id: "d41", gate: "x", targets: [1] },
+      { id: "d42", gate: "x", targets: [2] },
+      { id: "d43", gate: "x", targets: [3] },
+      { id: "d44", gate: "h", targets: [0] },
+      { id: "d45", gate: "h", targets: [1] },
+      { id: "d46", gate: "h", targets: [2] },
+      { id: "d47", gate: "h", targets: [3] },
+      { id: "o48", gate: "x", targets: [0] },
+      { id: "o49", gate: "x", targets: [3] },
+      { id: "o50", gate: "z", targets: [3], controls: [0, 1, 2] },
+      { id: "o51", gate: "x", targets: [0] },
+      { id: "o52", gate: "x", targets: [3] },
+      { id: "d53", gate: "h", targets: [0] },
+      { id: "d54", gate: "h", targets: [1] },
+      { id: "d55", gate: "h", targets: [2] },
+      { id: "d56", gate: "h", targets: [3] },
+      { id: "d57", gate: "x", targets: [0] },
+      { id: "d58", gate: "x", targets: [1] },
+      { id: "d59", gate: "x", targets: [2] },
+      { id: "d60", gate: "x", targets: [3] },
+      { id: "d61", gate: "z", targets: [3], controls: [0, 1, 2] },
+      { id: "d62", gate: "x", targets: [0] },
+      { id: "d63", gate: "x", targets: [1] },
+      { id: "d64", gate: "x", targets: [2] },
+      { id: "d65", gate: "x", targets: [3] },
+      { id: "d66", gate: "h", targets: [0] },
+      { id: "d67", gate: "h", targets: [1] },
+      { id: "d68", gate: "h", targets: [2] },
+      { id: "d69", gate: "h", targets: [3] }
+    ]
+  }}
+/>
+
+The fifteen other amplitudes are $13/256 = 0.050781$, each carrying
+$169/65536 = 0.002579$. The marked amplitude comes out negative because each
+iterate of the standard circuit carries the global sign of T2.M2.L2 and there are
+an odd number of them; the probability is unaffected.
+
+## Your task
+
+```python
+from qiskit import QuantumCircuit
+
+WEIGHTS = [3, 4, 5, 7]
+VALUES = [4, 7, 6, 5]
+CAP, FLOOR = 10, 12
+
+def build() -> QuantumCircuit:
+    qc = QuantumCircuit(4)
+    qc.h(range(4))
+    # mark every subset with total weight <= CAP and total value >= FLOOR
+    return qc
+```
+
+Compute the feasible set from `WEIGHTS`, `VALUES`, `CAP` and `FLOOR` rather than
+writing $0110$ into the source, and derive the iteration count from the size of
+that set rather than writing 3. The hidden tests hold the same instance, but the
+derivation is what the exercise is.
+
+The public tests check the marked amplitude at $251/256$ in magnitude and the
+four-qubit width. The hidden tests match every amplitude to $10^{-9}$, sample 8192
+shots against $63001/65536$ on $0110$, and cap the circuit at ninety-five gates:
+three iterations of one masked oracle plus the diffuser come to 82 gates, and a
+fourth would come to 108.
+
+<Callout tone="warning" title="A real knapsack oracle carries an arithmetic circuit">
+The predicate here is a pair of inequalities on sums, so the honest oracle needs
+two reversible accumulators, a comparator against 10 and a comparator against 12,
+and then an AND. For four items with values under 16 that is two four-bit adders
+and two comparators, on the order of thirty ancillas and several hundred gates per
+oracle call. The oracle is the algorithm's real cost, and it is the reason that
+"Grover gives a quadratic speedup for optimisation" is a statement about query
+counts and not about wall-clock time on any machine that exists.
+</Callout>
+
+<Check question="Suppose you lower the value floor to 11. How many subsets are marked, and what happens if you keep running three iterations?">
+At floor 11 the marked set becomes $\{0110, 1100\}$, since $1100$ has weight 7 and
+value 11. So $M = 2$, $\sin\theta = \sqrt{2/16} = 1/\sqrt8$, and the correct count
+drops to $\lfloor \pi/(4\theta)\rfloor = 2$. Keeping $k = 3$ puts the state at
+$7\theta = 2.529570$ radians, giving $\sin^2 = 0.330078$ on the marked set instead
+of $0.945313$. This is the failure mode of T2.M2.L3 in a form you will meet
+constantly: relaxing a constraint enlarges the solution set, which *shortens* the
+correct schedule. Recount $M$ whenever the predicate changes.
+</Check>
+
+<Solution>
+Build the feasible set from the data, then run the count the set implies.
+
+```python
+import math
+from qiskit import QuantumCircuit
+
+WEIGHTS = [3, 4, 5, 7]
+VALUES = [4, 7, 6, 5]
+CAP, FLOOR = 10, 12
+
+def feasible() -> list[str]:
+    out = []
+    for k in range(16):
+        bits = format(k, "04b")
+        w = sum(WEIGHTS[i] for i, b in enumerate(bits) if b == "1")
+        v = sum(VALUES[i] for i, b in enumerate(bits) if b == "1")
+        if w <= CAP and v >= FLOOR:
+            out.append(bits)
+    return out
+
+def mark(qc: QuantumCircuit, bits: str) -> None:
+    for q, b in enumerate(bits):
+        if b == "0":
+            qc.x(q)
+    qc.h(3); qc.mcx([0, 1, 2], 3); qc.h(3)
+    for q, b in enumerate(bits):
+        if b == "0":
+            qc.x(q)
+
+def diffuser(qc: QuantumCircuit) -> None:
+    qc.h(range(4)); qc.x(range(4))
+    qc.h(3); qc.mcx([0, 1, 2], 3); qc.h(3)
+    qc.x(range(4)); qc.h(range(4))
+
+def build() -> QuantumCircuit:
+    solutions = feasible()
+    theta = math.asin(math.sqrt(len(solutions) / 16))
+    iterations = math.floor(math.pi / (4 * theta))
+    qc = QuantumCircuit(4)
+    qc.h(range(4))
+    for _ in range(iterations):
+        for bits in solutions:
+            mark(qc, bits)
+        diffuser(qc)
+    return qc
+```
+
+`iterations` evaluates to 3 on this instance and to 2 if you lower the floor to
+11, which is the point of computing it rather than typing it. The resulting
+amplitude vector is $-251/256$ on $\ket{0110}$ and $+13/256$ on the other fifteen.
+</Solution>
+
+## Where this comes from
+
+- [Microsoft Quantum Katas](https://github.com/microsoft/QuantumKatas), for the
+  reversible comparator gadgets a predicate oracle would need.
+- [Quantum Algorithm Zoo](https://quantumalgorithmzoo.org/), for the Durr and
+  Hoyer minimum-finding reduction from optimisation to repeated search.
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses), for
+  the threshold-decision framing of optimisation problems under Grover.

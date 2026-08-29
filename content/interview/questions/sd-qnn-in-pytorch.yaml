@@ -1,0 +1,685 @@
+questions:
+  - id: iq-229
+    title: Wrap a quantum node as a torch.nn.Module
+    kind: system-design
+    prompt: |
+      We have a hybrid model: a classical encoder feeds an eight-qubit
+      variational circuit with 24 trainable weights, and a classical head
+      reads its expectation values. The backend is a simulator behind a
+      single function expval(inputs, weights) that returns a float.
+      Autograd has to flow end to end so the encoder trains too. Finite
+      differences are forbidden. Design the integration. I want to know
+      exactly where the module boundary sits, what forward and backward
+      each do, where the parameter-shift evaluations actually happen, and
+      how many circuit evaluations one optimiser step costs at batch size
+      32. Tell me what breaks if you put them in the wrong place.
+    difficulty: easy
+    pattern: Quantum neural network in PyTorch
+    topics: [autograd, parameter-shift, hybrid-models, pytorch-integration, custom-gradients]
+    companies: [Xanadu, IBM, Classiq, Q-CTRL]
+    modelAnswer: |
+      The decision is that the boundary is a torch.autograd.Function, not
+      the Module. The Module owns the nn.Parameter tensor and the dtype and
+      device bookkeeping; the Function owns forward, backward and the
+      analytic Jacobian. Put the parameter-shift evaluations inside
+      backward, never inside forward.
+
+      Why that placement and not the other. Autograd builds its graph out of
+      Function nodes, so a Function is the only place you can install a
+      gradient that torch did not derive itself. If instead you compute the
+      shifts in forward and stash them, every forward pass pays 2p circuit
+      evaluations, including inference under no_grad where no gradient is
+      ever used. At 24 weights that is a 48-fold tax on the serving path for
+      nothing. Deferring to backward makes inference cost one evaluation per
+      sample and training cost one plus the shifts.
+
+      ```python
+      import torch
+
+      class QNode(torch.autograd.Function):
+          @staticmethod
+          def forward(ctx, x, w):
+              ctx.save_for_backward(x, w)
+              out = [expval(xi.tolist(), w.tolist()) for xi in x]
+              return torch.tensor(out, dtype=x.dtype, device=x.device)
+
+          @staticmethod
+          def backward(ctx, grad_out):
+              x, w = ctx.saved_tensors
+              s = torch.pi / 2
+              gw = torch.zeros_like(w)
+              for j in range(w.numel()):
+                  wp = w.clone(); wp[j] += s
+                  wm = w.clone(); wm[j] -= s
+                  d = torch.tensor([0.5 * (expval(xi.tolist(), wp.tolist())
+                                           - expval(xi.tolist(), wm.tolist()))
+                                    for xi in x], dtype=w.dtype)
+                  gw[j] = (grad_out * d).sum()          # weights are shared
+              gx = shift_rule_on_inputs(x, w, grad_out)  # per sample, not summed
+              return gx, gw
+
+      class QuantumLayer(torch.nn.Module):
+          def __init__(self, n_weights: int):
+              super().__init__()
+              self.w = torch.nn.Parameter(0.01 * torch.randn(n_weights))
+
+          def forward(self, x):
+              return QNode.apply(x, self.w)
+      ```
+
+      The arithmetic for one step. With p = 24 weights and d = 8 encoding
+      angles, forward costs one circuit per sample and backward costs
+      2*(p + d) = 64 per sample. At batch 32 that is 32 + 2048 = 2080
+      circuit evaluations per optimiser step. The encoding angles are in
+      that count because the encoder underneath needs a gradient too, and
+      the derivative of the expectation with respect to an angle that enters
+      through a rotation gate obeys the same two-term shift rule. Forgetting
+      them does not error, it silently freezes the classical encoder.
+
+      Three details that decide whether this works. First, backward receives
+      grad_out, the upstream derivative of the loss with respect to this
+      layer's output, and must return the product. The weight gradient sums
+      over the batch because the weights are shared; the input gradient does
+      not, because every sample has its own input. Second, return exactly as
+      many values as forward took arguments, using None for anything that
+      does not require grad, or autograd raises at a point far from the
+      cause. Third, the simulator is float64 and torch defaults to float32:
+      cast explicitly at the boundary. A silent downcast puts noise at the
+      1e-7 level into an otherwise exact gradient, which presents as a
+      mysteriously unstable optimiser.
+
+      Test it with torch.autograd.gradcheck in float64 on a two-qubit,
+      three-parameter instance. Gradcheck uses finite differences, and that
+      is fine here because it is a test rather than the training path: the
+      reason finite differences are banned in training is that dividing by a
+      small step amplifies estimator noise by 1/h, and in a noiseless
+      float64 test there is no estimator noise to amplify.
+
+      The trade-off. A custom Function is opaque to torch.compile and to any
+      graph-level fusion, and this implementation serialises the batch into
+      a Python loop, so 2080 evaluations is 2080 round trips through the
+      interpreter. At batch 32 and eight qubits that is acceptable. If the
+      backend stays a simulator I would replace parameter shift with adjoint
+      differentiation, which returns all 32 gradients for about the cost of
+      three forward passes instead of 64 per sample; parameter shift is what
+      you keep for the hardware path, where the state is not available and
+      the shift rule is the only exact option you have.
+    followUps:
+      - Your circuit contains a controlled rotation kept as a single block. Why does the two-term shift rule fail there, and what replaces it?
+      - How would you change this Module when the backend can evaluate a whole list of circuits in one call?
+      - What exactly does torch.autograd.gradcheck verify here, and why is a finite difference acceptable inside the test but not inside training?
+    commonMistakes:
+      - Computing the parameter-shift gradients inside forward, which makes every inference pass 2p times more expensive and taxes the serving path for gradients nobody consumes.
+      - Returning the raw shift vector from backward without multiplying by grad_output, which drops the chain rule and trains the layer as though its output were the loss.
+      - Omitting the shift rule for the encoding angles, which does not raise an error but silently freezes every classical layer upstream of the quantum node.
+    references:
+      - label: PyTorch documentation
+        url: https://pytorch.org/docs/stable/index.html
+      - label: Schuld et al, Evaluating analytic gradients on quantum hardware
+        url: https://arxiv.org/abs/1811.11184
+
+  - id: iq-230
+    title: Batch 256 samples through a quantum layer
+    kind: system-design
+    prompt: |
+      Same hybrid model, now at production scale on a simulator backend. A
+      batch is 256 samples, the circuit is ten qubits and 60 gates, there
+      are 24 trainable weights and eight encoding angles per sample, and one
+      single-circuit call through the vendor API costs about 3 ms end to
+      end. Do the arithmetic for one optimiser step with parameter-shift
+      gradients and tell me what it costs. Then design the execution
+      strategy that gets a 400-step epoch under an hour on one GPU node. I
+      want the memory numbers for whatever you propose, and I want to know
+      what you give up by not using the vendor's single-circuit path.
+    difficulty: medium
+    pattern: Quantum neural network in PyTorch
+    topics: [batching, adjoint-differentiation, vectorisation, gpu-simulation, throughput]
+    companies: [Xanadu, Google Quantum AI, AWS Braket, Multiverse Computing]
+    modelAnswer: |
+      The decision is to stop treating a batch as a loop over circuits. Make
+      the batch a leading tensor axis in the simulator and replace parameter
+      shift with adjoint differentiation. Both changes are needed; either
+      one alone leaves you short.
+
+      The arithmetic first, because it is the argument. Forward is 256
+      circuits. Parameter-shift backward is 256 * 2 * (24 + 8) = 16,384
+      circuits. Total 16,640 per step at 3 ms is 50 seconds. A 400-step
+      epoch is 5.5 hours, and that is for a ten-qubit circuit whose entire
+      statevector is 2^10 * 8 = 8 KiB in complex64. You are five and a half
+      hours away from an hour before you have done any arithmetic that a
+      physicist would recognise.
+
+      Change one: batch as a tensor axis. Hold the whole batch as a
+      (256, 1024) complex64 array, 2 MiB. Apply a single-qubit gate on qubit
+      t by reshaping to (256, 2^(9-t), 2, 2^t) and contracting the 2x2
+      matrix against axis 2; a two-qubit gate is the same with a 4x4 and two
+      split axes. The cost of a gate for the entire batch is one pass over
+      2 MiB, about 2 microseconds at 1 TB/s of effective GPU bandwidth. The
+      whole 60-gate circuit for all 256 samples is roughly 120 microseconds.
+      That is not 256 times faster than the loop; it is about four orders of
+      magnitude faster, because the 3 ms per call was almost entirely Python
+      and dispatch overhead rather than floating point work.
+
+      Change two: adjoint differentiation. On a simulator you have the
+      state, so you do not need the shift rule. Run the circuit forward,
+      keep the final state, apply the observable, then sweep backwards
+      undoing gates one at a time and reading off each parameter's gradient
+      from an inner product. That gives all 32 gradients in about two extra
+      state passes, independent of the parameter count. Parameter shift
+      costs 2p evaluations; adjoint costs about 2, whatever p is.
+
+          strategy                      circuits/step   quantum time/step
+          ---------------------------   -------------   -----------------
+          loop + parameter shift        16,640          50 s
+          batched + parameter shift     65 batched      about 8 ms
+          batched + adjoint             3 batched       about 0.4 ms
+
+      With the third row a 400-step epoch spends under a second in the
+      quantum layer and the bottleneck moves to the data loader, which is
+      exactly where you want it.
+
+      Keep the parameter-shift path anyway, and batch it too, because you
+      will need it for hardware parity. Build a (64, 24) tensor of shifted
+      weight sets against the (256, 8) encodings and evaluate the outer
+      product as a (64, 256, 1024) complex64 array: 64 * 256 * 1024 * 8 =
+      134 MiB, one kernel sequence, all 16,384 logical circuits at once.
+      Memory is the only limit and it bites fast: at 20 qubits the same
+      array is 64 * 256 * 2^20 * 8 = 137 GiB and does not fit, so chunk
+      along the shift axis and stream, which costs you 64 sequential passes
+      and is still four orders of magnitude better than the loop.
+
+      What you give up by leaving the vendor's single-circuit path. You now
+      own a simulator, and it must agree with the reference implementation
+      or you will spend a week chasing a training bug that is really an
+      index-order bug. The mitigation is concrete: pin a fixed test circuit
+      with non-trivial phases, assert agreement to 1e-6 on every amplitude
+      in CI, and check qubit ordering explicitly on an asymmetric state
+      rather than on GHZ, which is symmetric under bit reversal and hides
+      exactly this bug. Second, adjoint differentiation is exact and
+      simulator-only, so your training curve will not resemble the hardware
+      curve at all. Run the batched parameter-shift path with a realistic
+      shot count once per epoch on a 16-sample slice and require the two
+      gradients to agree within shot noise; if they do not, one of the two
+      paths is wrong and you want to know which before the hardware run, not
+      during it.
+
+      The trade-off. Batched simulation trades memory for throughput, and
+      the memory grows as batch times 2^n times the shift axis, so this
+      design is comfortable to about 16 qubits and starts fighting the GPU
+      at 20. Above that I would drop the shift axis from the batch, keep
+      adjoint only, and accept that the hardware parity check becomes a
+      sampled spot check rather than a full comparison.
+    followUps:
+      - At what qubit count does the batched approach stop fitting on one GPU, and what is the first thing you drop?
+      - How does adjoint differentiation handle a mid-circuit measurement, and what do you do if the circuit has one?
+      - What single test would catch a qubit-ordering disagreement between your batched simulator and the vendor path?
+    commonMistakes:
+      - Attributing the 3 ms per circuit to simulation cost and concluding the workload needs more FLOPs, when a ten-qubit state is 8 KiB and almost all of that 3 ms is Python and dispatch overhead.
+      - Using parameter-shift gradients on a simulator, which costs 2p evaluations when adjoint differentiation gives the same exact gradient in about two state passes.
+      - Validating a hand-written batched simulator on GHZ or another bit-reversal-symmetric state, which cannot detect the qubit-ordering bug that batched reshaping most often introduces.
+    references:
+      - label: PennyLane documentation
+        url: https://docs.pennylane.ai/
+      - label: PyTorch documentation
+        url: https://pytorch.org/docs/stable/index.html
+
+  - id: iq-231
+    title: Train a quantum layer on real hardware and survive the clock
+    kind: system-design
+    prompt: |
+      Take the same model to a real device. Twenty-four trainable weights,
+      eight encoding angles, a 40-gate circuit on a superconducting QPU
+      reached over a cloud API, batch size 32, 400 steps per epoch. Design
+      the training loop. Tell me how shot noise enters the gradient and put
+      a number on it at 1024 shots. Choose an optimiser and defend it
+      against Adam. Then give me the honest wall clock for one epoch,
+      including queueing, and tell me what you would actually do instead if
+      the honest number is unacceptable.
+    difficulty: medium
+    pattern: Quantum neural network in PyTorch
+    topics: [shot-noise, spsa, optimiser-choice, hardware-training, calibration-drift]
+    companies: [IonQ, IBM, Quantinuum, Q-CTRL]
+    modelAnswer: |
+      The decision is that you do not train on hardware. You train on a
+      simulator carrying the device's own noise model, then fine-tune a
+      small subset of parameters on hardware with SPSA and an adaptive shot
+      budget. The arithmetic below is what forces that, and if someone
+      insists on end-to-end hardware training the honest answer is that one
+      epoch does not fit in a week.
+
+      Shot noise as gradient noise. An expectation of a plus-or-minus-one
+      observable from N shots has standard error sqrt((1 - <O>^2)/N), at
+      most 1/sqrt(N). A parameter-shift component is (E+ - E-)/2 from two
+      independent estimates, so its standard error is
+      sqrt(2)/(2 sqrt(N)) = 1/sqrt(2N). At N = 1024 that is 0.022. So any
+      gradient component below about 0.02 is indistinguishable from noise,
+      and near a minimum every component is below that. To resolve 1e-3 you
+      need N = 5e5 shots per evaluation, 500 times the cost, because the
+      error falls as 1/sqrt(N) and precision is therefore quadratically
+      expensive. That one relation governs every other choice here.
+
+      The wall clock, honestly. Forty two-qubit gates at 40 to 500 ns is 1.6
+      to 20 microseconds; add readout at 300 ns to a few microseconds and
+      reset, and a shot is of order 10 to 30 microseconds. At 1024 shots a
+      circuit is 10 to 30 ms of device time. Parameter shift over batch 32
+      with 32 shifted parameters is 32 * 2 * 32 = 2048 circuits plus 32
+      forward, so about 2080 circuits, or roughly 42 seconds of pure device
+      time per step at 20 ms each. Four hundred steps is 4.6 hours of device
+      time, and that is before anything queues. A cloud round trip is tens
+      to hundreds of milliseconds at best and often seconds once queued; on
+      a shared device a queue wait of minutes is normal. Submit one job per
+      circuit and you add 2080 queue waits per step and the epoch never
+      finishes. One epoch, realistically, is a day or more of elapsed time,
+      and what you have is a device reservation problem rather than a
+      machine learning problem.
+
+      What fixes it, ordered by how much it buys.
+
+        1. SPSA. Two evaluations per iteration regardless of parameter
+           count, against 2p = 64 for parameter shift. That is a 32-fold cut
+           in circuits per step. SPSA needs more iterations for the same
+           loss, commonly three to ten times more, so the net win is three
+           to ten, not 32. Say that rather than claiming the raw ratio.
+        2. Batch circuits into one job. Submit all the circuits for a step
+           as a single job with a circuit list, so you pay one queue wait per
+           step instead of thousands. This is often the largest real-world
+           saving and it changes no mathematics.
+        3. Adaptive shots. Start at 32 shots per evaluation and grow the
+           budget as the gradient signal-to-noise ratio falls, so early
+           iterations are cheap and only the endgame pays for precision. A
+           total shot saving of five to twenty is typical.
+        4. Freeze most parameters. Train all 24 on the simulator, unfreeze
+           the few that matter, fine-tune those on hardware.
+
+      Optimiser, and why not Adam as shipped. Adam divides the step by the
+      square root of a running second moment. When the true gradient is
+      below the shot-noise floor, that second moment is measuring noise
+      variance, which is roughly constant, so the effective step size stops
+      shrinking exactly when it should. Use SPSA with a decaying gain
+      sequence, or Adam with beta2 at 0.999 or higher, a learning rate tied
+      to a measured signal-to-noise ratio, and gradient clipping. Log that
+      ratio explicitly: the gradient norm divided by sqrt(p)/sqrt(2N) is the
+      one number that says whether you are learning or wandering.
+
+      Drift, which is the failure people do not plan for. Devices
+      recalibrate on a cadence of hours, and T1 and T2 sit in the 100 to 400
+      microsecond range on good hardware but vary qubit to qubit and week to
+      week. A loss curve measured across a recalibration has a step in it
+      that is not your model. Interleave a fixed reference circuit every K
+      steps, log its expectation, and treat any jump in the reference as a
+      boundary across which loss values are not comparable.
+
+      The trade-off. Training mostly on a simulator means the model never
+      sees the true noise, so it can converge to a solution the device
+      cannot reproduce. The mitigation is a noise model built from the
+      device's own published calibration data and refreshed daily, plus an
+      acceptance test that runs the final model on hardware and requires the
+      loss to be within a stated tolerance of the simulated loss. If it is
+      not, the noise model is the bug, not the optimiser, and that is where
+      the fix belongs. I would train on hardware end to end only for a
+      handful of parameters on a device we own outright with no queue, where
+      the 4.6 hours of device time is a schedule rather than a bill.
+    followUps:
+      - Your reference circuit jumps after a recalibration mid-epoch. What do you do with the loss curve and with the run?
+      - How would you set the adaptive shot schedule concretely, given a measured gradient norm and a target signal-to-noise ratio?
+      - SPSA needs three to ten times more iterations. At what parameter count does it stop beating parameter shift?
+    commonMistakes:
+      - Submitting one job per circuit, which adds thousands of cloud round trips per optimiser step and makes queue latency, not device time, the dominant cost.
+      - Using Adam with default betas on a shot-noisy gradient, where the second-moment estimate tracks noise variance and the effective step size fails to shrink near a minimum.
+      - Comparing loss values across a device recalibration without an interleaved reference circuit, which reads a hardware drift step as a training result.
+    references:
+      - label: Schuld et al, Evaluating analytic gradients on quantum hardware
+        url: https://arxiv.org/abs/1811.11184
+      - label: Preskill, Quantum computing in the NISQ era and beyond
+        url: https://arxiv.org/abs/1801.00862
+
+  - id: iq-232
+    title: Choose the encoding layer between the network and the circuit
+    kind: system-design
+    prompt: |
+      A ResNet trunk hands you a 1024-dimensional feature vector. The
+      quantum layer runs on a 12-qubit superconducting device with two-qubit
+      gates around 200 ns and T2 in the 100 to 400 microsecond range,
+      varying qubit to qubit. Design the data encoding layer. Choose between
+      amplitude encoding and angle encoding and defend the choice with the
+      depth arithmetic, not with a preference. Then tell me exactly what the
+      classical layers immediately before the quantum node must produce:
+      how many numbers, in what range, and why. Finally tell me what you
+      lose by the choice you did not make, and how you would find out
+      whether that loss matters.
+    difficulty: medium
+    pattern: Quantum neural network in PyTorch
+    topics: [data-encoding, amplitude-encoding, angle-encoding, state-preparation, feature-maps]
+    companies: [Xanadu, Classiq, IBM, Terra Quantum]
+    modelAnswer: |
+      Angle encoding, with a trained classical bottleneck that compresses
+      1024 features into a few dozen bounded angles. Amplitude encoding is
+      the elegant answer and it is dead on this device, and the reason is
+      one gate count.
+
+      Amplitude encoding arithmetic. To load a general 1024-dimensional real
+      vector as amplitudes you need log2(1024) = 10 qubits, and that
+      exponential compression of width is the entire appeal. But preparing
+      an arbitrary n-qubit state costs of order 2^n CNOTs: the standard
+      uniformly-controlled-rotation synthesis of Mottonen, Shende and
+      colleagues gives roughly 2^n - 2, so about 1022 CNOTs at n = 10. At
+      200 ns each that is 204 microseconds of two-qubit gate time before the
+      model circuit begins, against a T2 in the 100 to 400 microsecond range
+      that varies qubit to qubit and week to week. Even where coherence just
+      survives, fidelity does not: at a two-qubit error near 1e-3, which is
+      about the best reported figure and not a device average, the surviving
+      fidelity is 0.999^1022 = 0.36. Amplitude encoding buys ten qubits
+      instead of 1024 and pays 1022 gates for it. The exponential saving is
+      in width; the exponential cost is in depth; depth is the resource this
+      device does not have.
+
+      Angle encoding arithmetic. Twelve features become twelve RY rotations,
+      one per qubit, single-qubit gates at 20 to 50 ns that all run in the
+      same layer, so the encoding is about 50 ns and one layer deep. Add
+      data re-uploading, meaning the encoding is repeated L times interleaved
+      with trainable entangling layers, which widens the Fourier spectrum
+      the model can represent. At L = 3 with 11 CZ gates per entangling
+      layer the whole circuit is 33 two-qubit gates, 6.6 microseconds, and
+      0.999^33 = 0.97 fidelity. That fits with room to spare, which is the
+      whole argument.
+
+      What the classical layers must produce, precisely.
+
+        1. Exactly 12 values per re-uploading block, so 36 for L = 3. A
+           single Linear(1024, 36) is enough; the compression is learned,
+           which is better than any fixed projection you would hand-write.
+        2. Bounded to [-pi, pi]. Rotations are 2pi-periodic, so an unbounded
+           feature aliases: an angle of 7.5 and an angle of 7.5 - 2pi = 1.22
+           produce the identical state, and two very different inputs land
+           on the same point in feature space. Squash with tanh and scale.
+           This is not cosmetic. Without it the loss surface acquires
+           spurious minima where distinct classes are genuinely
+           indistinguishable to the circuit.
+        3. Standardised before the squash, so tanh is not saturated for most
+           of the batch. A saturated tanh sends a near-constant input to the
+           quantum layer and kills the gradient through the encoding, which
+           looks exactly like a barren plateau and is not one. Log the
+           fraction of encoding activations with absolute value above 0.99
+           and alert on it.
+        4. Cast to the backend's dtype at the boundary, float64 if the
+           simulator is float64, so the encoding does not inject 1e-7 noise
+           into an otherwise exact gradient.
+
+      What you lose, and how to find out whether it matters. You lose the
+      claim that the quantum layer sees all 1024 features; it sees a learned
+      36-dimensional projection. Whether the interesting structure survives
+      that projection is an empirical question with a cheap answer: run an
+      ablation in which the quantum layer is replaced by a Linear(36, k) of
+      the same output width and the same training budget. If the quantum
+      layer does not beat it, you have built a 1024-to-36 classical
+      bottleneck with an expensive nonlinearity bolted on the end, and you
+      should know that before anyone writes a press release. Amplitude
+      encoding also requires the input to be L2-normalised, which discards
+      the vector's magnitude entirely; if the norm carries signal you must
+      append it as an extra feature or you silently throw it away, and that
+      bug is invisible in the loss curve.
+
+      The trade-off and when I would flip. On a fault-tolerant machine the
+      1022-gate load is a fixed cost against an error-corrected error rate
+      and amplitude encoding becomes reasonable. On a trapped-ion device the
+      binding constraint changes rather than disappears: coherence is
+      seconds to tens of seconds so 1022 gates at 100 microseconds to a few
+      milliseconds each fits comfortably in coherence, but it is 0.1 to 3
+      seconds of wall clock per shot, so the gate error and the throughput,
+      not the coherence, are what kill it. And amplitude encoding becomes
+      right immediately if a hardware primitive for state loading appears
+      rather than a synthesised circuit. None of those is commodity today,
+      so I would tell the stakeholder that plainly instead of designing for
+      a machine we do not have.
+    followUps:
+      - How many re-uploading repetitions do you choose, and what measurable quantity tells you that you have enough?
+      - Your encoding activations saturate tanh for 40 percent of the batch. How do you tell that apart from a barren plateau?
+      - What would you have to see from an ablation against a matched classical layer before you would keep the quantum node?
+    commonMistakes:
+      - Choosing amplitude encoding for its exponential width saving without counting the state preparation gates, which at 1024 features is about 1022 CNOTs and 204 microseconds against a T2 of 100 to 400 microseconds.
+      - Feeding unbounded classical activations straight into rotation angles, which aliases modulo 2pi and maps distinct inputs onto identical quantum states.
+      - Normalising a feature vector for amplitude encoding and discarding the norm, which silently deletes any signal carried by the magnitude of the input.
+    references:
+      - label: Havlicek et al, Supervised learning with quantum enhanced feature spaces
+        url: https://arxiv.org/abs/1804.11326
+      - label: PennyLane quantum machine learning demos
+        url: https://pennylane.ai/qml/
+
+  - id: iq-233
+    title: Detect a barren plateau and design your way out of it
+    kind: system-design
+    prompt: |
+      Sixteen qubits, a twelve-layer hardware-efficient ansatz, 192
+      parameters, 1024 shots per evaluation. The loss has been flat for 200
+      steps and the team is arguing about whether this is a barren plateau
+      or a bug. Tell me how you decide, from telemetry we can actually
+      collect, and give me the numbers that separate the cases. If it is a
+      plateau, tell me what you change and in what order. Then the VP is
+      going to ask whether this architecture scales to 100 qubits, and I
+      want to hear exactly what you say to her, including what you would not
+      claim.
+    difficulty: hard
+    pattern: Quantum neural network in PyTorch
+    topics: [barren-plateaus, gradient-variance, cost-function-design, ansatz-design, telemetry]
+    companies: [Google Quantum AI, Xanadu, IBM, Multiverse Computing]
+    modelAnswer: |
+      Measure the gradient variance before you change anything. A flat loss
+      has four common causes, only one is a plateau, and two of the fixes
+      are opposite in direction, so guessing costs a week. If it is a
+      plateau, change the cost function first and the ansatz second;
+      initialisation tricks buy one run, not a scaling law.
+
+      Diagnosis, from telemetry you can collect today. Log per step: the L2
+      norm of the gradient, the per-component standard deviation from a
+      resample, the shot-noise floor 1/sqrt(2N), and their ratio. Log once
+      per run: the loss spread across 20 random initialisations, and the
+      fraction of encoding activations saturating the upstream tanh.
+
+          telemetry                             cause              action
+          -----------------------------------   ----------------   ---------
+          grad norm large, loss flat            learning rate      lower it
+          grad norm at the shot-noise floor     under-sampled      more shots
+          grad norm tiny with plentiful shots   barren plateau     redesign
+          encoding activations pinned at 1      saturated tanh     fix upstream
+
+      Now the numbers for this specific run. For a deep hardware-efficient
+      ansatz approaching a 2-design, the variance of a gradient component
+      falls like 1/2^n. At n = 16 that is 1/65536 = 1.5e-5, so the component
+      has a standard deviation near 3.9e-3. Your shot-noise floor at 1024
+      shots is 1/sqrt(2 * 1024) = 0.022, which is five times larger than the
+      signal. You are not measuring a gradient at all, you are measuring
+      noise, and that alone explains a flat loss. The first experiment is
+      therefore free: raise to 1e5 shots, where the floor is 2.2e-3 and the
+      signal becomes visible. If the loss then moves, it was never a
+      plateau in the sense the team meant.
+
+      The same relation is the scaling answer. At n = 24 the signal is 2.4e-4
+      and you need about 1e7 shots per evaluation; at n = 40 it is 1e-6 and
+      you need of order 1e12 shots, six hundred years at 20 microseconds a
+      shot. The wall is not a coding problem.
+
+      What I change, in order, if the gradient really is tiny with shots to
+      spare.
+
+        1. Make the cost function local. A global cost, such as fidelity
+           with a target state, has exponentially vanishing gradients even at
+           constant depth, while a cost written as a sum of few-qubit local
+           terms vanishes only polynomially provided the depth is O(log n).
+           Cheapest change, largest effect, and it leaves the ansatz alone.
+        2. Cut the depth. Twelve layers at n = 16 is far past O(log n),
+           which here is about four. A shallow circuit with a local cost is
+           outside the exponential regime rather than merely further from it.
+        3. Use a problem-inspired ansatz. If the task carries a Hamiltonian,
+           a symmetry or a lattice, encode it. A hardware-efficient brick
+           wall is the ansatz you choose when you know nothing about the
+           problem, and it is also the one that most reliably approximates
+           the 2-design that causes the trouble.
+        4. Initialise into a small region: identity blocks, or angles drawn
+           from N(0, 0.01). This helps for the first few hundred steps and
+           changes no asymptotic scaling. Say so when you report it, because
+           reporting it as a fix is how a team convinces itself it has
+           solved a theorem.
+        5. Train layerwise, freezing and extending. It helps and it can
+           itself stall, so it is fifth, not first.
+
+      Noise-induced plateaus are a different animal and none of the above
+      touches them. Under a depolarising channel at rate p per gate the
+      state contracts toward the maximally mixed state and every gradient
+      decays like (1-p)^depth. At a two-qubit error of 1e-3 over 200 gates
+      the factor is 0.999^200 = 0.82, survivable; at 1e-2 it is 0.13, and no
+      initialisation and no cost function recovers it. The only responses
+      are a shorter circuit, a better device, or error mitigation, and
+      mitigation trades bias for variance: zero-noise extrapolation inflates
+      the shot requirement by roughly the square of the extrapolation
+      factor, making the sampling problem worse as it improves the bias.
+
+      What I say to the VP, in these words. At 16 qubits we can train this,
+      and the evidence is the gradient signal-to-noise ratio on the
+      dashboard, a number she can look at. We do not have a scaling path to
+      100 qubits for a generic hardware-efficient ansatz, and neither does
+      anyone else; the variance result is a theorem about random circuits,
+      not a limitation of our implementation. Architectures with provably
+      polynomial gradients exist, and the honest caveat is that the ones we
+      know of tend also to be classically simulable, so the burden of proof
+      for an advantage claim sits with us and we have not met it. What I
+      commit to is a model that works in the twelve to twenty-four qubit
+      band, measured against a classical baseline of matched capacity, with
+      the comparison published internally before anything is said outside.
+
+      The trade-off. A local cost and a logarithmic-depth ansatz escape the
+      plateau by restricting expressivity, and they move the circuit into
+      the regime where a tensor-network simulation of the same thing is
+      cheap. I accept that, because a model I can train is worth more than a
+      model I can only describe. I would revisit if the application supplied
+      a structured ansatz whose gradients are known to behave at depth,
+      which is the one honest route to scale.
+    followUps:
+      - You raise the shots to 1e5 and the loss starts moving. What do you now tell the team about the original diagnosis, and what do you change permanently?
+      - How would you estimate the gradient variance of a candidate ansatz before committing to it, and on what size instance?
+      - Zero-noise extrapolation increases the shot requirement. Under what condition is that trade worth making here?
+    commonMistakes:
+      - Diagnosing a plateau from a flat loss without comparing the gradient magnitude to the shot-noise floor, which at 1024 shots is 0.022 against a 16-qubit signal of 3.9e-3.
+      - Presenting small-angle or identity-block initialisation as a solution to barren plateaus. It rescues a single run and leaves the exponential scaling in n untouched.
+      - Applying ansatz and initialisation fixes to a noise-induced plateau, where the gradient decays as (1-p)^depth and only a shorter circuit or a better device changes anything.
+    references:
+      - label: McClean et al, Barren plateaus in quantum neural network training landscapes
+        url: https://arxiv.org/abs/1803.11173
+      - label: PennyLane quantum machine learning demos
+        url: https://pennylane.ai/qml/
+
+  - id: iq-234
+    title: Serve a trained hybrid model inside a 300 ms budget
+    kind: system-design
+    prompt: |
+      The model is trained: a classical trunk plus a 14-qubit, 60-gate
+      quantum layer with 40 fixed weights, then a classical head. Product
+      wants p99 under 300 ms, 400 requests per second at peak, and 99.9
+      percent availability. Design the serving path. Decide whether
+      inference calls a QPU at all and show me the latency arithmetic behind
+      the decision. Design the caching, and be honest about when caching
+      does not work here. Design the fallback for the case where the QPU is
+      unavailable, and tell me what the existence of a working fallback
+      implies about the product.
+    difficulty: hard
+    pattern: Quantum neural network in PyTorch
+    topics: [inference-serving, latency-budget, caching, graceful-degradation, model-distillation]
+    companies: [AWS Braket, Microsoft Azure Quantum, IonQ, Classiq]
+    modelAnswer: |
+      Inference does not call a QPU. The quantum layer is served as a
+      statevector simulation inside the same process as the classical model.
+      The QPU is a training-time dependency, not a serving-time one, and any
+      design that puts a cloud QPU call on a synchronous request path has
+      already lost the latency budget by two orders of magnitude and has no
+      availability story to offer.
+
+      The arithmetic that settles it. A 14-qubit statevector in complex64 is
+      2^14 * 8 = 128 KiB. One gate is a single pass, so 256 KiB of traffic;
+      sixty gates is 15 MiB, and at 50 GB/s on one core that is about 300
+      microseconds. Batch 32 requests and the state array is 4 MiB, the
+      circuit is 480 MiB of traffic, roughly 10 ms, and the Python overhead
+      is amortised across 32 requests. Against a 300 ms p99 budget the
+      quantum layer costs three percent. At 400 rps with 10 ms per batch of
+      32 you need about 0.13 of a core of pure numerics; four pods gives you
+      headroom and separate failure domains, and the pods are ordinary
+      PyTorch inference pods with nothing special about them.
+
+      Against that, a cloud QPU call: tens to hundreds of milliseconds for
+      the round trip at best, seconds once queued, plus 1024 shots at 10 to
+      30 microseconds of device time, plus calibration windows during which
+      the device is simply absent, plus no availability SLA you can put in a
+      contract. It is three to four orders of magnitude worse on the metric
+      you are held to, and it inserts a dependency you do not control into a
+      99.9 percent service. There is no tuning that closes that gap.
+
+      When would serving legitimately call a QPU? Three cases, and you
+      should be able to name them rather than reject the idea reflexively.
+      One, the circuit is beyond simulation, which for a statevector means
+      above roughly 40 qubits. Two, the product is the sample rather than
+      the expectation, so the output distribution itself is what the
+      customer buys. Three, the customer is buying the fact that a QPU ran,
+      which is a marketing requirement and should be labelled as one and
+      priced accordingly. In the first two cases the serving path is
+      asynchronous: accept the request, return a job id, stream the result
+      over a websocket, and publish an SLA measured in minutes. Do not
+      pretend a QPU call is synchronous.
+
+      Caching, with the honest finding. The natural key is a hash of the
+      canonicalised circuit, the weights version, the shot count and the
+      encoding vector. That works when the encoding vector comes from a
+      discrete domain: a categorical feature set, a fixed product catalogue,
+      a bounded set of configurations. It does not work for continuous
+      inputs. Quantise 14 continuous angles to eight bits each and you have
+      256^14 possible keys and a hit rate indistinguishable from zero, while
+      the lookup itself costs more than the 300 microsecond simulation it
+      was meant to avoid. So: build the cache only if you can point at the
+      finite input domain. What is worth caching is one level up, the whole
+      model response keyed by the request body, which is an ordinary HTTP
+      caching decision with nothing quantum in it.
+
+      The fallback ladder, for the asynchronous QPU path where one is needed.
+
+        1. Simulator with the device noise model. Same interface, different
+           error. Always label the response with the backend that actually
+           ran, in a field the client can read. Never substitute silently.
+        2. A distilled classical surrogate: a small MLP trained on 1e5
+           (input, quantum layer output) pairs sampled from the deployed
+           model. Keep it warm, score its agreement against the simulator
+           continuously on live traffic, and refuse to serve from it if the
+           RMS disagreement exceeds a published threshold.
+        3. Reject with 503 and a Retry-After. Refusing is better than
+           returning a number you cannot defend afterwards.
+
+      Now the uncomfortable implication, and it should be said out loud in
+      the design review rather than discovered in an incident review. If the
+      distilled surrogate matches the quantum layer to 1e-3, then that layer
+      was classically representable and the product does not need a QPU at
+      all. Measure that deliberately: it is a cheap experiment and it is the
+      single most decision-relevant number in the whole system. If the
+      surrogate does not match, you have a genuine hard dependency on a
+      device with no availability SLA, and the honest response is to
+      renegotiate the availability target downward or move the QPU off the
+      synchronous path, not to add retries.
+
+      The trade-off I am accepting. Serving on a simulator means the served
+      model is not the model that ran on hardware during the final
+      fine-tune, and the noise differs, so served predictions differ from
+      hardware predictions by whatever the noise model gets wrong. Quantify
+      it rather than assume it: run the acceptance set through both paths
+      and publish the disagreement alongside the accuracy. I would move to a
+      QPU serving path only if that disagreement exceeded the accuracy the
+      product is sold on, and even then I would change the latency promise
+      before I changed the serving architecture, because a 300 ms p99 and a
+      queued QPU cannot both be true.
+    followUps:
+      - Your distilled surrogate matches the quantum layer to 1e-4 on the acceptance set. What do you recommend to the product owner?
+      - How do you decide the RMS disagreement threshold above which the surrogate must stop serving?
+      - The circuit grows to 45 qubits and simulation is no longer possible. What does the serving path look like then, and what promise do you make?
+    commonMistakes:
+      - Putting a synchronous cloud QPU call on a request path with a 300 ms p99 budget, when the round trip alone is tens to hundreds of milliseconds and queueing routinely adds seconds.
+      - Building a cache keyed on a quantised continuous encoding vector, which yields essentially no hits and costs more in lookup than the 300 microsecond simulation it replaces.
+      - Falling back to a classical surrogate silently, so the client cannot tell which backend answered and no one notices that the surrogate has been serving every request for a week.
+    references:
+      - label: PyTorch documentation
+        url: https://pytorch.org/docs/stable/index.html
+      - label: AWS Braket documentation
+        url: https://docs.aws.amazon.com/braket/

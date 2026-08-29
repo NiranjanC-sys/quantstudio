@@ -1,0 +1,291 @@
+---
+id: t2.m2.l4
+title: Over-Rotation, Seen on the Bloch Sphere
+type: interactive
+track: t2
+module: t2.m2
+level: L2
+minutes: 8
+objectives:
+  - Drive the Grover iterate past its optimum and watch the success probability fall back
+  - Locate the iteration count at which the state returns close to the uniform superposition
+  - Relate the periodicity you observe to the rotation angle 2*theta
+prerequisites:
+  - t2.m2.l3
+  - t1.m1.l8
+sources:
+  - label: Matuschak & Nielsen, Quantum Computing for the Very Curious
+    url: https://quantum.country/qcvc
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+tags: [grover, visualisation]
+---
+
+You have the formula $P(k) = \sin^2((2k+1)\theta)$. This lesson is the formula
+with your hands on it. Work each figure the same way: read the iteration count,
+predict the probability and the arrow, then look. The prediction is the exercise;
+the figure is only the answer key.
+
+## A rotation you can see whole
+
+Two qubits, marked index $11$, so $\theta = \pi/6$ and each iterate turns the
+state by $2\theta = 60$ degrees. Three iterates therefore turn it by $180$
+degrees, which is why this instance closes on itself after exactly three steps.
+
+At $k = 1$ the state is $\ket{11}$ up to a sign. Predict: what are the two Bloch
+arrows?
+
+<Simulate
+  caption="k = 1. Success probability 1. Both single-qubit arrows point at the south pole, and both are pure."
+  show={['probabilities', 'bloch']}
+  ir={{
+    version: 1,
+    name: "grover-n4-k1",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "o2", gate: "z", targets: [1], controls: [0] },
+      { id: "d3", gate: "h", targets: [0] },
+      { id: "d4", gate: "h", targets: [1] },
+      { id: "d5", gate: "x", targets: [0] },
+      { id: "d6", gate: "x", targets: [1] },
+      { id: "d7", gate: "z", targets: [1], controls: [0] },
+      { id: "d8", gate: "x", targets: [0] },
+      { id: "d9", gate: "x", targets: [1] },
+      { id: "d10", gate: "h", targets: [0] },
+      { id: "d11", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+Both arrows sit at $z = -1$ with purity 1, because $\ket{11}$ is a product state
+and each qubit is separately in $\ket{1}$. This is the only iteration count at
+which this instance is solved.
+
+Now add one iterate. The angle goes from $90$ degrees to $150$ degrees, so the
+marked amplitude drops from 1 to $\sin(150^\circ) = 0.5$ and the probability from
+1 to $0.25$. Predict the arrows before you look.
+
+<Simulate
+  caption="k = 2. Every outcome is back at 25%, and both Bloch arrows have collapsed to the origin."
+  show={['probabilities', 'bloch']}
+  ir={{
+    version: 1,
+    name: "grover-n4-k2",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "o2", gate: "z", targets: [1], controls: [0] },
+      { id: "d3", gate: "h", targets: [0] },
+      { id: "d4", gate: "h", targets: [1] },
+      { id: "d5", gate: "x", targets: [0] },
+      { id: "d6", gate: "x", targets: [1] },
+      { id: "d7", gate: "z", targets: [1], controls: [0] },
+      { id: "d8", gate: "x", targets: [0] },
+      { id: "d9", gate: "x", targets: [1] },
+      { id: "d10", gate: "h", targets: [0] },
+      { id: "d11", gate: "h", targets: [1] },
+      { id: "o12", gate: "z", targets: [1], controls: [0] },
+      { id: "d13", gate: "h", targets: [0] },
+      { id: "d14", gate: "h", targets: [1] },
+      { id: "d15", gate: "x", targets: [0] },
+      { id: "d16", gate: "x", targets: [1] },
+      { id: "d17", gate: "z", targets: [1], controls: [0] },
+      { id: "d18", gate: "x", targets: [0] },
+      { id: "d19", gate: "x", targets: [1] },
+      { id: "d20", gate: "h", targets: [0] },
+      { id: "d21", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+Both arrows have length zero and purity zero. The two qubits are now maximally
+entangled: the state is $(-\ket{00}-\ket{01}-\ket{10}+\ket{11})/2$, which no
+product of single-qubit states can reproduce. Uniform probabilities on the left,
+no arrow on the right. Over-rotation is not a small degradation, it has taken you
+from certainty to a maximally uninformative distribution while spending a second
+query to do it.
+
+<Margin label="Why the arrows vanish and the first lesson's did not">
+A single-qubit Bloch arrow only has length 1 when that qubit is unentangled from
+the rest. Grover's state is a product exactly at the two ends of the swing, at
+$\ket{s}$ and at $\ket{w}$, and entangled everywhere in between. The Bloch view
+is therefore an entanglement meter here, not a state display: watch the purity
+number, not the direction.
+</Margin>
+
+One more iterate returns the state to where it began.
+
+<Simulate
+  caption="k = 3. Amplitude 0.5 on all four strings with a uniform sign: this is exactly the state the first Hadamard layer produced."
+  show={['amplitudes', 'bloch']}
+  ir={{
+    version: 1,
+    name: "grover-n4-k3",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "o2", gate: "z", targets: [1], controls: [0] },
+      { id: "d3", gate: "h", targets: [0] },
+      { id: "d4", gate: "h", targets: [1] },
+      { id: "d5", gate: "x", targets: [0] },
+      { id: "d6", gate: "x", targets: [1] },
+      { id: "d7", gate: "z", targets: [1], controls: [0] },
+      { id: "d8", gate: "x", targets: [0] },
+      { id: "d9", gate: "x", targets: [1] },
+      { id: "d10", gate: "h", targets: [0] },
+      { id: "d11", gate: "h", targets: [1] },
+      { id: "o12", gate: "z", targets: [1], controls: [0] },
+      { id: "d13", gate: "h", targets: [0] },
+      { id: "d14", gate: "h", targets: [1] },
+      { id: "d15", gate: "x", targets: [0] },
+      { id: "d16", gate: "x", targets: [1] },
+      { id: "d17", gate: "z", targets: [1], controls: [0] },
+      { id: "d18", gate: "x", targets: [0] },
+      { id: "d19", gate: "x", targets: [1] },
+      { id: "d20", gate: "h", targets: [0] },
+      { id: "d21", gate: "h", targets: [1] },
+      { id: "o22", gate: "z", targets: [1], controls: [0] },
+      { id: "d23", gate: "h", targets: [0] },
+      { id: "d24", gate: "h", targets: [1] },
+      { id: "d25", gate: "x", targets: [0] },
+      { id: "d26", gate: "x", targets: [1] },
+      { id: "d27", gate: "z", targets: [1], controls: [0] },
+      { id: "d28", gate: "x", targets: [0] },
+      { id: "d29", gate: "x", targets: [1] },
+      { id: "d30", gate: "h", targets: [0] },
+      { id: "d31", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+Both arrows are back at $x = +1$ with purity 1, and every amplitude is $+0.5$.
+Three iterations of Grover on $N = 4$ are the identity on $\ket{s}$, so the
+success probability is periodic in $k$ with period 3:
+
+$$
+P(k) = 0.25,\; 1,\; 0.25,\; 0.25,\; 1,\; 0.25, \dots
+$$
+
+## Now with a smaller angle
+
+Eight items and one marked, so $\theta = 0.361367$ and each step turns by
+$2\theta = 0.722734$ radians. The state no longer lands on $\ket{w}$ exactly, and
+the period $\pi/\theta = 8.6936$ is no longer an integer, so the sequence never
+repeats exactly.
+
+| $k$ | $0$ | $1$ | $2$ | $3$ | $4$ | $5$ | $6$ |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| $P(k)$ | $0.125$ | $0.78125$ | $0.9453125$ | $0.330078$ | $0.012207$ | $0.547974$ | $0.999786$ |
+
+Two things to notice. The minimum at $k = 4$ is $0.012207$, *below* the $0.125$
+you would have got by not running the algorithm at all: four queries have made
+the answer less likely than a coin. And the second peak at $k = 6$ reaches
+$0.999786$, better than the first peak at $k = 2$, because $13\theta = 4.6978$ is
+closer to $3\pi/2$ than $5\theta$ was to $\pi/2$. Running longer is not monotonically
+worse, it is *sinusoidally* worse, and three times the work buys you a fraction of
+a percent.
+
+<Simulate
+  caption="k = 4 on three qubits with the marked string 101. The marked outcome is down to 1.22%, worse than the 12.5% it started at."
+  show={['probabilities']}
+  ir={{
+    version: 1,
+    name: "grover-n8-k4",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "o3", gate: "x", targets: [1] },
+      { id: "o4", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "o5", gate: "x", targets: [1] },
+      { id: "d6", gate: "h", targets: [0] },
+      { id: "d7", gate: "h", targets: [1] },
+      { id: "d8", gate: "h", targets: [2] },
+      { id: "d9", gate: "x", targets: [0] },
+      { id: "d10", gate: "x", targets: [1] },
+      { id: "d11", gate: "x", targets: [2] },
+      { id: "d12", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "d13", gate: "x", targets: [0] },
+      { id: "d14", gate: "x", targets: [1] },
+      { id: "d15", gate: "x", targets: [2] },
+      { id: "d16", gate: "h", targets: [0] },
+      { id: "d17", gate: "h", targets: [1] },
+      { id: "d18", gate: "h", targets: [2] },
+      { id: "o19", gate: "x", targets: [1] },
+      { id: "o20", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "o21", gate: "x", targets: [1] },
+      { id: "d22", gate: "h", targets: [0] },
+      { id: "d23", gate: "h", targets: [1] },
+      { id: "d24", gate: "h", targets: [2] },
+      { id: "d25", gate: "x", targets: [0] },
+      { id: "d26", gate: "x", targets: [1] },
+      { id: "d27", gate: "x", targets: [2] },
+      { id: "d28", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "d29", gate: "x", targets: [0] },
+      { id: "d30", gate: "x", targets: [1] },
+      { id: "d31", gate: "x", targets: [2] },
+      { id: "d32", gate: "h", targets: [0] },
+      { id: "d33", gate: "h", targets: [1] },
+      { id: "d34", gate: "h", targets: [2] },
+      { id: "o35", gate: "x", targets: [1] },
+      { id: "o36", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "o37", gate: "x", targets: [1] },
+      { id: "d38", gate: "h", targets: [0] },
+      { id: "d39", gate: "h", targets: [1] },
+      { id: "d40", gate: "h", targets: [2] },
+      { id: "d41", gate: "x", targets: [0] },
+      { id: "d42", gate: "x", targets: [1] },
+      { id: "d43", gate: "x", targets: [2] },
+      { id: "d44", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "d45", gate: "x", targets: [0] },
+      { id: "d46", gate: "x", targets: [1] },
+      { id: "d47", gate: "x", targets: [2] },
+      { id: "d48", gate: "h", targets: [0] },
+      { id: "d49", gate: "h", targets: [1] },
+      { id: "d50", gate: "h", targets: [2] },
+      { id: "o51", gate: "x", targets: [1] },
+      { id: "o52", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "o53", gate: "x", targets: [1] },
+      { id: "d54", gate: "h", targets: [0] },
+      { id: "d55", gate: "h", targets: [1] },
+      { id: "d56", gate: "h", targets: [2] },
+      { id: "d57", gate: "x", targets: [0] },
+      { id: "d58", gate: "x", targets: [1] },
+      { id: "d59", gate: "x", targets: [2] },
+      { id: "d60", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "d61", gate: "x", targets: [0] },
+      { id: "d62", gate: "x", targets: [1] },
+      { id: "d63", gate: "x", targets: [2] },
+      { id: "d64", gate: "h", targets: [0] },
+      { id: "d65", gate: "h", targets: [1] },
+      { id: "d66", gate: "h", targets: [2] }
+    ]
+  }}
+/>
+
+<Check question="For $N = 2^{30}$ with one marked item, roughly how many iterations does it take to come back near the uniform superposition, and why is that number never useful?">
+Here $\theta \approx 1/\sqrt N = 2^{-15}$, so the period in $k$ is
+$\pi/\theta \approx \pi \cdot 2^{15} = 102943.7$ iterations, almost exactly four
+times the optimal count $\lfloor \frac{\pi}{4}\sqrt N \rfloor = 25735$. It is
+never useful because you would stop at the first peak; the revival only matters as
+a diagnostic. If you measure a Grover circuit and get the uniform distribution,
+either your oracle marks nothing, or it marks everything, or your iteration count
+landed on a multiple of the period. All three are bugs, and they look identical
+from the histogram.
+</Check>
+
+## Where this comes from
+
+- [Quantum Computing for the Very Curious](https://quantum.country/qcvc), for the
+  predict-then-look rhythm used throughout this lesson.
+- [PennyLane Codebook](https://pennylane.ai/codebook), whose Grover exercises have
+  the learner sweep the iteration count and plot the resulting curve.

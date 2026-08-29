@@ -1,0 +1,185 @@
+---
+id: t2.m3.l4
+title: Approximate QFT
+type: concept
+track: t2
+module: t2.m3
+level: L2
+minutes: 12
+objectives:
+  - Drop controlled-phase rotations smaller than a cutoff and bound the resulting operator error
+  - "Show that keeping O(n log n) rotations suffices for inverse-polynomial accuracy"
+  - Argue why the approximate QFT is strictly better on hardware with finite gate fidelity
+prerequisites:
+  - t2.m3.l2
+sources:
+  - label: Watrous, Quantum Computation lecture notes
+    url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+tags: [qft, approximation]
+---
+
+A QFT on 4096 qubits contains a controlled rotation by $2\pi/2^{4096}$. No device
+will ever apply that gate: the angle is smaller than the numerical precision of
+the control electronics by thousands of orders of magnitude, and smaller than the
+gate error by more still. The honest response is not to apply it, and it turns out
+that throwing away all the small rotations costs almost nothing while removing
+almost all of the gates.
+
+## The cutoff
+
+In the circuit of T2.M3.L2, the controlled phase between qubits $a$ and $b$ has
+angle $2\pi/2^{\,b-a+1}$. Call $l = b-a+1$ the **level** of the rotation. Level 2
+is a quarter turn, level 3 an eighth, and level $l$ shrinks geometrically. The
+approximate QFT with cutoff $m$, due to Coppersmith, keeps every rotation of level
+at most $m$ and deletes the rest.
+
+How many survive? Qubit $a$ controls rotations at levels $2$ through $n-a$, of
+which at most $m-1$ are kept, so
+
+$$
+\text{kept} = \sum_{a=0}^{n-1} \min(n-1-a,\; m-1) \approx n(m-1) - \frac{m(m-1)}{2} = O(nm) .
+$$
+
+Choosing $m = O(\log n)$ leaves $O(n \log n)$ rotations instead of
+$n(n-1)/2 = \Theta(n^2)$.
+
+## The error, bounded and measured
+
+Coppersmith's bound on the operator norm of the difference is
+
+$$
+\big\| \mathrm{QFT}_n - \mathrm{AQFT}_{n,m} \big\| \;\le\; \frac{2\pi n}{2^{m}} .
+$$
+
+The reasoning is a triangle inequality: each deleted gate is a rotation by
+$\theta_l = 2\pi/2^{l}$, so it differs from the identity by at most $\theta_l$ in
+norm, and summing $\theta_l$ over the at most $n$ deleted rotations per qubit and
+$n$ qubits gives $2\pi n / 2^m$ after the geometric series is summed.
+
+Measured against the true transform, on eight qubits:
+
+| cutoff $m$ | rotations kept | measured $\|\Delta\|$ | Coppersmith bound |
+| --- | --- | --- | --- |
+| $4$ | $18$ of $28$ | $1.131464$ | $3.141593$ |
+| $5$ | $22$ of $28$ | $0.414223$ | $1.570796$ |
+| $6$ | $25$ of $28$ | $0.122641$ | $0.785398$ |
+| $7$ | $27$ of $28$ | $0.024543$ | $0.392699$ |
+
+The bound is loose by a factor of three or so, and it is a bound, which is what
+matters. Note how fast the error falls: each extra level of cutoff roughly
+quarters it while costing $n$ more gates.
+
+<Margin label="Inverse-polynomial is enough">
+Shor needs the transform accurate to within an inverse polynomial in $n$, because
+the whole algorithm already succeeds only with constant probability and is
+repeated. Setting $2^m = n^{c+1}$, so $m = (c+1)\log_2 n$, gives error
+$2\pi/n^{c}$ with $O(n\log n)$ rotations. The asymptotic cost of Shor's Fourier
+step is therefore $\tilde O(n)$, not $O(n^2)$, and the modular exponentiation
+dominates by a wide margin.
+</Margin>
+
+## Seeing the cutoff bite
+
+Three qubits is small enough that a cutoff of $m = 2$, which keeps only the
+quarter turns and deletes the eighth turn, is a visible mutilation. Applied to
+$\ket{001}$, the exact transform walks the amplitudes around the circle in steps
+of 45 degrees. The approximate one walks in steps of 90 degrees and visits each
+twice.
+
+<Circuit
+  caption="Approximate QFT on three qubits with cutoff m = 2, applied to |001>. The phases now step by 90 degrees and repeat in pairs, instead of stepping by 45 degrees."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "aqft3-cutoff-2",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "prep", gate: "x", targets: [2] },
+      { id: "a", gate: "h", targets: [0] },
+      { id: "b", gate: "p", targets: [0], controls: [1], params: [1.5707963267948966] },
+      { id: "c", gate: "h", targets: [1] },
+      { id: "d", gate: "p", targets: [1], controls: [2], params: [1.5707963267948966] },
+      { id: "e", gate: "h", targets: [2] },
+      { id: "f", gate: "swap", targets: [0, 2] }
+    ]
+  }}
+/>
+
+The functional consequence is easiest to see in reverse. Feed the exact phase ramp
+at $\varphi = 5/8$ into an approximate *inverse* QFT with the same cutoff:
+
+<Circuit
+  caption="Exact 5/8 phase ramp through an approximate inverse QFT at cutoff m = 2. The correct answer 101 drops from probability 1 to 0.853553, with the rest landing on 001."
+  show={['probabilities']}
+  ir={{
+    version: 1,
+    name: "aiqft-5-8-cutoff-2",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "p0", gate: "p", targets: [0], params: [15.707963267948966] },
+      { id: "p1", gate: "p", targets: [1], params: [7.853981633974483] },
+      { id: "p2", gate: "p", targets: [2], params: [3.9269908169872414] },
+      { id: "i0", gate: "swap", targets: [0, 2] },
+      { id: "i1", gate: "h", targets: [2] },
+      { id: "i2", gate: "p", targets: [1], controls: [2], params: [-1.5707963267948966] },
+      { id: "i3", gate: "h", targets: [1] },
+      { id: "i5", gate: "p", targets: [0], controls: [1], params: [-1.5707963267948966] },
+      { id: "i6", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+$0.853553$ instead of $1$, which is $(2+\sqrt2)/4$. On three qubits a cutoff of 2
+is far too aggressive; the point is that the failure is a graceful loss of
+probability, recoverable by repetition, not a wrong answer.
+
+## Why hardware prefers the approximation
+
+Three arguments, all of them practical.
+
+A rotation by an angle far below the device's control resolution is not a small
+gate, it is a *random* gate: what the hardware actually applies is dominated by
+calibration error. Deleting it replaces a random perturbation with the identity,
+which is strictly closer to the intended operation.
+
+Every gate you apply costs decoherence time. Removing $\Theta(n^2)$ gates and
+keeping $O(n\log n)$ shortens the circuit by orders of magnitude at scale. For
+$n = 4096$ the exact QFT has $8{,}386{,}560$ controlled phases; at cutoff
+$m = 25$ it has $98{,}004$, a factor of 86 fewer, with an error bound of
+$7.67 \times 10^{-4}$.
+
+And the depth improves as well, since the surviving rotations on a given qubit
+form a short window that schedules in $O(m)$ layers rather than $O(n)$.
+
+<Callout tone="note" title="Approximation before, not after">
+Compile the approximation into the algorithm rather than letting a transpiler
+discover it. A transpiler that drops small rotations is applying an unbounded
+heuristic; Coppersmith's cutoff comes with the norm bound above, so you can carry
+the error through the rest of the analysis and state the final success probability
+honestly. The habit generalises: an approximation you chose is auditable, one your
+toolchain chose is not.
+</Callout>
+
+<Check question="You are told a 20-qubit QFT must be accurate to operator norm $10^{-3}$. What cutoff does the Coppersmith bound demand, and how many rotations does that leave?">
+Solve $2\pi \cdot 20 / 2^m \le 10^{-3}$, so $2^m \ge 125664$ and $m = 17$. With
+$n = 20$ and $m = 17$ the kept count is
+$\sum_a \min(19-a, 16) = 184$ out of $190$, barely a saving. The lesson is that
+the approximation only pays at scale: the cutoff needed grows like $\log n$ plus
+$\log(1/\varepsilon)$, and when $n$ is 20 that is already most of $n$. At
+$n = 4096$ the same accuracy target costs a cutoff of 25 and saves 98.8% of the
+gates.
+</Check>
+
+## Where this comes from
+
+- [Watrous, Quantum Computation notes](https://cs.uwaterloo.ca/~watrous/QC-notes/),
+  for the operator-norm accounting of dropped rotations.
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses), for
+  the hardware argument that a sub-resolution rotation is worse than no rotation.

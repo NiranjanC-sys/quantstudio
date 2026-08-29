@@ -1,0 +1,216 @@
+---
+id: t2.m4.l3
+title: Precision, Ancillas, and Success Probability
+type: concept
+track: t2
+module: t2.m4
+level: L2
+minutes: 14
+objectives:
+  - "Derive the t = n + ceil(log2(2 + 1/(2*epsilon))) rule for n bits of precision at failure probability epsilon"
+  - Compute the probability of landing on the nearest t-bit string when phi is not exactly representable
+  - Bound the number of repetitions needed to recover the correct answer by majority vote
+prerequisites:
+  - t2.m4.l2
+  - t1.m2.l5
+sources:
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: Watrous, Quantum Computation lecture notes
+    url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+tags: [qpe, precision]
+---
+
+Real eigenphases are irrational. The circuit of T2.M4.L1 was deterministic only
+because $5/8$ happened to fit in three bits, and nothing in nature fits in three
+bits. So the working question is: how many counting qubits do you need to get $n$
+correct bits, with what confidence, and what does adding a qubit actually buy?
+
+## The distribution when the phase does not fit
+
+Let $k$ be a measurement outcome and $\delta = \varphi - k/2^t$ the offset. Running
+the inverse QFT on the phase ramp and reading off the amplitude of $\ket k$ gives a
+geometric sum, and its modulus squared is the Dirichlet kernel
+
+$$
+\Pr[k] = \frac{1}{2^{2t}}\left| \frac{\sin(\pi 2^{t}\delta)}{\sin(\pi \delta)} \right|^{2} ,
+$$
+
+which is $1$ when $\delta = 0$ and decays like $1/(2^t\delta)^2$ away from the
+peak. Two consequences follow, and they pull in opposite directions.
+
+**The peak is always tall.** The best outcome, the $k$ nearest to $2^t\varphi$,
+always carries at least
+
+$$
+\frac{4}{\pi^2} = 0.405285 ,
+$$
+
+with equality only in the worst case, $\varphi$ exactly halfway between two
+representable values.
+
+**The peak never gets taller.** The height depends on the fractional part of
+$2^t \varphi$, not on $t$. Adding counting qubits moves the grid, it does not
+sharpen the kernel.
+
+<Margin label="Precision and confidence are different resources">
+Counting qubits buy *precision*: the spacing $2^{-t}$ between representable
+answers. Repetitions buy *confidence*: the chance that a particular run landed on
+the peak rather than in the skirt. The two are bought separately, and conflating
+them is why resource estimates for quantum chemistry vary by orders of magnitude
+between papers.
+</Margin>
+
+## Watching that happen
+
+Take $\varphi = 1/3$, which no binary register can represent. With three counting
+qubits the best grid point is $3/8 = 0.375$.
+
+<Circuit
+  caption="Phase estimation of 1/3 on three counting qubits. The best outcome 011, meaning 3/8, takes 68.78%; the second best 010, meaning 2/8, takes 17.49%."
+  show={['probabilities']}
+  ir={{
+    version: 1,
+    name: "qpe-3bit-third",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "e", gate: "x", targets: [3] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "cu0", gate: "p", targets: [3], controls: [0], params: [8.377580409572781] },
+      { id: "cu1", gate: "p", targets: [3], controls: [1], params: [4.1887902047863905] },
+      { id: "cu2", gate: "p", targets: [3], controls: [2], params: [2.0943951023931953] },
+      { id: "i0", gate: "swap", targets: [0, 2] },
+      { id: "i1", gate: "h", targets: [2] },
+      { id: "i2", gate: "p", targets: [1], controls: [2], params: [-1.5707963267948966] },
+      { id: "i3", gate: "h", targets: [1] },
+      { id: "i4", gate: "p", targets: [0], controls: [2], params: [-0.7853981633974483] },
+      { id: "i5", gate: "p", targets: [0], controls: [1], params: [-1.5707963267948966] },
+      { id: "i6", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+Now five counting qubits. The best grid point is $11/32 = 0.34375$, three times
+closer to $1/3$.
+
+<Circuit
+  caption="The same phase on five counting qubits. The best outcome 01011, meaning 11/32, takes 68.42%: essentially the same peak height, on a finer grid."
+  show={['probabilities']}
+  ir={{
+    version: 1,
+    name: "qpe-5bit-third",
+    qubits: 6,
+    clbits: 0,
+    ops: [
+      { id: "e", gate: "x", targets: [5] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "h3", gate: "h", targets: [3] },
+      { id: "h4", gate: "h", targets: [4] },
+      { id: "cu0", gate: "p", targets: [5], controls: [0], params: [33.510321638291124] },
+      { id: "cu1", gate: "p", targets: [5], controls: [1], params: [16.755160819145562] },
+      { id: "cu2", gate: "p", targets: [5], controls: [2], params: [8.377580409572781] },
+      { id: "cu3", gate: "p", targets: [5], controls: [3], params: [4.1887902047863905] },
+      { id: "cu4", gate: "p", targets: [5], controls: [4], params: [2.0943951023931953] },
+      { id: "i0", gate: "swap", targets: [1, 3] },
+      { id: "i1", gate: "swap", targets: [0, 4] },
+      { id: "i2", gate: "h", targets: [4] },
+      { id: "i3", gate: "p", targets: [3], controls: [4], params: [-1.5707963267948966] },
+      { id: "i4", gate: "h", targets: [3] },
+      { id: "i5", gate: "p", targets: [2], controls: [4], params: [-0.7853981633974483] },
+      { id: "i6", gate: "p", targets: [2], controls: [3], params: [-1.5707963267948966] },
+      { id: "i7", gate: "h", targets: [2] },
+      { id: "i8", gate: "p", targets: [1], controls: [4], params: [-0.39269908169872414] },
+      { id: "i9", gate: "p", targets: [1], controls: [3], params: [-0.7853981633974483] },
+      { id: "i10", gate: "p", targets: [1], controls: [2], params: [-1.5707963267948966] },
+      { id: "i11", gate: "h", targets: [1] },
+      { id: "i12", gate: "p", targets: [0], controls: [4], params: [-0.19634954084936207] },
+      { id: "i13", gate: "p", targets: [0], controls: [3], params: [-0.39269908169872414] },
+      { id: "i14", gate: "p", targets: [0], controls: [2], params: [-0.7853981633974483] },
+      { id: "i15", gate: "p", targets: [0], controls: [1], params: [-1.5707963267948966] },
+      { id: "i16", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+$0.687838$ against $0.684162$. Two extra qubits quadrupled the precision and left
+the peak height alone, exactly as the kernel says.
+
+What *does* improve is the chance of getting the leading bits right, because more
+of the skirt now falls inside the tolerance you care about:
+
+| $t$ | best grid point for $\varphi = 1/3$ | $\Pr[\text{best}]$ | $\Pr[\text{within } 2^{-3}]$ |
+| --- | --- | --- | --- |
+| $3$ | $0.375000$ | $0.687838$ | $0.862778$ |
+| $5$ | $0.343750$ | $0.684162$ | $0.964107$ |
+| $7$ | $0.335938$ | $0.683933$ | $0.990997$ |
+| $9$ | $0.333984$ | $0.683919$ | $0.997749$ |
+
+## The sizing rule
+
+Fix a target: $n$ correct bits, that is an answer within $2^{-n}$ of $\varphi$,
+with failure probability at most $\varepsilon$. Summing the Dirichlet tails
+outside the tolerance window gives a failure bound of $1/(2(2^{p}-2))$ when
+$t = n + p$, and setting that below $\varepsilon$ yields the standard rule
+
+$$
+t = n + \left\lceil \log_2\!\left(2 + \frac{1}{2\varepsilon}\right) \right\rceil .
+$$
+
+| target | extra qubits | total $t$ |
+| --- | --- | --- |
+| $n=3$, $\varepsilon=0.25$ | $2$ | $5$ |
+| $n=5$, $\varepsilon=0.05$ | $4$ | $9$ |
+| $n=5$, $\varepsilon=0.01$ | $6$ | $11$ |
+| $n=10$, $\varepsilon=0.01$ | $6$ | $16$ |
+
+The extra term grows like $\log(1/\varepsilon)$, so confidence is cheap in qubits.
+Check the first row against the table above: $t = 5$ gives $0.964107$ of the weight
+within $2^{-3}$, comfortably better than the $0.75$ the rule promises.
+
+## Repetition, and its limit
+
+The alternative to extra qubits is extra shots. Run $r$ times and take the most
+frequent outcome. Because the peak carries at least $4/\pi^2$ and every other
+single outcome carries less, the modal outcome converges to the peak, and a
+Chernoff bound gives a failure probability falling exponentially in $r$.
+
+The subtlety is that $4/\pi^2 = 0.405$ is *below* one half, so a naive bitwise
+majority vote is not guaranteed to work: an individual bit can be wrong more often
+than right in the worst case. Two safe alternatives:
+
+- take the modal *string* rather than a bitwise majority, which is sound because
+  the peak beats every competitor individually;
+- buy the confidence in qubits instead, using the sizing rule above, which is
+  exactly the mechanism that turns $4/\pi^2$ into $1 - \varepsilon$.
+
+<Callout tone="warning" title="Extra counting qubits are not free at scale">
+Under error correction each logical counting qubit costs thousands of physical
+qubits, and each extra counting qubit also doubles the number of applications of
+$U$, so it doubles the runtime. Adding four qubits for confidence therefore
+multiplies the runtime by sixteen. When a resource estimate reports "$t = n +
+\log(1/\varepsilon)$" as a small additive cost, check whether it also propagated
+the multiplicative $2^t$ in the controlled powers. That is usually where the
+missing factor of a thousand lives.
+</Callout>
+
+<Check question="You need the eigenphase of a molecular Hamiltonian to 8 bits with 99% confidence. How many counting qubits, and how many applications of $U$?">
+The rule gives $t = 8 + \lceil \log_2(2 + 50) \rceil = 8 + 6 = 14$ counting
+qubits. The controlled powers use $U^{2^{k}}$ for $k = 0$ to $13$, so
+$2^{14} - 1 = 16383$ applications of $U$ in total if $U$ has no shortcut. The
+qubit count sounds mild and the runtime does not: this is the calculation that
+motivates every alternative in T2.M8.L3, where the same eigenphase is read from a
+qubitised walk operator whose powers are cheaper.
+</Check>
+
+## Where this comes from
+
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 5.2.1, for the tail bound and the $n + \lceil\log_2(2+1/2\varepsilon)\rceil$
+  rule.
+- [Watrous, Quantum Computation notes](https://cs.uwaterloo.ca/~watrous/QC-notes/),
+  for the $4/\pi^2$ floor and the modal-outcome argument.

@@ -1,0 +1,784 @@
+questions:
+  - id: iq-215
+    title: Decide whether two tenants may share one QPU at once
+    kind: system-design
+    prompt: |
+      Product wants to double revenue per device by running two tenants
+      simultaneously on disjoint regions of a 127-qubit superconducting
+      processor: tenant A on qubits 0 to 19, tenant B on qubits 60 to 79, with
+      40 qubits idle in between. Both tenants pay against the two-qubit error
+      rate you publish today, about 5e-3, and both expect run-to-run
+      reproducibility. Make the call in this interview. I want a yes or a no,
+      then the crosstalk reason, the readout reason and the calibration reason
+      in that order, each with a number attached. I do not want a list of
+      considerations. Finish by telling me the specific condition under which
+      you would reverse the decision.
+    difficulty: easy
+    pattern: Multi-tenancy on quantum hardware
+    topics: [co-location, crosstalk, readout-multiplexing, calibration]
+    companies: [IBM, Google Quantum AI, Rigetti, Q-CTRL]
+    modelAnswer: |
+      No. Ship exclusive device occupancy. A tenant gets the whole processor
+      for the duration of its job, and utilisation is recovered in time
+      through short scheduling quanta and batching, not in space through
+      concurrency.
+
+      Crosstalk. The naive worry, static ZZ coupling between the two regions,
+      is not the problem at 40 qubits of separation: nearest-neighbour static
+      ZZ on fixed-frequency transmons is 10 kHz to a few hundred kHz and falls
+      by one to two orders of magnitude per lattice hop, so at that distance it
+      is negligible. The real channel is microwave drive crosstalk through the
+      package and the wiring, which is typically 20 to 30 dB down on
+      non-targeted qubits and depends on frequency detuning rather than on
+      lattice distance. A drive that produces a pi rotation in 30 ns on its
+      target produces an unwanted rotation of a few percent of that amplitude
+      on any spectator sitting near the same frequency, anywhere on the chip.
+      Put numbers on the damage: a residual coherent phase of 0.126 radians,
+      which is what 100 kHz of unwanted interaction accumulates over a 200 ns
+      gate, is an infidelity of order (0.126/2)^2 = 4e-3, comparable with the
+      entire 5e-3 error budget you sell. And you cannot bound it, because the
+      two tenants' frequency content is chosen by two compilers that do not
+      know about each other.
+
+      Readout. Readout is frequency-multiplexed, typically 6 to 10 qubits per
+      feedline, sharing one parametric amplifier and one output chain. Two
+      tenants reading out at the same instant on the same chain push that
+      amplifier towards compression and raise readout error for both. Readout
+      is also the longest operation on the device, 300 ns to a few
+      microseconds, and the photons it leaves in a shared bus dephase
+      neighbouring qubits well after the pulse ends. Unless the two regions sit
+      on physically separate feedlines and separate amplifier chains, the
+      readout path is a shared resource with no isolation mechanism at all, and
+      on a 127-qubit device with roughly 16 feedlines you do not get to choose
+      that freely.
+
+      Calibration. Every number in your published calibration snapshot was
+      measured in a context, and that context is spectators idle. If tenant B
+      is driving 20 qubits while tenant A's gate runs, tenant A's error rate is
+      not the one you published. You then have two bad options: publish a
+      degraded number that holds under any co-tenant load, which throws away
+      your fidelity story, or publish a number that is sometimes wrong, which
+      throws away the trust. There is a third cost that finance feels: a ticket
+      saying "my results changed on Tuesday" becomes unanswerable, because the
+      confounder is another customer's traffic that you cannot show them.
+
+      The reversal condition, stated concretely. I would revisit when all three
+      hold: the two regions sit on separate feedlines with separate amplifier
+      chains; a nightly simultaneous randomized benchmarking measurement of
+      that specific region pair shows added error below 10 percent of the
+      single-tenant error, so below 5e-4 against a 5e-3 baseline; and the
+      scheduler owns the frequency allocation of both jobs jointly rather than
+      compiling them independently. Modality matters too: a neutral-atom
+      machine with separately addressed zones, or an ion trap with separate
+      chains, is far closer to physically isolable than a monolithic
+      superconducting chip, and I would answer differently there.
+
+      The trade-off I am accepting. A 20-qubit job leaves 107 of 127 qubits
+      idle, which is terrible utilisation on an asset costing millions. I take
+      that because the alternative is selling a fidelity number I cannot honour
+      and losing the ability to explain any result. If devices reach a thousand
+      qubits with tunable couplers and per-region feedlines, the space argument
+      flips and co-location becomes the default rather than the exception.
+    followUps:
+      - What measurement would you run tonight to put a number on the added error from co-location?
+      - How would you recover utilisation without concurrency on a device where jobs average 20 qubits?
+      - Does your answer change if both regions belong to the same tenant, and why?
+    commonMistakes:
+      - Arguing that 40 qubits of separation makes crosstalk negligible, which is true for static ZZ and false for drive crosstalk, where frequency detuning and not distance sets the coupling.
+      - Ignoring that readout is frequency-multiplexed onto a shared feedline and amplifier, so two tenants reading out at once degrade each other with no isolation available.
+      - Publishing per-qubit error rates measured with idle spectators and then selling them as valid while another tenant drives the chip.
+    references:
+      - label: Google Quantum AI Cirq experiments
+        url: https://quantumai.google/cirq/experiments
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+
+  - id: iq-216
+    title: Design spatial isolation for co-located tenant jobs
+    kind: system-design
+    prompt: |
+      Assume the previous decision went the other way and you must ship
+      co-location on a 127-qubit heavy-hex superconducting processor with 16
+      readout feedlines. Two tenants, each wanting about 20 qubits. Design the
+      isolation. I want a stated crosstalk budget in error units, the spatial
+      buffer you require and why that distance and not another, the frequency
+      constraint, and an admission test written as an explicit list of
+      predicates that a pair of jobs must pass before the scheduler will run
+      them together. Tell me what the nightly measurement programme costs in
+      device time, and what fraction of the chip you burn on buffer zones.
+    difficulty: medium
+    pattern: Multi-tenancy on quantum hardware
+    topics: [isolation, crosstalk-budget, admission-control, buffer-zones]
+    companies: [IBM, Quantinuum, Rigetti, Infleqtion]
+    modelAnswer: |
+      The decision that matters is that the isolation boundary is a measured
+      crosstalk budget, not a lattice distance. Fix the budget first and derive
+      the geometry from it: added error to either tenant must stay below 10
+      percent of that tenant's single-tenant error, so below 5e-4 against a
+      5e-3 baseline. Every rule below exists to hit that one number.
+
+      Buffer distance, derived rather than asserted. Static ZZ between
+      neighbouring fixed-frequency transmons runs 10 kHz to a few hundred kHz
+      and falls by roughly two orders of magnitude per additional lattice hop,
+      because the effective interaction goes as the square of the coupling over
+      the detuning. Take 100 kHz nearest neighbour. One hop of idle qubits
+      brings it to about 1 kHz, which over a 200 ns gate is a phase of
+      2*pi*1e3*2e-7 = 1.3e-3 radians and an infidelity near 4e-7. Two hops is
+      already deep under budget. So two hops, with a third on devices that
+      carry a longer-range bus resonator, and the buffer qubits are held idle
+      and are not billable to either tenant.
+
+      Frequency is the binding constraint, not space. Require that no drive
+      tone in one tenant's schedule falls within 20 MHz of any transition in
+      the other tenant's region, including the 1 to 2 transition sitting at the
+      anharmonicity of about -300 to -340 MHz below the qubit frequency, and
+      including DRAG sideband content. Fabrication spread across a chip is 50
+      to 100 MHz, so collisions between two independently chosen regions are
+      not rare, and the only way to enforce this is for the scheduler to own
+      the frequency map of both jobs jointly at compile time.
+
+      Readout partitioning. Partition the device by feedline, not by qubit
+      index. Two tenants must not share a feedline, a parametric amplifier or
+      an output chain. With 16 feedlines on 127 qubits that yields at most 16
+      partitions and realistically two or three usable tenant regions once you
+      also satisfy the buffer rule.
+
+      The admission test, evaluated at schedule time when both jobs are known
+      and compiled:
+
+          1. graph distance between the two regions >= 2 lattice hops
+          2. disjoint feedlines, disjoint amplifier chains
+          3. min frequency separation >= 20 MHz over every pair of
+             (drive tone, transition frequency) across the two regions
+          4. combined drive power inside the calibrated linear range of the
+             input chain, computed as sum of amplitude squared times duration
+          5. the stored co-execution entry for this region pair shows added
+             error <= 5e-4 and is newer than the last calibration snapshot
+          6. neither job uses mid-circuit measurement with feed-forward,
+             which couples through the shared classical trigger path
+          7. neither tenant holds the confidential-workload flag
+
+      It is a conjunction of seven predicates, so co-location is the exception.
+      Any failure means the jobs run serially, which must be the cheap and
+      silent default rather than an error.
+
+      The co-execution matrix is the measurement programme behind predicate 5.
+      For a candidate region pair, run simultaneous randomized benchmarking in
+      both regions and single-region RB in each, and take the difference in
+      decay per Clifford as the added error. One pair costs of order 2 minutes
+      of device time. All pairs of 16 feedline partitions is 120 pairs, so 240
+      minutes, four hours a night, which is not affordable against a 30 minute
+      calibration budget. Measure only the region pairs the scheduler actually
+      schedules, roughly 20 of them, for about 40 minutes, and invalidate a
+      pair's entry whenever either region's calibration changes.
+
+      What the buffers cost. Two 20-qubit regions on heavy-hex, each with a
+      two-hop idle ring, consume the 40 working qubits plus roughly 25 to 30
+      buffer qubits, so about 70 of 127 physical qubits deliver 40 useful ones.
+      That is a 43 percent yield on qubit count in exchange for doubling tenant
+      count, and the honest way to present it to product is that co-location
+      buys concurrency, not capacity.
+
+      The trade-off. You accept a measurement burden that grows as the square
+      of the number of regions, and a scheduler that must solve a joint
+      constraint satisfaction problem rather than pop a queue, which pushes
+      schedule-time latency from microseconds to hundreds of milliseconds. I
+      would reverse this if the hardware changed: with per-region feedlines and
+      tunable couplers that can be parked at zero coupling, predicates 3 and 5
+      largely collapse and co-location becomes cheap enough to be the default.
+    followUps:
+      - Predicate 5 requires a fresh measurement, but calibration changes every 8 hours. How do you keep the matrix fresh without spending the calibration budget?
+      - Why is mid-circuit feed-forward excluded, and what would it take to allow it?
+      - How would you price a co-located slot given that the tenant sees a slightly worse error rate?
+    commonMistakes:
+      - Specifying the buffer as a fixed number of qubits without deriving it from a crosstalk budget, so the number cannot be defended when a customer challenges the added error.
+      - Partitioning the device by qubit index rather than by feedline, which lets two tenants share a readout chain and an amplifier.
+      - Assuming the nightly co-execution matrix over all region pairs is affordable, when all pairs of 16 partitions costs about four hours of device time every night.
+    references:
+      - label: IBM Quantum transpilation guide
+        url: https://docs.quantum.ibm.com/guides/transpile
+      - label: Google Quantum AI Cirq experiments
+        url: https://quantumai.google/cirq/experiments
+
+  - id: iq-217
+    title: Isolate tenants in the control rack and result path
+    kind: system-design
+    prompt: |
+      Forget the qubits for a moment. The control rack for a 127-qubit device
+      is a dozen chassis of arbitrary waveform generators and digitisers,
+      roughly 300 analog channels, with sequencer program memory and waveform
+      memory that has no hardware memory protection and no concept of a tenant.
+      Two tenants' jobs are loaded into that rack. Design the classical-side
+      isolation: how waveform and sequencer memory is partitioned, how shot
+      results are routed back to the right tenant, and what the blast radius of
+      a deliberately or accidentally malformed pulse program is. Rank the blast
+      radius from worst to least bad and tell me which of those you can contain
+      in software and which you cannot.
+    difficulty: medium
+    pattern: Multi-tenancy on quantum hardware
+    topics: [control-electronics, memory-partitioning, result-routing, blast-radius]
+    companies: [Q-CTRL, Rigetti, IBM, Atom Computing]
+    modelAnswer: |
+      The decision that matters is to treat the control rack as a hypervisor
+      with no MMU. The sequencers will play whatever is in their memory and
+      have no notion of ownership, so all isolation has to be enforced before
+      the load, by a trusted compiler and a trusted loader working against a
+      static partition the scheduler allocated. There is no runtime enforcement
+      point to fall back on.
+
+      Static partitioning. A rack for 127 qubits carries of order 200 to 400
+      analog channels; per-channel waveform memory is of order tens to hundreds
+      of megabytes and sequencer program memory of order tens of thousands of
+      instructions. Those are order-of-magnitude figures and are vendor
+      specific. Before admission, the scheduler allocates each job a fixed set
+      of channels and a fixed byte range within each channel's waveform memory,
+      and the loader rejects any waveform segment whose address range falls
+      outside the allocation, any sequencer branch target outside the job's
+      program range, and any trigger the job does not own. Rejection at load is
+      the only enforcement you get, so it must be a hard failure that pages
+      somebody, not a warning.
+
+      Result routing, and this is the bug that must never ship. Tag at
+      acquisition, never route by ordering. Every entry in the acquisition
+      buffer carries (job_id, nonce, shot_index, acq_channel) written by the
+      FPGA at capture time, and the demultiplexer routes on the tag and
+      verifies the nonce at egress. The alternative, "the next N records belong
+      to job X", fails silently the first time a trigger is dropped or an extra
+      one fires: the boundary shifts by one and tenant A receives tenant B's
+      measurement outcomes with no error anywhere in the system. It is a
+      confidentiality breach that looks like a normal result, which is the
+      worst failure mode available to you.
+
+      Blast radius, worst first.
+
+          1. Thermal. Drive power dissipates in the attenuators at each fridge
+             stage. Mixing-chamber cooling power is of order 10 to 30
+             microwatts at 20 mK. A continuous tone left on at full amplitude,
+             or a program that loops without an end condition, can warm the
+             stage and take the entire device out for hours of recooling. This
+             hits every tenant and no software layer repairs it after the fact.
+          2. Amplifier saturation. Too much combined power compresses the
+             parametric amplifier and degrades readout for every qubit on that
+             chain until the drive stops.
+          3. Cross-tenant coherent error. An off-frequency tone silently
+             corrupts the other tenant's results rather than failing them,
+             which is worse than a crash because it is undetectable in the data
+             the tenant receives.
+          4. Sequencer wedge. A malformed program hangs a chassis and requires
+             a reset, killing every job on that chassis.
+
+      Item 1 is contained only partly in software and mostly in hardware. The
+      controls: a compile-time energy budget per channel and summed over the
+      fridge input, computed as the integral of amplitude squared times
+      duration, capped at a fraction of the calibrated safe limit; a hard
+      maximum program duration enforced by the FPGA, not by the compiler; and a
+      hardware watchdog that zeroes all outputs if the sequencer stops
+      reporting a heartbeat. Items 2 and 3 are contained by the admission test
+      and the power budget. Item 4 is contained only by aligning the tenancy
+      unit with the failure domain.
+
+      That last point is the structural one. The smallest unit you can actually
+      contain is the chassis, and a chassis typically serves a contiguous
+      region of the chip. So make the chassis the unit of tenancy: a tenant
+      gets whole chassis, never a slice of one. This costs granularity and buys
+      you a blast radius you can describe to a customer in one sentence.
+
+      Pulse-level access. The default entitlement is gate-level circuits only,
+      with waveforms emitted by a vetted internal library whose outputs are
+      already inside the energy budget. Raw pulse access is a separate
+      entitlement for a small number of trusted partners, and any tenant
+      holding it is never co-located, because the compile-time budget check is
+      the only thing standing between an arbitrary waveform and item 1.
+
+      The trade-off. Static partitioning wastes waveform memory, since a tenant
+      using 5 percent of its allocation cannot lend the rest, and chassis-level
+      tenancy wastes channels. Denying pulse-level access to co-located tenants
+      denies the pulse research users the exact capability they came for. I
+      accept all three because the alternative is one tenant thermally taking
+      the machine down for everyone else for a shift. If the rack gained real
+      per-channel memory protection and a hardware power interlock, dynamic
+      partitioning and pulse access would both become defensible.
+    followUps:
+      - How would you test the acquisition tagging path so a dropped trigger cannot deliver one tenant data to another?
+      - What compile-time check would catch a program that loops indefinitely at full drive amplitude?
+      - If a chassis serves qubits belonging to two regions, what is the cheapest way to fix that?
+    commonMistakes:
+      - Routing shot results by position in the acquisition stream instead of by a tag written at capture, so one dropped trigger silently delivers one tenant's data to another.
+      - Assuming the sequencer enforces memory ownership at run time, when the only enforcement point is the loader before execution starts.
+      - Treating a runaway drive as a software problem, when the mixing chamber has 10 to 30 microwatts of cooling power and the recovery is hours of recooling.
+    references:
+      - label: QCoDeS instrument control documentation
+        url: https://qcodes.github.io/Qcodes/
+      - label: OpenQASM specification
+        url: https://openqasm.com/
+
+  - id: iq-218
+    title: Threat model information leakage on a shared QPU
+    kind: system-design
+    prompt: |
+      A pharmaceutical customer and a hedge fund are both on your shared
+      quantum service and each has asked, in writing, what the other can learn
+      about them. Assume co-location is technically possible on your hardware
+      and that you also publish per-qubit calibration data, queue depth, and a
+      fridge telemetry dashboard. Build the threat model. Enumerate the
+      channels, estimate the bandwidth of each in bits per second where you
+      can, say clearly what an attacker can and cannot actually recover, and
+      then give me the controls you would ship. I am as interested in what you
+      tell these customers is not a real threat as in what is, so do not
+      oversell it.
+    difficulty: medium
+    pattern: Multi-tenancy on quantum hardware
+    topics: [threat-model, side-channels, telemetry, tenant-isolation]
+    companies: [IBM, AWS Braket, Microsoft Azure Quantum, IonQ]
+    modelAnswer: |
+      The decision that matters is that these side channels are metadata
+      channels and cannot be closed by software, so the policy is temporal
+      isolation for anything a customer flags confidential, and disclosure plus
+      quantisation for everything else. Do not promise to close what you can
+      only narrow.
+
+      The channels, with honest bandwidth estimates.
+
+          channel                        what it reveals        rate
+          crosstalk sensing (Ramsey)     neighbour activity     ~5 bit/s
+          shared-feedline readout        co-tenant readout      ~50 bit/s
+          job timing and queue wait      occupancy, cadence     ~1 bit/s
+          per-qubit calibration feed     which qubits ran hard  slow, rich
+          fridge temperature dashboard   total drive power      ~0.1 bit/s
+
+      Crosstalk sensing: a tenant parks a qubit near the boundary and runs
+      Ramsey sequences, reading accumulated phase or a T2 change that tracks
+      whether neighbouring qubits are being driven. A Ramsey point at 1000
+      shots and 200 microseconds per shot is 0.2 seconds, so the honest rate is
+      a few bits per second. Readout crosstalk on a shared feedline is the
+      better channel because it is a strong classical signal, and it tells the
+      attacker when the co-tenant reads out, hence the circuit duration, the
+      repetition rate, and from those the depth and shot count.
+
+      What an attacker can actually recover: presence, start and stop times,
+      circuit duration, approximate depth, shot count, and cadence. In a field
+      this small, that metadata is the secret. "This customer ran a 30-qubit
+      job every night for three weeks and then stopped" is competitive
+      intelligence on its own.
+
+      What an attacker cannot recover, and you should say this plainly rather
+      than dramatise it: the co-tenant's circuit structure, their parameters,
+      or their measurement outcomes. There is no practical demonstrated attack
+      that reads another tenant's amplitudes through crosstalk on 2025-era
+      hardware. Overselling this threat costs you credibility with the exact
+      customers who are competent to check.
+
+      The threat that is underrated is integrity, not confidentiality. A
+      co-tenant can degrade your results, on purpose or by accident, by driving
+      spectators near your frequencies. It is cheap for them and it appears in
+      your data as elevated noise, indistinguishable from a bad calibration
+      day. Call it denial of quality. It has no detection story unless you run
+      your own reference circuits, which brings us to the controls.
+
+      Controls, in the order I would ship them.
+      First, a `confidential` job flag that forces exclusive occupancy. That is
+      the only control that actually closes the hardware channels, and it is
+      the one both of these customers should be on.
+      Second, if you co-locate at all, co-locate only jobs belonging to the
+      same tenant. That removes every cross-tenant channel in the table and
+      still recovers most of the utilisation, because the tenants with idle
+      capacity problems are the ones running sweeps.
+      Third, quantise everything externally visible in time: job start and end
+      timestamps to one second, queue position exposed only within the
+      tenant's own class, no per-job cross-tenant visibility at all.
+      Fourth, publish calibration as a device-wide snapshot on a fixed cadence,
+      never per-job and never at second resolution, so the drift signature of a
+      single workload does not appear in a public feed.
+      Fifth, aggregate fridge telemetry to five-minute means on any public
+      dashboard, or keep it internal.
+      Sixth, ship a canary: interleave your own reference circuits with known
+      answers into the schedule and alert when their fidelity drops while
+      calibration says nothing changed. That is your only detector for denial
+      of quality.
+      Seventh, log which tenants shared a device and when, and be willing to
+      tell a customer. A customer who can ask is a customer who does not have
+      to guess.
+
+      The trade-off. Same-tenant-only co-location gives up roughly half the
+      utilisation gain that co-location was sold on, and the confidential flag
+      gives up more. I accept it because the residual cross-tenant channels are
+      bounded by nothing you can measure once and re-measure cheaply, and a
+      leak you cannot bound is a leak you cannot write into a contract. If
+      someone published a formal isolation argument for a specific hardware
+      layout, backed by measurement, the calculus changes and cross-tenant
+      co-location becomes sellable to everyone except the confidential tier.
+    followUps:
+      - How would you detect a tenant whose submitted jobs are metrology probes on the boundary qubits rather than real workloads?
+      - What is the cheapest change that removes the fridge telemetry channel without blinding your own operators?
+      - Which of these controls would you also apply to a single-tenant device, and why?
+    commonMistakes:
+      - Claiming a co-tenant can read another tenant's quantum state through crosstalk, which no practical attack demonstrates and which destroys your credibility with technical customers.
+      - Focusing entirely on confidentiality and missing denial of quality, where a co-tenant silently degrades your fidelity and the damage looks like ordinary noise.
+      - Publishing per-job or second-resolution calibration and telemetry feeds, which turns an internal observability tool into a cross-tenant occupancy channel.
+    references:
+      - label: Preskill, Quantum computing in the NISQ era and beyond
+        url: https://arxiv.org/abs/1801.00862
+      - label: AWS Braket documentation
+        url: https://docs.aws.amazon.com/braket/
+
+  - id: iq-219
+    title: Quota and fair share across wildly unequal job shapes
+    kind: system-design
+    prompt: |
+      One shared QPU, twenty tenants, and jobs whose device time spans five
+      orders of magnitude: 100 shots is 20 milliseconds at 200 microseconds per
+      shot, and 10 million shots is 2000 seconds, about 33 minutes. Sequencer
+      setup costs 0.5 to 5 seconds per load regardless of shot count. Tenants
+      can also buy a 30-minute exclusive reservation. Design the fair share and
+      quota system. I want the unit you meter in, what you do at each end of
+      the size range, how reservations interact with the ordinary queue, an
+      explicit worst-case wait bound with the arithmetic behind it, and the
+      specific ways a tenant will try to game this and what stops them.
+    difficulty: hard
+    pattern: Multi-tenancy on quantum hardware
+    topics: [fair-share, quota, job-chunking, reservations, gaming]
+    companies: [AWS Braket, IonQ, IBM, D-Wave]
+    modelAnswer: |
+      The decision that matters is that the metering unit and the fairness unit
+      are the same thing, device-seconds, and that the queue schedules fixed
+      60-second chunks rather than jobs. Once occupancy is bounded at 60
+      seconds, a 100000-to-1 spread in job size stops being a scheduling
+      problem and becomes an efficiency problem at the two extremes, which is
+      much easier.
+
+      The spread, in numbers. 100 shots is 0.02 s of shots against 0.5 to 5 s
+      of setup, so a small job is up to 99 percent overhead. 10 million shots
+      is 2000 s of shots against the same setup, so overhead is negligible and
+      the problem is that it occupies the device for half an hour. Two
+      different fixes.
+
+      Coalesce below. Batch a tenant's queued jobs that are under 1 device
+      second and share a waveform set into a single sequencer load. Fifty
+      100-shot jobs batched cost one 2 s setup plus 1 s of shots, so 3 s,
+      against 50 x 2.02 = 101 s unbatched. That is a 33x efficiency gain and it
+      is the difference between a free tier being viable and not. Expose it as
+      an explicit batch submission API as well, so users opt in rather than
+      relying on the scheduler noticing.
+
+      Chunk above. Split anything over 60 device-seconds into chunks of 300000
+      shots, requeue after each chunk, and charge the tenant's deficit counter
+      each time. Ten million shots becomes 34 chunks. The tenant's wall-clock
+      time gets worse and everybody else's gets dramatically better, which is
+      the correct trade on a shared machine.
+
+      Discipline and the bound. Deficit round robin across tenants, quantum
+      Q = 60 device-seconds, contract weights applied to the quantum. A job at
+      the head of its tenant queue waits at most the sum of the other tenants'
+      quanta plus the residual of the running chunk:
+
+          worst wait = (N - 1) x Q + Q = N x Q
+          N = 20, Q = 60 s  ->  1200 s = 20 minutes
+
+      Reservations reduce the schedulable rate, so if 25 percent of the day is
+      reserved the effective bound is 1200 / 0.75 = 1600 s, about 27 minutes.
+      That is the number that goes in the SLO, and it is only defensible
+      because of the 60-second cap. Cap the weight ratio at 4 as well, or a
+      single heavily weighted tenant blows the bound up: the general form is
+      (sum of other weights / own weight) x Q.
+
+      Quota, three counters, each doing one job.
+      A monthly device-second entitlement, hard, enforced at admission with a
+      debit written in the same transaction as the enqueue so nothing runs
+      uncharged. A rolling fair-share deficit, soft, reset each round, which is
+      what the scheduler reads. And queue-occupancy limits that exist to
+      protect scheduler memory rather than device time: at most 2000 queued
+      jobs and at most 4 hours of queued device time per tenant, beyond which
+      new submissions get 429 with the current backlog in the body.
+
+      Reservations. A 30-minute reservation is 1800 device-seconds, 2.2 percent
+      of the 81000 schedulable seconds in a day after three 30-minute
+      calibration windows. Rules: total reservations capped at 25 percent of
+      any day; booked 24 hours ahead so the queue can drain into the window;
+      admission before the window refuses any chunk that cannot finish in the
+      remaining time minus a 60 second guard, which wastes at most 120 s per
+      window; and an idle reservation is released to the general queue after 5
+      minutes of no submissions. Price reservations at about 1.5x the
+      device-second rate, because they consume the scheduler's flexibility as
+      well as the device.
+
+      How tenants will game this, and the counter for each.
+      They will understate per-shot time so their chunk looks small. Counter:
+      the scheduler estimates from measured device-seconds of the last 20
+      executions of the same circuit hash, not from the declared value, and
+      overruns are truncated at the chunk boundary and billed.
+      They will split a 10-million-shot job into 100000 tiny jobs to dodge
+      chunking and get 100000 turns. Counter: deficit round robin gives a
+      tenant one quantum per round regardless of queue depth, plus the 2000
+      queued-job cap, plus a per-job 1 second billing minimum that is waived
+      only when the jobs coalesce.
+      They will submit under several sub-accounts to get several shares.
+      Counter: fair share is keyed on the billing account, not the API key, and
+      new sub-accounts inherit the parent's share rather than adding one.
+      They will hold a reservation open and use 3 minutes of it. Counter: the
+      5-minute idle release, and reservation utilisation reported on the
+      invoice so the conversation happens before the renewal.
+
+      The trade-off. Chunking costs the large tenant real throughput: 34 setups
+      at up to 5 s each is 170 s of overhead on 2000 s of work, about 8.5
+      percent, plus the latency of sharing. Coalescing costs isolation, because
+      batched jobs share a sequencer load and one bad job fails its neighbours,
+      so batching is only ever within a tenant. I accept both to get a
+      publishable 27-minute bound. If a tenant bought the device outright, drop
+      the chunking, run the 10 million shots in one load, and give the 8.5
+      percent back.
+    followUps:
+      - A tenant's measured device time is consistently 30 percent above its estimate. What does the scheduler do on the next submission?
+      - How would the bound change if reservations were capped at 50 percent of the day instead of 25?
+      - What breaks in this design if setup cost fell from seconds to 50 milliseconds?
+    commonMistakes:
+      - Metering in shots while scheduling in time, so the fairness unit and the billing unit disagree and neither can be defended to a customer.
+      - Letting a 10-million-shot job run as a single 33-minute unit, which makes the worst-case wait bound a property of your largest customer rather than of your design.
+      - Keying fair share on the API key rather than the billing account, so a tenant creates ten sub-accounts and takes ten shares.
+    references:
+      - label: Slurm workload manager documentation
+        url: https://slurm.schedmd.com/documentation.html
+      - label: AWS Braket documentation
+        url: https://docs.aws.amazon.com/braket/
+
+  - id: iq-220
+    title: Share a magic state factory between fault tolerant tenants
+    kind: system-design
+    prompt: |
+      Now assume a fault-tolerant machine. Tenants run logical circuits on
+      surface-code patches at distance 15, so 2*15^2 - 1 = 449 physical qubits
+      per patch, with a syndrome round of about 1 microsecond. Non-Clifford
+      work requires T states from a distillation factory that dominates the
+      footprint. Decide whether the factory is a shared service or per-tenant,
+      and design the accounting that goes with your decision. I want the
+      throughput arithmetic, what limits how deep a buffer of distilled states
+      you can hold, what the tenant is actually billed for, and what admission
+      control looks like when a tenant's algorithm needs a sustained T rate you
+      cannot supply.
+    difficulty: hard
+    pattern: Multi-tenancy on quantum hardware
+    topics: [fault-tolerance, magic-states, resource-accounting, admission-control]
+    companies: [PsiQuantum, Google Quantum AI, Alice & Bob, Microsoft Azure Quantum]
+    modelAnswer: |
+      The factory is a shared service with a shallow buffer, and the billing
+      unit is T states delivered at a stated output infidelity, plus
+      logical-qubit-seconds for the tenant's own patches. Per-tenant factories
+      are the wrong answer for one reason: T demand is bursty, a private
+      factory idles through every Clifford stretch of the algorithm, and idle
+      factory is the most expensive idle real estate on the machine.
+
+      The footprint arithmetic that makes this the dominant question. A
+      distance-15 patch is 449 physical qubits and a logical cycle is about 15
+      syndrome rounds, so roughly 15 microseconds. A distillation factory
+      occupies of order 10 to 100 logical patches depending on scheme and
+      target fidelity, so of order 5000 to 45000 physical qubits, which is 10
+      to 100 times a single tenant's logical qubit. In full-scale estimates
+      this is where the machine goes: Gidney and Ekera put RSA-2048 at about 20
+      million noisy physical qubits and about 8 hours at a physical error rate
+      of 1e-3 and a 1 microsecond cycle, and the T factories are the bulk of
+      that footprint. Say plainly that later work moved that estimate by a
+      factor of a few in both directions.
+
+      Throughput. Take a large factory as delivering of order 1e4 to 1e5 T
+      states per second; that is an order-of-magnitude figure and it moves with
+      the distillation scheme. If a tenant's algorithm needs 1e9 T gates, then
+      at 1e5 T per second it is 1e4 seconds, about 2.8 hours, of pure factory
+      time, and the tenant's Clifford work is nearly free beside it. T supply,
+      not qubit count, is the scheduling resource, in the same way memory
+      bandwidth rather than FLOPs is the resource on a classical accelerator.
+
+      Architecture.
+
+          [factory 1]  [factory 2]  ...  [factory k]
+               |            |                 |
+               +------------+-----------------+
+                            |
+                  magic state buffer (m patches)
+                            |
+               +------------+-----------------+
+               |                              |
+          tenant A logical region      tenant B logical region
+
+      The buffer decouples bursty demand from steady supply, and its depth is
+      limited by physics rather than by memory. A stored T state occupies a
+      logical patch and accrues logical error every cycle. With a logical error
+      per patch per cycle of 1e-10 and a 15 microsecond cycle, holding a state
+      for one second is 66000 cycles and about 6.6e-6 of accumulated error,
+      which already exceeds the output infidelity of a good distillation round.
+      So the buffer holds seconds of supply, not minutes. That figure is
+      model-dependent and moves with distance, but the conclusion does not: you
+      cannot warehouse magic states, so a burst has to be matched by supply
+      close to real time.
+
+      Accounting, two SKUs and one tag.
+      T states delivered, tagged with the distillation level, because an output
+      infidelity of 1e-12 costs substantially more factory time than 1e-6 and
+      charging a flat rate lets a tenant buy premium states at commodity
+      prices. Logical-qubit-seconds for the patches the tenant holds, charged
+      whether or not they are doing anything, because a tenant idling 100
+      patches while waiting on T states is consuming the machine exactly as
+      much as one computing. The tag is the factory id and buffer draw
+      timestamp, so a disputed bill resolves against the factory's own output
+      log.
+
+      Fair share. A token bucket per tenant against the aggregate factory
+      output rate, refilled at the tenant's contracted share of T per second,
+      with weights. But the important control is admission, not queueing: do
+      not start a tenant's algorithm unless the projected sustained T rate can
+      be met for its duration. Starting a computation you cannot feed is worse
+      than refusing it, because the tenant's logical patches sit idle for hours
+      accruing error and consuming correction bandwidth, and the computation
+      may have to be abandoned. That is the sharp difference from NISQ
+      scheduling: you admit on projected sustained throughput over hours, not
+      on instantaneous availability.
+
+      Isolation risk. The routing bus that carries distilled states from the
+      factory farm to tenant regions is shared, so contention on it couples
+      tenants' latency and is a covert channel: tenant B can infer tenant A's T
+      consumption rate from its own delivery jitter. Give each tenant a fixed,
+      reserved share of the lattice-surgery schedule on that bus rather than
+      best effort. Fixed shares remove the channel and cost you utilisation
+      whenever a tenant does not use its slot.
+
+      The trade-off. A shared factory raises utilisation and cuts the cost per
+      T state, and in exchange it couples tenants' latency, creates a bus
+      contention channel, and makes a factory fault an outage for every tenant
+      at once. Per-tenant factories give clean isolation and a simple invoice
+      and cost you 10 to 100 logical patches of idle capacity per tenant. If a
+      customer's contract demands provable isolation, do not partition the
+      factory: sell them a partitioned machine, with their own factories, and
+      price the idle capacity into the contract.
+    followUps:
+      - How would you detect that a tenant's T consumption is running ahead of its projection, early enough to act?
+      - What changes if the code distance is raised to 25 mid-run because the physical error rate drifted?
+      - Is there a workload shape where a per-tenant factory genuinely wins, and what does it look like?
+    commonMistakes:
+      - Accounting in physical qubits reserved rather than T states delivered, which fails to charge for the factory time that actually dominates the machine.
+      - Assuming distilled states can be stockpiled, when a stored state accrues logical error every cycle and a one second hold already exceeds a good distillation round's output infidelity.
+      - Admitting a tenant's algorithm on instantaneous factory availability instead of projected sustained T rate, so its logical patches idle for hours mid-computation.
+    references:
+      - label: Fowler et al, Surface codes towards practical large-scale quantum computation
+        url: https://arxiv.org/abs/1208.0928
+      - label: Gidney and Ekera, How to factor 2048 bit RSA integers in 8 hours
+        url: https://arxiv.org/abs/1905.09749
+
+  - id: iq-221
+    title: Prove the right circuit ran on the right quantum hardware
+    kind: system-design
+    prompt: |
+      A regulated customer, subject to an external auditor, wants to run
+      workloads on your multi-tenant QPU service. Their compliance team asks
+      three questions. Can you prove our circuit ran unmodified? Can you prove
+      it ran on the hardware you claim rather than on a simulator? Can you
+      prove no other tenant was on the device at the time? Design the
+      attestation and audit architecture that answers what can be answered, and
+      be precise about the boundary between what you can prove and what you can
+      only give evidence for. Assume you can put a hardware root of trust in
+      the control rack and that the customer will not run a quantum client of
+      their own.
+    difficulty: hard
+    pattern: Multi-tenancy on quantum hardware
+    topics: [attestation, audit, provenance, verification, compliance]
+    companies: [IBM, Microsoft Azure Quantum, Quantinuum, Terra Quantum]
+    modelAnswer: |
+      The decision that matters is to attest the classical chain end to end and
+      to state in the contract, in one sentence, that no operator can
+      cryptographically prove a quantum result came from a quantum device. Then
+      buy statistical assurance for the second question with trap circuits. A
+      design that blurs that boundary will not survive the auditor.
+
+      What you can prove, and how.
+
+      Input integrity. The submitted circuit is canonicalised and hashed at the
+      edge, and the client signs the hash with its own key. That hash appears
+      in every downstream record and in the final result bundle, so the
+      customer verifies for themselves that what ran was what they sent. This
+      answers question one completely.
+
+      Compilation provenance. Make the transpiler deterministic given
+      (circuit hash, coupling map version, basis gate set, optimisation level,
+      seed) and make that determinism a tested CI property, not an aspiration.
+      An auditor can then re-run compilation offline and reproduce the
+      transpiled circuit bit for bit.
+
+      Execution binding. Put a hardware root of trust in the control rack, a
+      TPM or secure element whose private key never leaves it, and have it sign
+      an execution record containing job id, source circuit hash, transpiled
+      circuit hash, device serial number, firmware measurement, calibration
+      snapshot hash, start and stop timestamps from the rack clock, and shots
+      delivered. Signed at the rack, not by the cloud control plane, because
+      the control plane is exactly the component an auditor will assume is
+      compromised.
+
+      Tenancy state. The execution record includes an occupancy field: whether
+      the device was exclusively occupied for the window, and if not, the
+      opaque tenant identifiers that shared it. For a regulated customer the
+      policy is exclusive occupancy, and the record proves the policy was in
+      force rather than merely documented. That answers question three, subject
+      to trusting the rack signature.
+
+      Log integrity. All records enter an append-only hash chain, with the
+      daily root published externally so a record cannot be back-dated or
+      quietly edited. Publishing the root is what converts "we keep good logs"
+      into something an auditor can test.
+
+      What you cannot prove, stated to the customer in these terms. You cannot
+      prove the outcomes were produced by the quantum device rather than by a
+      classical simulator under your control. For circuits inside simulation
+      reach, roughly 40 qubits and shallow, a dishonest operator could simulate
+      them. For circuits beyond simulation reach, no party, including the
+      customer, can check the answer independently, and that is precisely the
+      regime they are paying for. Generic verification of a quantum computation
+      by a purely classical verifier is not available today: the known
+      protocols either require a quantum-capable client, or rest on
+      cryptographic assumptions and are far from practical, or verify only
+      restricted classes of computation.
+
+      What you can buy instead of proof.
+      Trap circuits. Interleave circuits with known outcomes, randomly placed,
+      of the same shape and on the same physical qubits, so the operator cannot
+      distinguish a trap from real work. Cost of order 5 to 10 percent of
+      shots. A device that is broken, or an operator substituting a simulator
+      with an inaccurate noise model, fails the traps statistically.
+      Mirror circuits. Run U followed by its inverse and check the return to
+      the initial state; this gives an end-to-end fidelity figure at full width
+      and full depth without any simulator. Pauli-twirl between the halves, or
+      coherent errors cancel and the mirror flatters the device.
+      Continuous benchmarking. Randomized benchmarking and cycle benchmarking
+      on the same qubits in the same window, with the results inside the signed
+      record rather than in a separate marketing page.
+      Cross-device agreement. Route a sampled fraction of jobs to a second
+      device and require agreement inside stated error bars.
+
+      None of those is a proof, and the contract language should say so:
+      the operator attests to provenance and to the physical execution record,
+      and the customer receives statistical evidence of device behaviour rather
+      than a cryptographic proof of the quantum result.
+
+      Audit surface. Role-based access with every internal read of a tenant's
+      circuit or results written to the same append-only log; per-tenant
+      encryption keys so deletion is provable by destroying the key; an annual
+      third-party review of the rack signing procedure and key custody; and a
+      documented, rehearsed process for the awkward case where a calibration
+      guard fires mid-job and the record shows partial execution.
+
+      The trade-off. Trap circuits consume 5 to 10 percent of paid device time,
+      exclusive occupancy gives up all co-location revenue on this customer's
+      workloads, and after all that you still cannot answer question two with a
+      proof. What you buy is defensibility: a complete, externally anchored,
+      independently checkable classical chain, plus quantitative evidence about
+      the device. If practical verifiable delegated quantum computation became
+      available, the trap-circuit apparatus would be replaced by a protocol
+      with a real soundness guarantee, and I would drop it the same week.
+    followUps:
+      - What fraction of shots would you spend on traps, and how would you choose it from the customer's risk tolerance?
+      - How do you keep the transpiler deterministic across a compiler upgrade without breaking an audit from last year?
+      - The rack signing key is suspected compromised. What is the recovery procedure and what happens to past records?
+    commonMistakes:
+      - Claiming attestation proves the result came from quantum hardware, when the signature only binds the classical record and an auditor will find that gap immediately.
+      - Signing the execution record in the cloud control plane rather than at the rack, which attests the component an auditor assumes is compromised.
+      - Running mirror circuits without Pauli twirling between the halves, so coherent errors cancel and the device reports a fidelity better than it delivers.
+    references:
+      - label: Stim stabilizer circuit simulator
+        url: https://github.com/quantumlib/Stim
+      - label: Microsoft Azure Quantum documentation
+        url: https://learn.microsoft.com/en-us/azure/quantum/

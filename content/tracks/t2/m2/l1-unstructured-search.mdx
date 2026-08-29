@@ -1,0 +1,194 @@
+---
+id: t2.m2.l1
+title: Unstructured Search
+type: concept
+track: t2
+module: t2.m2
+level: L2
+minutes: 12
+objectives:
+  - "State the unstructured search problem and its classical expected query cost of (N+1)/2"
+  - Explain why measuring the uniform superposition gives no advantage on its own
+  - Identify the interference step that makes a quadratic saving possible
+prerequisites:
+  - t2.m1.l4
+  - t1.m9.l4
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [grover, search]
+---
+
+What is the cheapest way to find a needle in a haystack when the haystack has no
+structure at all? Classically the answer is depressing and exactly known: look at
+the straws. The quantum answer saves a square root, and understanding *where* the
+saving comes from matters more than the algorithm, because the same mechanism is
+the only one anybody has found that works on a problem with no structure to
+exploit.
+
+## The problem
+
+You are given oracle access to $f: \{0,1\}^n \to \{0,1\}$ and told that exactly
+$M$ of the $N = 2^n$ inputs satisfy $f(x) = 1$. Find one. Nothing is promised
+about *which* inputs, and no two queries are related: the function is a lookup
+table with no pattern in it, which is what "unstructured" means.
+
+Classically, with $M = 1$ and the marked index uniformly random, query indices in
+a random order. The marked index is equally likely to be the first, second, up to
+the $N$-th you try, so the expected number of queries is
+
+$$
+\frac{1}{N}\sum_{k=1}^{N} k = \frac{N+1}{2} .
+$$
+
+The worst case is $N - 1$, since after $N-1$ misses the answer is forced.
+Randomisation buys nothing: any algorithm making $T$ queries has seen at most $T$
+of the $N$ cells, so it finds the marked index with probability at most $T/N$.
+
+<Margin label="Structure is what algorithms eat">
+Sorted data gives binary search, $\log_2 N$ queries. A hash table gives $O(1)$.
+Unstructured search is the problem you are left with once every such handle is
+removed, which is why its complexity is the cleanest possible measure of what
+raw quantum interference is worth. The answer, quadratic and no better, is
+Module 9's punchline as much as this module's.
+</Margin>
+
+## Superposition alone is worth nothing
+
+The obvious quantum move is to prepare the uniform superposition and query it in
+one shot:
+
+$$
+\ket{s} = \frac{1}{\sqrt N} \sum_{x} \ket{x},
+\qquad
+O_f \ket{s} = \frac{1}{\sqrt N} \sum_x (-1)^{f(x)} \ket{x} .
+$$
+
+Now measure. Every amplitude still has magnitude $1/\sqrt N$, so every outcome
+still has probability $1/N$, and the chance of reading the marked index is
+exactly the chance of guessing it. One query has bought a uniformly random guess,
+which is what one classical query buys.
+
+<Circuit
+  caption="Three Hadamards, then a phase oracle marking 101. All eight probabilities are still 12.5%: the oracle changed one sign and nothing measurable."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "oracle-alone",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "m1", gate: "x", targets: [1] },
+      { id: "z", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "m2", gate: "x", targets: [1] }
+    ]
+  }}
+/>
+
+The amplitude of $\ket{101}$ is $-0.353553$ and every other amplitude is
+$+0.353553$. The information is there, sitting in a relative phase, and
+measurement in the computational basis cannot see it. This is the single most
+important thing to internalise about the query model: the oracle is generous, and
+the difficulty is entirely in the readout.
+
+## What has to happen instead
+
+Amplitudes are not probabilities, and the gap between them is the whole
+opportunity. Write the state after the oracle as
+
+$$
+O_f \ket{s} = \ket{s} - \frac{2}{\sqrt N} \ket{w} ,
+$$
+
+where $\ket{w}$ is the marked basis state. The oracle has subtracted a small
+correction along $\ket{w}$: a component of size $2/\sqrt N$, sitting on top of a
+state whose overlap with $\ket{w}$ was only $1/\sqrt N$ to begin with. The
+correction is *larger than the thing it corrects*. All that is missing is an
+operation that turns "differs from the average" into "has large amplitude".
+
+That operation is a reflection about $\ket{s}$, and it is the subject of the next
+lesson. Its effect on a set of amplitudes $a_x$ is
+
+$$
+a_x \;\longmapsto\; 2\bar{a} - a_x, \qquad \bar{a} = \frac{1}{N}\sum_x a_x ,
+$$
+
+an inversion about the mean. Every unmarked amplitude sits at $+1/\sqrt N$ and
+barely moves. The marked one sits at $-1/\sqrt N$, is nearly $2/\sqrt N$ below the
+mean, and comes back nearly $2/\sqrt N$ above it. One query plus one inversion
+roughly *triples* the marked amplitude, and the amplitude is what gets squared at
+the end.
+
+<Callout tone="note" title="Why the saving is a square root and not more">
+Each iteration adds about $2/\sqrt N$ to the marked amplitude, so it takes about
+$\sqrt N / 2$ iterations for that amplitude to reach 1. The additive step size is
+set by the overlap $\braket{w}{s} = 1/\sqrt N$, and no choice of oracle or
+diffuser changes it. The precise constant, $\pi/4$ rather than $1/2$, comes from
+the fact that the growth is sinusoidal rather than linear, which is T2.M2.L3.
+The impossibility of doing better than $\sqrt N$ is T2.M2.L9.
+</Callout>
+
+Preview the payoff on the same three qubits. One oracle call and one inversion
+about the mean, and the marked string already carries most of the probability.
+
+<Circuit
+  caption="The same oracle followed by one inversion about the mean. The marked string 101 jumps from 12.5% to 78.125%, from a single query."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "one-iteration",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "m1", gate: "x", targets: [1] },
+      { id: "z", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "m2", gate: "x", targets: [1] },
+      { id: "d0", gate: "h", targets: [0] },
+      { id: "d1", gate: "h", targets: [1] },
+      { id: "d2", gate: "h", targets: [2] },
+      { id: "e0", gate: "x", targets: [0] },
+      { id: "e1", gate: "x", targets: [1] },
+      { id: "e2", gate: "x", targets: [2] },
+      { id: "dz", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "f0", gate: "x", targets: [0] },
+      { id: "f1", gate: "x", targets: [1] },
+      { id: "f2", gate: "x", targets: [2] },
+      { id: "g0", gate: "h", targets: [0] },
+      { id: "g1", gate: "h", targets: [1] },
+      { id: "g2", gate: "h", targets: [2] }
+    ]
+  }}
+/>
+
+Amplitude $-0.883883$ on $\ket{101}$ against $-0.176777$ on each of the other
+seven. Classically, one query out of eight leaves you at $12.5\%$. Here it leaves
+you at $78.125\%$, and a second query will take it to $94.53\%$.
+
+<Check question="Suppose the promise is changed to at most one marked item, so the input may have none. Does a single measurement of $O_f\ket{s}$ distinguish the two cases?">
+No. If there is no marked item then $O_f = I$ and the state is $\ket{s}$; if there
+is one then the state is $\ket{s}$ with one sign flipped. Both give the uniform
+distribution on measurement, so one query and one measurement cannot tell them
+apart at all. You need the interference step in both cases: run the full
+algorithm, measure, and check the returned candidate with one extra query. That
+final verification is why search and OR have the same query complexity up to a
+constant.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), for the
+  $(N+1)/2$ classical accounting and the framing of the oracle as generous.
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses), whose
+  search course develops the inversion-about-the-mean picture in this order.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 6.1, for the original statement of the search problem.

@@ -1,0 +1,803 @@
+questions:
+  - id: iq-162
+    title: Order the passes in a superconducting transpiler
+    kind: system-design
+    prompt: |
+      Design the pass pipeline for a transpiler targeting a superconducting
+      device with a fixed coupling map, a native gate set of ECR plus RZ plus
+      SX plus X, and per-gate durations you can read from a calibration file.
+      The input is an arbitrary circuit that may contain multi-controlled gates,
+      arbitrary two-qubit unitaries and classical control flow. Give me the
+      stages in order, and for each boundary tell me why that pass cannot run
+      earlier or later. I want the ordering constraints stated as constraints,
+      not as a list of things transpilers do. Then tell me which stage you would
+      run twice and why, and what the pipeline outputs besides a circuit.
+    difficulty: easy
+    pattern: Compiler pass pipeline design
+    topics: [pass-manager, transpiler-stages, layout, routing, basis-translation]
+    companies: [IBM, Classiq, Q-CTRL, Rigetti]
+    modelAnswer: |
+      The decision that matters is that layout and routing must see a circuit
+      whose gates are all one-qubit or two-qubit, and basis translation must see
+      the SWAPs that routing inserted. Everything else in the ordering follows
+      from those two facts.
+
+      The pipeline, with the constraint at each boundary.
+
+          1. init / unroll to 1q and 2q
+             constraint: layout and routing reason about a coupling graph whose
+             edges are pairs. A Toffoli is not a pair, so any gate on three or
+             more qubits must be decomposed first or the router has nothing to
+             route. Also run trivial cancellations here so you do not pay to
+             route gates that are about to be deleted.
+
+          2. layout
+             constraint: needs the interaction graph, which only exists after
+             step 1. Produces a virtual-to-physical mapping and sets the
+             property is_layout_set. Cannot run after routing, because routing
+             is defined relative to a layout.
+
+          3. routing
+             constraint: needs a layout. Inserts SWAPs, or bridges, so that
+             every two-qubit gate lands on a coupling-map edge. Produces
+             is_swap_mapped and a final permutation, which the caller needs in
+             order to interpret measurement bits.
+
+          4. basis translation
+             constraint: must run after routing, because the SWAPs routing
+             inserted are themselves not in the basis. Translating before
+             routing means either translating twice or shipping a circuit with
+             three CNOTs per SWAP that nobody optimised.
+
+          5. optimisation
+             constraint: must run after translation so it optimises in the
+             target gate set, and must preserve connectivity and direction. Any
+             rewrite here is only allowed to produce gates on edges that already
+             exist. This is where 1q runs collapse into at most two SX pulses
+             plus virtual RZ frame changes, and where 2q blocks are resynthesised.
+
+          6. scheduling and pulse-level passes
+             constraint: last, because it needs final gate durations, which need
+             the final gate set and the final qubit assignment. Inserting delays
+             or dynamical decoupling before this point would be invalidated by
+             any later rewrite.
+
+      Which stage runs twice: optimisation, and layout in a weaker sense. Run a
+      cheap optimisation pass in step 1 to shrink the interaction graph, then the
+      real one at step 5. And re-score the layout after routing, because routing
+      determines which physical edges actually carry gates, so a layout that
+      looked good on the interaction graph may be scored quite differently once
+      you know where the SWAPs went. That second scoring is a permutation
+      relabelling, not a re-run of routing, so it is cheap.
+
+      A worked size. Take a 20-qubit circuit with 400 two-qubit gates. Routing on
+      a heavy-hex graph typically inserts between 0.5 and 3 SWAPs per original
+      two-qubit gate depending on the interaction pattern, so you leave routing
+      with 600 to 1600 two-qubit operations. Each SWAP becomes 3 ECR in
+      translation. Optimisation then typically returns 10 to 30 percent of that.
+      If you had translated before routing you would have run the peephole
+      optimiser on a circuit that is about to gain a thousand gates, which is
+      wasted work and a worse result.
+
+      Outputs besides the circuit. The pipeline must return the initial layout,
+      the final permutation of qubits, the property set the passes agreed on, the
+      calibration snapshot identifier it compiled against, and a duration
+      estimate. Without the final permutation the customer cannot map their
+      classical bits back to their logical qubits, which is the single most common
+      production bug in this area.
+
+      The trade-off I accepted: a strictly staged pipeline forgoes the gains a
+      joint layout-and-routing-and-synthesis search would find, and those gains
+      are real, of order 10 to 20 percent in two-qubit count on structured
+      circuits. I take the staged pipeline because each stage is separately
+      testable, separately cacheable and separately replaceable, and because a
+      joint search has no useful failure mode: when it does badly you cannot tell
+      which decision was wrong. I would run a joint search only for a small,
+      high-value circuit that will be executed millions of times, where you can
+      afford minutes of compile time per circuit.
+    followUps:
+      - Where does classical control flow, such as a mid-circuit measurement and a conditional gate, break this ordering?
+      - Which of these stages can run in parallel across a batch of circuits, and which cannot?
+      - What property-set invariant would catch an optimisation pass that quietly breaks the coupling-map constraint?
+    commonMistakes:
+      - Translating to the native basis before routing, so the SWAPs inserted afterwards arrive untranslated and unoptimised, and the peephole pass has already run on the wrong circuit.
+      - Scheduling before optimisation, which produces delays and decoupling sequences that the optimiser then invalidates.
+      - Returning only the circuit and not the final qubit permutation, so measured bits are silently attributed to the wrong logical qubits.
+    references:
+      - label: IBM Quantum transpilation guide
+        url: https://docs.quantum.ibm.com/guides/transpile
+      - label: TKET compiler documentation
+        url: https://docs.quantinuum.com/tket/
+
+  - id: iq-163
+    title: Design the layout selection stage of a transpiler
+    kind: system-design
+    prompt: |
+      Design the layout selection stage for a 133-qubit device where per-edge
+      two-qubit error rates vary by a factor of ten across the chip and the
+      circuit to place uses 30 qubits. You have a compile-time budget of 2
+      seconds per circuit at the p99. Tell me how you seed candidate layouts,
+      how you score them, how an iterative router-driven refinement improves
+      them, and how many trials you run before the returns stop justifying the
+      compute. I want a number for the trial count and the reasoning that
+      produced it, not a default from a library. Say what you do when no exact
+      embedding exists at all.
+    difficulty: medium
+    pattern: Compiler pass pipeline design
+    topics: [layout-selection, sabre, noise-aware-scoring, subgraph-isomorphism, compile-budget]
+    companies: [IBM, Q-CTRL, Classiq, AWS Braket]
+    modelAnswer: |
+      The decision that matters is a two-stage structure: try for an exact
+      embedding first, because when one exists it costs zero SWAPs and no
+      heuristic can beat zero, and only fall back to seeded iterative refinement
+      when it does not. Most production layout stages get this backwards and run
+      the heuristic unconditionally.
+
+      Stage one: exact embedding. Run subgraph isomorphism of the circuit's
+      interaction graph into the coupling map. On a 133-qubit device and a
+      30-qubit circuit this either fails quickly or returns many candidates; the
+      useful case is a circuit whose interaction graph is a path, a tree, or a
+      sparse grid, which covers most chemistry and most QAOA on geometric graphs.
+      Enumerate up to a bounded number of embeddings, say 1000 or until 100
+      milliseconds have elapsed, and score them all. Zero SWAPs plus a
+      noise-optimal placement is a very strong result and is worth spending 5
+      percent of the compile budget hunting for.
+
+      Stage two: seeded refinement, for when no exact embedding exists. Three
+      ingredients.
+
+      1. Dense-subgraph seeding. Find the connected subgraph of 30 physical
+         qubits with the best aggregate edge fidelity: grow greedily from each
+         starting qubit, keeping the highest-scoring frontier edge, and keep the
+         best few hundred results. This gives good starting regions rather than
+         random ones, which matters because the refinement is local.
+      2. Noise-aware scoring. Score after routing, since routing decides which
+         edges carry gates:
+
+             score = sum over routed 2q gates of -log(1 - e_edge)
+                   + sum over measured qubits of -log(1 - e_readout)
+                   + sum over qubits of (idle_time / T2)
+
+         The exponentiated negative score is an estimated success probability.
+         Say plainly that this proxy ignores crosstalk and correlated error and
+         runs optimistic; it is a ranking function, not a prediction.
+      3. Iterative refinement. Run the router forward over the circuit from a
+         seed layout, take the final permutation as the new initial layout, and
+         run it backward. Two or three forward-backward sweeps converge, because
+         the router's own SWAP choices reveal where the layout should have
+         started. This is the SABRE idea and it is what turns a mediocre seed
+         into a competitive layout.
+
+      How many trials. Each trial is a seed plus a random tie-break, and you keep
+      the best. Measure the distribution rather than guessing: on a 30-qubit
+      circuit the routed two-qubit count across random seeds typically spreads by
+      20 to 40 percent between the best and the median. The best-of-n statistic
+      improves roughly with the log of n once you are in the tail, so:
+
+          trials    typical improvement over a single trial
+          ------    ---------------------------------------
+             1      baseline
+             5      most of the easy gain
+            20      a few percent more
+           100      about 1 percent more than 20
+
+      Twenty trials is the knee. Now check it against the budget: one trial on a
+      30-qubit, 600-gate circuit is of order 20 to 60 milliseconds of routing, so
+      20 trials is 0.4 to 1.2 seconds, which fits inside a 2 second p99 with room
+      for translation and optimisation. That is the real reason for 20: it is the
+      knee of the curve and it is what the budget affords. If the budget were 200
+      milliseconds I would run 4 trials and say so.
+
+      Parallelism: trials are independent, so run them across cores and take the
+      best. This is the one place in the pipeline where you can spend cores to buy
+      quality with no correctness risk, provided the tie-breaks are seeded so the
+      result is reproducible regardless of which core finished first.
+
+      The trade-off I accepted: 20 trials means the layout stage owns roughly half
+      the compile budget, and the same circuit compiled with a different seed can
+      produce a different layout. I buy reproducibility back by making the seed
+      part of the cache key and pinning it per job. I would decide the other way
+      for an interactive editor, where a 200 millisecond p99 matters more than 10
+      percent of two-qubit count, and for a circuit that will run millions of
+      times, where I would spend minutes and keep the result forever.
+    followUps:
+      - How would you cache layout results across circuits that share an interaction graph but differ in their rotation angles?
+      - Your scoring proxy disagrees with measured fidelity on a class of circuits. How do you find out which term is wrong?
+      - What changes in this design when the device is all-to-all, as on a trapped-ion machine?
+    commonMistakes:
+      - Running the heuristic layout unconditionally without first testing for an exact embedding, which throws away zero-SWAP solutions that certainly exist for path-like and grid-like interaction graphs.
+      - Scoring layouts on the interaction graph before routing, so the score ignores the edges that the inserted SWAPs will actually use.
+      - Picking a trial count from a library default rather than from the measured knee of the improvement curve and the compile-time budget, which either wastes seconds or leaves 20 percent of two-qubit count on the table.
+    references:
+      - label: IBM Quantum transpilation guide
+        url: https://docs.quantum.ibm.com/guides/transpile
+      - label: Preskill, Quantum computing in the NISQ era and beyond
+        url: https://arxiv.org/abs/1801.00862
+
+  - id: iq-164
+    title: Translate and synthesise for an ECR or tunable-coupler basis
+    kind: system-design
+    prompt: |
+      Your target device's native two-qubit gate is either ECR, on a
+      fixed-frequency machine, or a tunable-coupler CZ with a continuously
+      adjustable conditional phase. Single-qubit gates are RZ, SX and X, and RZ
+      is a virtual frame change that costs zero time. Design the basis
+      translation and gate synthesis stage. I want the worst-case two-qubit gate
+      count for an arbitrary SU(4) block, how you merge Euler angles so you do
+      not emit six single-qubit gates where two suffice, and specifically how you
+      avoid the failure mode where naive per-gate translation produces a circuit
+      three times larger that the optimiser then has to claw back. Tell me what
+      changes if the coupler exposes a continuous angle.
+    difficulty: medium
+    pattern: Compiler pass pipeline design
+    topics: [basis-translation, kak-decomposition, euler-angles, gate-synthesis, virtual-z]
+    companies: [IBM, Rigetti, Google Quantum AI, Q-CTRL]
+    modelAnswer: |
+      The decision that matters is to translate at the level of two-qubit blocks,
+      not at the level of individual gates. Collect each maximal two-qubit
+      subcircuit, multiply it out into a 4x4 unitary, and resynthesise that
+      unitary directly in the target basis. Per-gate rewriting followed by
+      peephole cleanup is the failure mode this question is about, and block
+      resynthesis removes it by construction rather than repairing it afterwards.
+
+      The counts you must know. Any element of SU(4) decomposes by the Cartan or
+      KAK decomposition into local single-qubit unitaries and a three-parameter
+      interaction. With a maximally entangling gate such as CNOT, CZ or ECR, three
+      applications suffice for an arbitrary SU(4) element and three is tight in
+      the worst case. Structured cases are cheaper:
+
+          block type                   ECR or CZ count
+          --------------------------   ---------------
+          arbitrary SU(4)              3
+          controlled unitary           2
+          SWAP                         3
+          CZ up to local gates         1
+          Ising ZZ(theta), any theta   2
+
+      Single-qubit cost. Each of the four local blocks in the KAK form is a
+      single-qubit unitary, written as RZ * SX * RZ * SX * RZ. RZ is virtual, so
+      the hardware cost of an arbitrary single-qubit unitary is exactly two SX
+      pulses at 20 to 50 nanoseconds each, and the three RZ angles are frame
+      updates costing zero time. Euler-angle merging is then a purely local
+      rewrite: fold every run of consecutive single-qubit gates into one 3x3
+      rotation, resolve it into the ZXZXZ form once, and emit at most two SX. A
+      naive translation that emits U3 per source gate can easily produce six or
+      more pulses in a run where two are needed, and each of those pulses carries
+      an error of order 1e-4 to 1e-3 plus 20 to 50 nanoseconds of duration.
+
+      Why per-gate translation explodes. Suppose the source uses CZ and the target
+      is ECR. Rewriting each CZ independently gives one ECR plus a fixed wrapper
+      of single-qubit gates. In a block of three consecutive CZs you now have
+      three wrappers, so of order twelve to eighteen single-qubit gates, most of
+      which are adjacent and cancel. The optimiser can find most of that, but it
+      works harder, its runtime grows with the circuit it was handed, and it can
+      only reach a local optimum of the expanded form. Block resynthesis starts
+      from the mathematically minimal answer: at most 3 ECR and at most 8 SX for
+      the whole block, whatever the source form was. Concretely, on a 20-qubit
+      circuit with 400 two-qubit gates arranged in blocks of about 3, per-gate
+      translation emits of order 400 ECR plus 1600 to 2400 single-qubit gates,
+      while block resynthesis emits about 400 ECR plus 1000 SX. The two-qubit
+      count is the same and the single-qubit count halves, which on a device where
+      1q error is 1e-4 and 2q error is 5e-3 saves roughly 0.1 in accumulated error
+      on a circuit that already carries 2.0. Modest, but free.
+
+      What a continuous-angle coupler changes, and it changes a lot. If the
+      hardware implements CPhase(theta) or an RZZ(theta) directly, then an Ising
+      interaction of any angle is one gate instead of two, and many blocks that
+      needed three maximally entangling gates need only two, because you have a
+      two-parameter family available rather than a fixed point in the Weyl
+      chamber. For a Trotterised Hamiltonian this is close to a factor of two in
+      two-qubit gate count and duration. The catch is calibration: a continuous
+      family needs the whole family calibrated, or an interpolation model plus
+      per-angle error that is worse than the calibrated point, and you must ask
+      for the error as a function of theta before you count the win. Say that in
+      the interview rather than assuming the continuous gate is free.
+
+      Directionality. ECR is not symmetric: it is calibrated for a specific
+      control and target. A gate in the wrong direction costs a pair of Hadamards
+      on each side, which is two extra SX per qubit. The synthesis stage must
+      consume the directed coupling map, not the undirected one, and the property
+      set should carry is_direction_mapped so a later pass cannot silently break
+      it.
+
+      The trade-off I accepted: block resynthesis discards the source circuit's
+      structure. If the user wrote a circuit whose gate pattern encodes an
+      intended error-mitigation structure, for example a deliberately symmetric
+      echo, resynthesis destroys it and the mitigation stops working. So the
+      stage must respect barriers and an opt-out annotation, and I would disable
+      resynthesis entirely for circuits marked as calibration or benchmarking
+      circuits, where the gate sequence is the experiment.
+    followUps:
+      - How do you decide the numerical tolerance for deciding that a synthesised block equals the target unitary, and what goes wrong if it is too loose?
+      - A block spans a two-qubit pair that routing later separates. How do you order block collection against routing?
+      - How would you handle a device where the native two-qubit gate is not maximally entangling, such as a partial iSWAP?
+    commonMistakes:
+      - Translating gate by gate and relying on the peephole optimiser to recover, which leaves single-qubit runs of six or more pulses where two suffice and makes the optimiser's runtime scale with the expanded circuit.
+      - Counting RZ as a real pulse on a device with virtual Z, which overstates duration and error and leads to synthesising for the wrong cost function.
+      - Ignoring ECR directionality, so a synthesised block is emitted in the uncalibrated direction and picks up two extra SX per qubit that nobody budgeted.
+    references:
+      - label: Shende, Bullock and Markov, Synthesis of quantum logic circuits
+        url: https://arxiv.org/abs/quant-ph/0406176
+      - label: Barenco et al, Elementary gates for quantum computation
+        url: https://arxiv.org/abs/quant-ph/9503016
+
+  - id: iq-165
+    title: Build the verification tier for a production transpiler
+    kind: system-design
+    prompt: |
+      Your transpiler is about to become a paid product, and a miscompilation
+      that silently changes a customer's circuit is the worst thing that can
+      happen to it. Design the verification tier. Tell me what you check exactly,
+      what you check probabilistically, and what you do for circuits that are too
+      large for any exact method. The circuits range from 3 qubits to 130 qubits
+      and up to 100,000 gates. You have a CI budget of 30 minutes per commit and
+      a per-job verification budget of about 5 percent of compile time. Say which
+      guarantee each tier actually gives, and which class of bug each one cannot
+      catch.
+    difficulty: medium
+    pattern: Compiler pass pipeline design
+    topics: [compiler-verification, unitary-equivalence, stabilizer-testing, zx-calculus, ci-budget]
+    companies: [IBM, Classiq, Quantinuum, Microsoft Azure Quantum]
+    modelAnswer: |
+      The decision that matters is to make verification a tiered function of
+      circuit size with an explicit, published guarantee at each tier, and to
+      refuse to ship a tier whose guarantee is "we ran it and it looked fine".
+      Every tier says what it proves and what it cannot see.
+
+      Tier 1, exact unitary equivalence, for n <= 12. Build both unitaries and
+      compare. A 12-qubit unitary is 4096 x 4096 complex128, which is 4096^2 x 16
+      bytes = 268 MB, so 12 is the honest ceiling for a routine check and 14 at
+      4.3 GB is the ceiling for a nightly one. Compare up to global phase: form
+      V-dagger U, divide by the phase of its largest entry, and check the
+      distance from the identity, with a tolerance around 1e-10. Guarantee: total
+      correctness for that circuit, including relative phases. Cannot see: nothing
+      for that circuit, but it covers only the smallest few percent of traffic.
+
+      Tier 2, stabilizer and Clifford methods, for the Clifford skeleton at any
+      size. Replace every non-Clifford rotation with a fixed Clifford, and check
+      equivalence of the two skeletons with a stabilizer simulator, which is
+      polynomial in n. This catches the entire class of bugs that transpilers
+      actually have: a wrong SWAP, a lost qubit permutation, a direction-flipped
+      ECR, a dropped gate, a mis-tracked layout. Guarantee: the Clifford structure
+      and the qubit permutation are correct. Cannot see: an error in a rotation
+      angle, since you deleted the angles. Pair it with a separate check that the
+      multiset of rotation angles is preserved up to the rewrites the optimiser is
+      allowed to make.
+
+      Tier 3, ZX or rewrite-based equivalence, for medium circuits. Reduce the
+      composition of the original and the inverse of the compiled circuit to a
+      normal form and check that it reduces to the identity. This succeeds often
+      on structured circuits and can fail to terminate usefully on others, so it
+      is a best-effort tier: a pass is a proof, a failure to reduce is not a
+      disproof. Guarantee: when it succeeds, exact equivalence. Cannot see:
+      anything, when it does not converge, which must be reported as unknown and
+      not as pass.
+
+      Tier 4, randomised testing, for everything. Two variants:
+
+          random stabilizer states     prepare a random stabilizer state, apply
+                                       compiled then original-inverse, verify
+                                       the stabilizer group returns, repeat
+          random product states        same with random single-qubit states,
+                                       compare expectation values of a few
+                                       Paulis by simulation up to n = 30
+
+      With k independent random stabilizer states, a compilation error that acts
+      non-trivially on the state space escapes detection with probability that
+      falls exponentially in k for generic errors; 20 to 50 draws is a sensible
+      operating point. Guarantee: probabilistic, and only against errors that
+      move the states you happened to sample. Cannot see: an error confined to a
+      small subspace, for example a wrong relative phase that only appears on
+      inputs you never sampled.
+
+      Tier 5, for the 130-qubit, 100,000-gate circuits where none of the above
+      applies. Three things, in this order:
+
+      1. Per-pass local certificates. Verification of the whole pipeline is hard;
+         verification of one rewrite is easy. Each pass emits the local rewrites
+         it made, and a checker validates each rewrite against a table of
+         permitted equivalences on at most four qubits. A pipeline of certified
+         passes is correct by composition. This is where the real assurance comes
+         from at scale.
+      2. Structural invariants. Gate count and two-qubit count within declared
+         bounds, coupling-map conformance, direction conformance, the permutation
+         composed across passes equals the reported final layout, no qubit
+         acquires or loses a measurement, and the sum of rotation angles per
+         qubit-generator is preserved modulo the allowed identities.
+      3. Slice testing. Cut the circuit into overlapping windows of 8 to 10
+         qubits and a few hundred gates, verify each window exactly under
+         Tier 1, and rely on the certificates to cover the seams. A window of
+         10 qubits is a 1024 x 1024 unitary, which is 17 MB and milliseconds.
+
+      Budgets. Per job, 5 percent of a 2 second compile is 100 milliseconds:
+      enough for structural invariants and the Clifford skeleton check on the
+      whole circuit, which is where the money is. Per commit, 30 minutes buys a
+      corpus of about 2000 small circuits under Tier 1 plus a few hundred medium
+      ones under Tiers 3 and 4, run in parallel.
+
+      The trade-off I accepted: outside 12 qubits I am not proving equivalence,
+      I am proving a conjunction of necessary conditions plus per-rewrite
+      certificates. That leaves a residual risk concentrated exactly in passes
+      whose rewrites are not in the certified table, which is why any pass that
+      wants to do something clever must first extend the table. I would decide
+      differently for a fault-tolerant compiler, where a miscompilation costs
+      eight hours of a 20-million-qubit machine, and where I would pay to have the
+      whole pipeline machine-checked and accept a much slower compiler.
+    followUps:
+      - How would you verify a pass that legitimately changes the circuit's unitary, such as one that inserts dynamical decoupling into idle windows?
+      - What is your policy when the ZX tier neither proves nor disproves equivalence, and the customer is waiting?
+      - How do you build the corpus for CI so it covers the bug classes you actually see rather than the circuits you happen to have?
+    commonMistakes:
+      - Verifying on computational basis states only, which cannot detect a wrong relative phase and so passes a permutation-like circuit that is subtly wrong.
+      - Reporting a non-terminating ZX reduction as a pass. It is an unknown, and treating it as a pass is how a miscompilation reaches a customer.
+      - Forgetting to verify the qubit permutation itself, so the circuit is correct as a unitary but the classical bits are attributed to the wrong logical qubits.
+    references:
+      - label: Stim, a fast stabilizer circuit simulator
+        url: https://github.com/quantumlib/Stim
+      - label: OpenQASM language specification
+        url: https://openqasm.com/
+
+  - id: iq-166
+    title: Make a compilation service cacheable and deterministic
+    kind: system-design
+    prompt: |
+      You run a compilation service that transpiles about 5 million circuits a
+      day, peaking at five times the mean. Median compile time is 200
+      milliseconds and the p99 is 2 seconds. Customers demand that the same
+      circuit submitted twice returns the same compiled output, and auditors
+      demand that a result from six months ago can be reproduced. Meanwhile
+      device calibration changes daily and your compiler ships every week.
+      Design the caching and determinism story: the cache key, how seeds are
+      handled, what you promise customers about reproducibility, and where
+      nondeterminism sneaks in even when you think you have pinned everything.
+      Give me the fleet size your cache hit rate implies.
+    difficulty: hard
+    pattern: Compiler pass pipeline design
+    topics: [compilation-cache, determinism, reproducibility, cache-key-design, service-design]
+    companies: [IBM, AWS Braket, Microsoft Azure Quantum, Classiq]
+    modelAnswer: |
+      The decision that matters is to cache parameterised templates, not bound
+      circuits. The overwhelming majority of production traffic is the same
+      circuit shape with different rotation angles: a VQE sweep, a QAOA parameter
+      scan, a batch of expectation values. Transpile the template once with the
+      angles left as symbols, bind afterwards. Everything else in this design is
+      secondary to that one choice.
+
+      Load, before and after that decision.
+
+          5e6 circuits/day = 58/s mean, 290/s peak
+          at 200 ms median: 290 x 0.2 = 58 cores at peak, before caching
+          with template caching at a 90 percent hit rate on bound variants:
+              29/s of real compiles at peak -> about 6 cores
+              plus a bind-and-validate path at about 5 ms -> 1.5 cores
+
+      So the difference between caching bound circuits and caching templates is
+      roughly 58 cores versus 8, which is the whole argument. Hit rates are
+      workload dependent; 90 percent is what a variational-heavy workload looks
+      like, and a pure one-shot research workload will be far lower.
+
+      Cache key. The key must contain everything the output depends on and
+      nothing else:
+
+          sha256(
+            canonical_ir          -- structure with parameters as symbols
+            || target_signature   -- coupling map, basis, directionality
+            || calibration_epoch  -- the immutable device snapshot hash
+            || optimisation_level
+            || compiler_version   -- semantic version plus build hash
+            || policy_version     -- layout and routing policy identifiers
+            || seed
+          )
+
+      Canonicalisation is the subtle part. Sort commuting gates within a layer,
+      normalise angles to a fixed interval and precision, strip names and
+      metadata, emit a byte string. Semantically identical circuits must collide
+      deliberately, or your hit rate is set by how customers write their code.
+
+      Seeds. Every stochastic pass takes its seed from a single job-level seed by
+      a fixed derivation, seed_pass = H(job_seed, pass_name, pass_index). The job
+      seed defaults to a hash of the cache key itself, so the default behaviour
+      is deterministic without the customer doing anything, and a customer who
+      wants to explore alternative compilations passes an explicit seed and gets a
+      different, equally reproducible result.
+
+      The promise to customers, stated exactly. Given the same circuit, the same
+      target signature, the same calibration epoch, the same compiler version,
+      the same policy version and the same seed, the service returns a
+      byte-identical compiled artefact. Nothing weaker is worth promising and
+      nothing stronger is true, because calibration changes daily and the
+      compiler ships weekly. Pin the artefact: store the compiled output plus all
+      six key components with the job record, so a six-month-old result is
+      reproduced by replaying the key against a pinned compiler image rather than
+      by rerunning today's compiler and hoping.
+
+      Where nondeterminism sneaks in even after you pin the seed.
+
+          source                      fix
+          -------------------------   -------------------------------------
+          parallel trials, first      collect all results, sort by (score,
+          finisher wins               trial index), take the first
+          hash-ordered iteration      iterate sorted containers, never a
+          over sets and dicts         set or a hash map
+          floating-point angle        canonicalise angles to a fixed number
+          merging, association order  of digits and merge in a fixed order
+          library version drift       pin transitive dependencies and hash
+                                      the whole environment into the version
+          calibration read at         read the snapshot once at job start,
+          pass time, not job start    pass it down explicitly
+
+      The first two are the ones that survive code review and then produce a
+      support ticket six weeks later, because they only diverge under load.
+
+      Cache tiers. In-process LRU per worker for the hottest few thousand
+      templates, then a shared cache keyed as above with a TTL tied to the
+      calibration epoch, then object storage for the audit copy which never
+      expires. Size it: a compiled 30-qubit template is of order 100 KB, so a
+      million distinct templates is 100 GB, which is a modest shared cache.
+      Invalidate by epoch rather than by eviction, so a new calibration does not
+      stampede: precompute the top thousand templates against the new epoch
+      before it goes live.
+
+      The trade-off I accepted: pinning the calibration epoch inside the key means
+      a job compiled at 09:00 uses the 09:00 snapshot even if a better calibration
+      lands at 09:05. You lose a small amount of fidelity in exchange for a cache
+      that stays warm and results that are reproducible within a job. I would
+      decide the other way only for a long-running job on a device that is
+      actively drifting, where I would let the job opt into recompiling per batch
+      and accept that its shots are no longer comparable to each other, and I
+      would make that opt-in loud in the API rather than a default.
+    followUps:
+      - A customer reports that two identical submissions produced different outputs. What are the first three things you check, in order?
+      - How would you migrate the cache when the compiler ships a version that changes every output?
+      - What is your invalidation strategy when a device is recalibrated mid-job because an edge failed?
+    commonMistakes:
+      - Keying the cache on the bound circuit rather than the parameterised template, which throws away the largest source of reuse in variational workloads and multiplies the fleet by roughly seven.
+      - Pinning a seed but leaving parallel trials to race, so the result depends on which core finished first and diverges only under load.
+      - Omitting the compiler version and the calibration epoch from the key, which makes a six-month-old result impossible to reproduce and an audit impossible to pass.
+    references:
+      - label: Redis documentation
+        url: https://redis.io/docs/latest/
+      - label: Kubernetes documentation
+        url: https://kubernetes.io/docs/
+
+  - id: iq-167
+    title: Schedule pulses, decoupling and crosstalk on a real device
+    kind: system-design
+    prompt: |
+      Design the scheduling and pulse-level stage of the pipeline for a
+      superconducting device. Single-qubit gates take 20 to 50 nanoseconds,
+      two-qubit gates 300 to 500 nanoseconds, readout is 300 nanoseconds to a few
+      microseconds, and T2 is 100 to 300 microseconds. Circuits have idle windows
+      ranging from 50 nanoseconds to 30 microseconds. Tell me whether you
+      schedule as late as possible or as soon as possible and why, derive the
+      idle-window threshold above which inserting a dynamical decoupling sequence
+      is a net win, and explain how scheduling interacts with crosstalk between
+      simultaneously driven neighbouring pairs. Give me the arithmetic for the
+      threshold.
+    difficulty: hard
+    pattern: Compiler pass pipeline design
+    topics: [scheduling, alap-asap, dynamical-decoupling, crosstalk, pulse-level]
+    companies: [IBM, Q-CTRL, Rigetti, Google Quantum AI]
+    modelAnswer: |
+      Schedule as late as possible, then insert decoupling only into idle windows
+      above a threshold you derive from the numbers rather than pick. Those two
+      decisions are coupled: ALAP is what creates the idle windows in the right
+      place, and the threshold is what stops you from filling them with pulses
+      that cost more than the idling they prevent.
+
+      Why ALAP. Under amplitude damping a qubit sitting in the ground state is
+      free: it has nothing to decay from. ALAP pushes every gate as late as it
+      can, so a qubit that is not needed until layer 40 idles in its initial
+      state rather than idling in a superposition after being rotated at layer 2.
+      ASAP does the opposite and parks excited-state population in a decaying
+      register for the whole circuit. The exception is a qubit whose result feeds
+      a mid-circuit measurement and a conditional branch, where you want the
+      measurement as early as possible because the classical latency of 100
+      nanoseconds to a few microseconds is on the critical path; schedule those
+      subgraphs ASAP and the rest ALAP.
+
+      The decoupling threshold, derived. Dephasing over an idle time t costs
+      roughly
+
+          error_idle = 1 - exp(-t / T2) which is about t / T2 for t << T2
+
+      An XY4 sequence is four pi pulses. Each pulse carries an error of order
+      1e-3, and the sequence occupies 4 x 30 = 120 nanoseconds of the window plus
+      the delays between pulses. So
+
+          error_dd = 4 * e_pulse = 4 x 1e-3 = 4e-3
+
+      Break even when t / T2 = 4 * e_pulse, so
+
+          t = 4 * 1e-3 * 150 microseconds = 0.6 microseconds
+
+      Round it: insert XY4 on idle windows longer than about 1 microsecond, leave
+      shorter windows alone. Check the two extremes:
+
+          idle window   idling error       XY4 cost   verdict
+          -----------   ----------------   --------   -------------
+          200 ns        200/150000 = 1.3e-3  4e-3     do not insert
+          10 us         10/150 = 6.7e-2      4e-3     insert, 16x win
+          30 us         30/150 = 2.0e-1      4e-3     insert, and also
+                                                      ask why the circuit
+                                                      has a 30 microsecond hole
+
+      Two caveats stated plainly. First, DD suppresses low-frequency dephasing,
+      which is the dominant term for a static ZZ shift from a spectator, and does
+      much less for high-frequency noise, so the win is smaller than the naive
+      arithmetic on a device whose noise is broadband. Second, e_pulse of 1e-3 is
+      an assumption; read it from calibration, because on a device with 1e-4
+      pulses the threshold drops to 60 nanoseconds and you decouple almost
+      everything.
+
+      Crosstalk and the scheduler. Two two-qubit gates driven simultaneously on
+      neighbouring pairs interact: the always-on ZZ between a gate qubit and a
+      spectator shifts the spectator's frequency during the drive, and on
+      cross-resonance hardware a drive can also address a neighbour off-resonantly.
+      The measured effect is a two-qubit error that is higher when a neighbour is
+      driven at the same time than when it is idle, sometimes by a factor of two
+      to several. So the scheduler owns a real optimisation:
+
+          serialise conflicting pairs   -> lower per-gate error, more depth,
+                                           more idle time, more decoherence
+          parallelise everything        -> minimum depth, higher gate error
+
+      The right structure is a conflict graph over two-qubit gate instances, with
+      an edge whenever two gates share a neighbourhood and the measured
+      simultaneous error exceeds the isolated error by more than a threshold. Then
+      colour the conflict graph and schedule colours in sequence. Cost it before
+      committing: on heavy-hex, serialising a layer typically costs 2 to 3 extra
+      layers of depth, so about 1 microsecond of extra duration, which is 1/150 =
+      7e-3 of dephasing per affected qubit. If simultaneous driving costs 5e-3
+      extra per gate on 6 gates, serialising wins; if it costs 1e-3, it does not.
+      That arithmetic must be done per device from crosstalk characterisation
+      data, and it changes when the device is recalibrated.
+
+      Note the ordering constraint: DD insertion has to run after the conflict
+      colouring, because colouring changes the idle windows, and both must run
+      after the final basis translation, because they need real gate durations.
+
+      The trade-off I accepted: ALAP plus DD above 1 microsecond plus conflict
+      colouring gives a circuit that is longer than the minimum-depth schedule,
+      typically 10 to 30 percent longer, in exchange for lower per-gate error and
+      much lower idle dephasing. I would decide the other way on a device with T2
+      near the bottom of the 100 to 300 microsecond range and weak crosstalk,
+      where duration dominates the error budget and the shortest schedule wins.
+      And I would drop DD entirely from any circuit whose gate sequence is itself
+      the experiment, such as a benchmarking or calibration circuit, because there
+      the inserted pulses change what you are measuring.
+    followUps:
+      - How would you choose between XY4, CPMG and a robust sequence with pulse-shaping, and what data would you need to make that call?
+      - How do you measure the simultaneous-versus-isolated two-qubit error that your conflict graph depends on?
+      - Where does readout crosstalk enter this design, and does it change the schedule or only the layout?
+    commonMistakes:
+      - Scheduling ASAP by default, which parks excited-state population in the register for the whole circuit and pays amplitude damping that ALAP would have avoided entirely.
+      - Inserting dynamical decoupling into every idle window, including 200 nanosecond gaps where the four pulses cost about three times more error than the idling they prevent.
+      - Treating crosstalk as a layout problem only. Two gates on the same edges can be safe when serialised and harmful when driven together, so it is a scheduling decision as well.
+    references:
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+      - label: Temme, Bravyi and Gambetta, Error mitigation for short-depth quantum circuits
+        url: https://arxiv.org/abs/1612.02058
+
+  - id: iq-168
+    title: Design a pass-manager plugin system third parties can extend
+    kind: system-design
+    prompt: |
+      You want third parties to publish transpiler passes for your platform: a
+      university group with a better router, a vendor with a device-specific
+      synthesis pass, a customer with a domain-specific optimisation. They must
+      not be able to break correctness for anyone. Design the plugin
+      architecture. I want the IR contract a pass sees, the property-set
+      invariants it must declare and preserve, how a pass is discovered and
+      ordered relative to built-in passes, and the exact gate a community pass
+      must pass before it can run on production traffic. Assume roughly 50
+      third-party passes within two years and a corpus of test circuits you own.
+    difficulty: hard
+    pattern: Compiler pass pipeline design
+    topics: [plugin-architecture, ir-contract, property-set, pass-gating, extensibility]
+    companies: [IBM, Classiq, Quantinuum, Xanadu]
+    modelAnswer: |
+      The decision that matters is that a plugin declares what it requires and
+      what it provides, and the pass manager, not the plugin, enforces it. A
+      plugin that can mutate shared state or reorder itself is a plugin that can
+      break every other pass, and no amount of review catches that reliably at 50
+      plugins.
+
+      The IR contract. Expose exactly one type to plugins: an immutable directed
+      acyclic graph of operations over qubits and classical bits, with a builder
+      that produces a new graph. No in-place mutation of the input, ever, so a
+      failed pass leaves the pipeline in a valid state and the manager can simply
+      discard the result. The contract is versioned separately from the platform:
+      ir_version 2.x, with additive-only changes inside a major version. Concretely
+      a plugin sees:
+
+          nodes            operation name, parameters, qubit and clbit operands
+          edges            data dependencies, in a deterministic topological order
+          qregs, cregs     register structure
+          target           coupling map (directed), basis gates, per-edge errors
+                           and durations, all read-only
+          properties       the property set, read-only except for what the pass
+                           declares it provides
+
+      Property-set invariants. Every pass declares three lists in its metadata,
+      and the manager rejects the pass at load time if the declarations are
+      inconsistent with the pipeline position it asks for:
+
+          requires    properties that must hold on entry
+                      e.g. is_1q2q_only, is_layout_set, is_swap_mapped
+          provides    properties it establishes
+          preserves   properties it promises not to break
+
+      After every pass the manager re-validates the claimed properties by direct
+      inspection of the output graph, not by trusting the declaration. Validating
+      is_swap_mapped is a linear scan over two-qubit nodes against the coupling
+      map; is_direction_mapped is the same scan with orientation; the layout
+      permutation is checked by composing the permutations each pass reported and
+      comparing with the graph. This costs single-digit milliseconds on a 100,000
+      gate circuit and it is the single most valuable safety mechanism in the
+      design, because it converts a silent miscompilation into a loud failure at
+      the pass that caused it.
+
+      Analysis passes may write properties and must not touch the graph, while
+      transformation passes return a new graph and write only declared properties.
+
+      Discovery and ordering. Plugins register against named stages, not absolute
+      positions: init, layout, routing, translation, optimisation, scheduling.
+      Within a stage a plugin declares ordering constraints by name and the
+      manager topologically sorts. No plugin may rewrite the pipeline, and two
+      plugins claiming to provide layout are alternatives, never both run.
+
+      Determinism requirement. A plugin gets its seed from the manager and must
+      be a pure function of (graph, target, properties, seed). The manager runs it
+      three times and requires byte-identical output, so any plugin reading the
+      clock, the environment, the network or an unsorted hash order fails here.
+
+      The gate a community pass must clear, stated as a checklist because it must
+      be mechanical:
+
+          1. Declares requires, provides, preserves; declarations validated on
+             the corpus.
+          2. Correctness. On a corpus of 2000 circuits: exact unitary equivalence
+             below 13 qubits, Clifford-skeleton plus permutation check on all
+             2000, randomised stabilizer testing on the 400 largest. Zero failures.
+          3. Determinism. Three runs, byte-identical output, on 200 circuits.
+          4. Property preservation. No run leaves the pipeline with a property
+             claimed but not held.
+          5. Performance budget. Median compile-time increase at most 20 percent
+             and p99 at most 50 percent; a pass that quadruples compile time can
+             still ship, but only behind an explicit opt-in flag.
+          6. Quality. No more than 5 percent regression in routed two-qubit count
+             or duration on any corpus family, since a pass that helps chemistry
+             and destroys QAOA must be scoped, not shipped globally.
+          7. Isolation. Runs in a worker with a CPU limit, a memory limit and no
+             network, because a pass is untrusted code executing on your fleet.
+
+      Trust tiers, because 50 plugins will not all be equal: community passes are
+      opt-in per job and run in the isolated worker; verified passes have cleared
+      the gate on the full corpus for two consecutive releases and may be default
+      for a named circuit family; core passes are on the default path. Promotion
+      is a decision with evidence attached, and demotion is automatic on a
+      correctness failure in production.
+
+      The trade-off I accepted: this architecture forbids the most interesting
+      plugins. A pass that jointly optimises layout, routing and synthesis cannot
+      express itself as a single-stage transformation with a clean property
+      contract, and those joint approaches are where the 10 to 20 percent gains
+      live. I take the restriction because correctness at 50 plugins is worth more
+      than 15 percent of two-qubit count, and I would relax it with one explicit
+      whole-pipeline plugin kind that replaces layout through optimisation as a
+      unit, still bound by the same output validation, for verified partners.
+    followUps:
+      - A verified plugin starts failing the property validator on 0.1 percent of production circuits. What happens in the next five minutes and in the next week?
+      - How would you version the IR contract so a two-year-old plugin still loads, and when would you refuse to keep that promise?
+      - How do you build the 2000-circuit corpus so it is representative rather than merely large?
+    commonMistakes:
+      - Trusting a pass's declared preserves list instead of re-validating the property on the output graph, which lets one plugin silently break the coupling-map invariant for every pass after it.
+      - Letting plugins mutate the input graph in place, so a failure leaves the pipeline in an inconsistent state and the failing pass cannot be identified.
+      - Gating on correctness alone. A pass that is correct, deterministic and doubles the routed two-qubit count on one circuit family will quietly degrade a whole customer segment.
+    references:
+      - label: QIR Alliance specification
+        url: https://github.com/qir-alliance/qir-spec
+      - label: TKET compiler documentation
+        url: https://docs.quantinuum.com/tket/

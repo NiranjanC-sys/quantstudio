@@ -1,0 +1,803 @@
+questions:
+  - id: iq-176
+    title: Design a point-to-point QKD link across 40 kilometres of fibre
+    kind: system-design
+    prompt: |
+      We have two data centres 40 km apart on leased dark fibre, standard
+      single-mode at 0.2 dB per kilometre, with two patch panels on the path.
+      Design the quantum key distribution link end to end: the source, the
+      quantum channel, the detectors, sifting, error correction and privacy
+      amplification. You must tell me the secret key rate you expect in bits
+      per second and show the arithmetic that gets you there, including the
+      repeaterless bound so I know how much headroom you are leaving on the
+      table. Assume no trusted intermediate node and no repeater. The
+      classical channel between the sites already exists and has 5 ms of
+      round-trip latency. Tell me which of the numbers you quote are firm and
+      which are order-of-magnitude.
+    difficulty: easy
+    pattern: QKD networking at scale
+    topics: [qkd, bb84, decoy-states, privacy-amplification, key-rate]
+    companies: [Terra Quantum, Quandela, IBM, Xanadu]
+    modelAnswer: |
+      The decision that matters is the source: use decoy-state BB84 with weak
+      coherent pulses, not a single-photon source and not entanglement-based
+      BBM92. Weak coherent lasers with two decoy intensities are the only part
+      of this stack that is a commodity today, and decoy states close the
+      photon-number-splitting hole that otherwise makes an attenuated laser
+      insecure. Everything else in the design follows from that choice.
+
+      Start with the loss budget, because it sets the ceiling before any
+      engineering decision.
+
+          40 km x 0.2 dB/km      =  8.0 dB
+          2 patch panels         =  1.0 dB
+          insertion and margin   =  1.0 dB
+          -----------------------------------
+          total                  = 10.0 dB  ->  eta = 0.10
+
+      The repeaterless bound, usually called the PLOB bound, caps any
+      repeaterless link at about 1.44 * eta secret bits per channel use, so
+      0.144 bits per pulse. At a 100 MHz source clock that is 14 Mbit/s. That
+      is the number no amount of protocol cleverness beats without a repeater
+      or a trusted node.
+
+      Now the real system. Take mu = 0.5 mean photons per signal pulse, decoy
+      intensities 0.1 and 0, superconducting nanowire detectors at 70 percent
+      efficiency with dark counts of order 100 per second.
+
+          detection probability per pulse ~ mu * eta * eta_det
+                                          = 0.5 * 0.10 * 0.70 = 0.035
+          detections per second           = 0.035 * 1e8 = 3.5e6
+
+      Sifting: announce bases on the classical channel and keep the matching
+      ones. Symmetric basis choice keeps half. Bias the basis choice 90/10
+      instead, using the rare basis only for parameter estimation, and you
+      keep about 0.82 of detections, so about 2.9e6 sifted bits per second.
+
+      Error correction and privacy amplification then take their cut. At a
+      QBER of 2 percent, h(0.02) = 0.141, and a real LDPC reconciler runs at
+      efficiency f of about 1.1, so it leaks 0.155 bits per sifted bit to the
+      public channel. The single-photon fraction of detections at mu = 0.5 is
+      roughly mu*exp(-mu)/(1-exp(-mu)) = 0.77, and privacy amplification keeps
+      0.77 * (1 - h(0.02)) = 0.66 of that. Net:
+
+          secret fraction ~ 0.66 - 0.155 = 0.50 per sifted bit
+          secret key rate ~ 0.50 * 2.9e6 = 1.4e6 bit/s
+
+      Call it 1 Mbit/s, and treat that as an order-of-magnitude figure: fielded
+      commercial systems at 40 km report somewhere between 100 kbit/s and
+      1 Mbit/s, and finite-key corrections at a block size of 1e6 with a
+      security parameter of 1e-10 knock a further 10 to 30 percent off. The
+      loss budget and the PLOB ceiling are firm; the 1 Mbit/s is not.
+
+      Implementation notes that matter more than they look. Run the quantum
+      channel on its own fibre, not multiplexed with live DWDM traffic:
+      Raman scattering from a 0 dBm classical channel swamps a single-photon
+      detector, and if you must co-propagate you need the quantum channel far
+      from the classical band plus deep filtering, and you should expect to
+      lose a factor of a few in rate. Polarisation drifts on buried fibre over
+      minutes, so either use phase encoding in a stabilised interferometer or
+      budget a polarisation tracking loop and the duty cycle it costs. The
+      5 ms classical round trip is irrelevant to the key rate because sifting
+      is batched: you sift a block of 1e6 detections, which takes 0.3 seconds
+      to accumulate, so one round trip per block is noise.
+
+      The trade-off I accepted: decoy-state BB84 gives up the device
+      independence of an entanglement-based protocol, so I am trusting my own
+      source and detectors to behave as specified, and that trust is exactly
+      where the implementation attacks live. I would decide the other way if
+      the customer's threat model included a compromised vendor, in which case
+      the honest answer is measurement-device-independent QKD, which removes
+      all detector side channels and costs roughly an order of magnitude in
+      key rate.
+    followUps:
+      - Why does an attenuated laser without decoy states fail against a photon-number-splitting attack, and how do two decoy intensities fix it?
+      - What happens to your rate at 80 km and at 120 km, and where does the link stop producing key at all?
+      - How would you multiplex the quantum channel onto a fibre already carrying 100 Gbit/s of classical traffic, and what do you pay?
+    commonMistakes:
+      - Quoting the sifted rate as the secret key rate, which overstates the deliverable key by a factor of about two here and by much more at high QBER.
+      - Assuming basis sifting always discards half the detections. A biased basis choice with the rare basis reserved for parameter estimation recovers most of that loss.
+      - Putting the quantum channel on the same fibre as live classical traffic without accounting for Raman scattering, which raises the dark count rate until the QBER exceeds the security threshold and the link produces zero key.
+    references:
+      - label: ETSI quantum key distribution standards
+        url: https://www.etsi.org/technologies/quantum-key-distribution
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+
+  - id: iq-177
+    title: Design the key management layer above a QKD link
+    kind: system-design
+    prompt: |
+      You have the 40 km link from the previous design producing about
+      1 Mbit/s of secret key, and it is unreliable: fibre events, calibration
+      windows and polarisation excursions take it to zero for anywhere from
+      seconds to several hours. Above it sit 60 IPsec tunnels and 4 database
+      replication links that all want fresh symmetric key. Design the key
+      management layer: how a key gets from the QKD stack into an application,
+      how you buffer, how both ends agree on which key they are using, how you
+      size the reserve, and precisely what happens when demand exceeds supply.
+      I want a fallback ladder with the failure mode of each rung named. The
+      applications must not stop working when the link stops.
+    difficulty: medium
+    pattern: QKD networking at scale
+    topics: [qkd, key-management, etsi-014, fallback, buffering]
+    companies: [Terra Quantum, IBM, AWS Braket, Microsoft Azure Quantum]
+    modelAnswer: |
+      The decision that matters is that key delivery is a request-response API
+      over a key identifier, never a push of key material, and that the
+      identifier is agreed before either side uses the bits. That single
+      choice removes the entire class of bugs where two ends silently consume
+      different key and every packet after that decrypts to garbage.
+
+      Architecture. Two key management entities, one per site, each with a
+      local key store. Applications talk to their local KME over a mutually
+      authenticated TLS REST interface of the ETSI GS QKD 014 shape:
+
+          POST /api/v1/keys/{peer_sae_id}/enc_keys   -> {key_id, key}
+          POST /api/v1/keys/{peer_sae_id}/dec_keys   -> {key} given key_id
+
+      The initiator asks its local KME for key and receives a pair. It sends
+      only the key_id over the ordinary application channel. The responder
+      asks its own local KME for the key with that key_id. Neither key ever
+      crosses the network. The key_id crossing in the clear is harmless and
+      is what makes the protocol restartable.
+
+          app A  --enc_keys-->  KME A  ==QKD link==  KME B  <--dec_keys--  app B
+             |                                                    ^
+             +---------------- key_id over TLS -------------------+
+
+      Buffering. Size the store from demand, not from what the link happens to
+      produce. Sixty IPsec tunnels rekeying a 256-bit AES key every 60 seconds
+      is 60 * 256 / 60 = 256 bit/s. Four replication links at one 256-bit key
+      every 10 seconds is 102 bit/s. Total steady demand is under 400 bit/s
+      against a 1 Mbit/s supply, a margin of 2500 to 1. That margin is the
+      real design finding: QKD comfortably feeds key-agreement traffic and
+      cannot feed one-time-pad traffic. A single 10 Gbit/s link encrypted with
+      a one-time pad wants 1e10 bit/s, four orders of magnitude beyond this
+      link, and that arithmetic settles the question before anyone builds it.
+
+      Reserve sizing. Choose the outage you intend to survive: 24 hours. At
+      400 bit/s that is 34.6 Mbit, about 4.3 MB per side. Round to a 64 MB
+      store, which buys about 8 days at steady demand and costs nothing. Store
+      it in an HSM-backed keystore or an encrypted memory-resident ring buffer
+      that never touches disk in plaintext, with a high-water mark that stops
+      pulling from the QKD stack and a low-water mark that raises an alarm.
+
+      Consumption discipline. Keys are single use, deleted on read, and the
+      delete is committed before the response is returned. Reads are
+      idempotent by key_id for a bounded retry window so a lost response does
+      not burn key, and after that window the key is gone. Both stores are
+      reconciled by a periodic index comparison of key_ids only, never of key
+      material.
+
+      The fallback ladder when supply drops below demand:
+
+      1. Extend rekey intervals. Move IPsec from 60 s to 600 s, cutting demand
+         to 26 bit/s. Failure mode: longer exposure per key, which is a real
+         but small loss and is the cheapest rung.
+      2. Serve from the reserve. Failure mode: silent, so the reserve depth in
+         seconds of remaining demand must be an exported metric with an alert
+         well before exhaustion, not a discovery at exhaustion.
+      3. Hybrid with post-quantum key agreement. Derive the session key as
+         KDF(qkd_key || pqc_shared_secret) so the composite is at least as
+         strong as the stronger input. When the QKD contribution is
+         unavailable, the PQC half carries the tunnel alone. Failure mode: the
+         security claim quietly degrades from information-theoretic to
+         computational, so this rung must be logged, alarmed and visible on
+         the operator dashboard, never a silent substitution.
+      4. Fail closed for the small set of flows whose policy forbids rung 3.
+         Failure mode: an outage, which for those flows is the correct answer.
+
+      What I refuse to build: a rung that falls back to classical Diffie
+      Hellman without an audit event. A fallback nobody can see is
+      indistinguishable from an attack that forces the fallback.
+
+      The trade-off I accepted: rung 3 means the system is, most of the time,
+      only as strong as ML-KEM, and a purist will say that makes the QKD link
+      decorative. My answer is that availability is a security property too,
+      and a tunnel that drops for four hours is a worse outcome for this
+      customer than one whose worst case is a well-reviewed lattice KEM. I
+      would decide the other way for a customer with a genuine
+      information-theoretic mandate, and then rung 3 disappears and the
+      reserve has to be sized for the full worst-case outage instead.
+    followUps:
+      - How do you keep the two key stores consistent after a KME crashes between deleting a key and returning it?
+      - What is the correct alert threshold on the reserve, expressed in units the on-call engineer can act on?
+      - A regulator asks you to prove no key was ever reused. What do you log to prove it without logging key material?
+    commonMistakes:
+      - Pushing key material to the peer KME over the classical network instead of exchanging only a key identifier, which puts the key on the wire the whole design exists to keep it off.
+      - Sizing the key store from the link rate rather than from application demand, which produces a buffer that is either useless or absurd and never tells you how long an outage you survive.
+      - Falling back to classical key agreement without an audit event, so an attacker who can cut the fibre can downgrade the whole estate invisibly.
+    references:
+      - label: ETSI quantum key distribution standards
+        url: https://www.etsi.org/technologies/quantum-key-distribution
+      - label: NIST post-quantum cryptography project
+        url: https://csrc.nist.gov/projects/post-quantum-cryptography
+
+  - id: iq-178
+    title: Design a trusted-node metro QKD network for eight sites
+    kind: system-design
+    prompt: |
+      Build a QKD network across eight sites in one metropolitan area. Fibre
+      spans between adjacent sites are 15 to 45 km, so every pair-wise link is
+      inside the repeaterless range but no direct fibre exists between most
+      pairs. There are no quantum repeaters available. Design the topology,
+      the routing, the key relay mechanism, and then state precisely and
+      without softening it what an operator of any intermediate node can learn.
+      I want to know how many hops a worst-case path takes, how much key each
+      relay burns, and what physical and procedural controls you require at
+      each node before you would sign off on this for a customer who thinks
+      QKD means nobody in the middle can read the traffic.
+    difficulty: medium
+    pattern: QKD networking at scale
+    topics: [qkd, trusted-nodes, key-relay, routing, threat-model]
+    companies: [Terra Quantum, Quandela, Infleqtion, IBM]
+    modelAnswer: |
+      The decision that matters is stated before any topology: in a trusted
+      node network every intermediate node holds the end-to-end key in
+      plaintext for the duration of the relay. There is no cryptographic
+      construction in this design that prevents it. Everything else here is
+      engineering around that fact, and any pitch that hides it is dishonest.
+
+      Topology. Eight sites, ring plus two chords rather than a star or a full
+      mesh. A full mesh is 28 links and 56 QKD endpoints at roughly six figures
+      per pair, which is not defensible. A star has a single node that sees
+      every key, which is the worst possible trust posture. A ring of 8 links
+      plus chords 1-5 and 3-7 gives 10 links, 20 endpoints, two edge-disjoint
+      paths between every pair, and a worst-case hop count of 3.
+
+          S1 --- S2 --- S3 --- S4
+           |  \           /     |
+           |   \         /      |
+          S8 --- S7 --- S6 --- S5
+            (chords: S1-S5, S3-S7)
+
+      Key relay. To give S1 and S4 a shared key K, S1 draws K from its local
+      pool. For each hop along the path S1-S2-S3-S4, the sender one-time-pads
+      K with the pairwise link key and forwards it: S1 sends K xor k12, S2
+      recovers K and re-pads it as K xor k23, then S3 recovers K and re-pads
+      it as K xor k34 for the final hop. Each hop consumes
+      |K| bits of pairwise link key, so a 3-hop relay of a 256-bit key burns
+      768 bits of link key, and the correct routing cost function is
+      hop_count * key_length, not fibre distance. A shortest-path computation
+      over a graph whose edge weight is the inverse of the current available
+      key on that link, recomputed every 30 seconds from the pool depths, gets
+      you both short paths and load spreading. On a 1 Mbit/s per link network
+      with the demand from the previous design, relay traffic is a rounding
+      error, so route for trust minimisation first and key economy second.
+
+      The trust boundary, stated precisely. At node S2 during the relay:
+      - S2 possesses k12 and k23 in cleartext in memory. That is unavoidable.
+      - S2 therefore possesses K in cleartext for the duration of the relay.
+      - An operator with administrative access to S2, or an attacker with code
+        execution on S2, learns every key relayed through S2 while they are
+        there, retroactively for anything still in the buffer and prospectively
+        for everything after.
+      - S2 does not learn keys relayed on the S1-S8-S7-S6-S5 path, so the
+        blast radius of one node is exactly the set of paths that traverse it.
+      The security claim you may make to the customer is: no passive attacker
+      on any fibre span can learn a key, and no future quantum computer can
+      recover a key from recorded traffic. The claim you may not make is that
+      nobody in the middle can read it.
+
+      Controls that follow from that boundary, and they are physical and
+      procedural rather than cryptographic:
+      - Every node in a locked cage with tamper-evident seals, door sensors
+        wired to the SOC, and no single-person access. Dual control for entry.
+      - Key material lives in an HSM or in memory that is zeroised on tamper.
+        No swap, no core dumps, no plaintext key on disk.
+      - No remote administrative access to the relay process. Configuration is
+        signed and pushed; interactive shells are physically local only.
+      - Separate operator organisations for adjacent nodes where possible, so
+        a single insider does not own two consecutive hops.
+      - Path diversity used in earnest: split the key by XOR-secret-sharing it
+        across the two edge-disjoint paths, so K = K_a xor K_b with K_a relayed
+        clockwise and K_b counter-clockwise. Now a single compromised node
+        learns one share and nothing about K. This is the one genuine
+        mitigation available, it costs twice the key and doubles the relay
+        latency, and it is worth it.
+
+      The trade-off I accepted: two-path secret sharing doubles key
+      consumption and fails to produce a key at all when one path is down, so
+      the system needs a policy switch between "sharded, may fail" and
+      "single path, one node trusted". I default to sharded for keys with a
+      long lifetime and single path for short-lived session keys during a
+      partial outage. I would decide differently if the eight sites were all
+      operated by one organisation inside one security domain, where the
+      insider threat that secret sharing addresses is largely already covered
+      by the physical controls.
+    followUps:
+      - Two nodes on opposite sides of the ring are compromised at once. Which pairs lose confidentiality and which do not?
+      - How do you handle a fibre cut that isolates one site, and what does the key relay do while it is isolated?
+      - What changes in this design the day a working quantum repeater is available for a 40 km span?
+    commonMistakes:
+      - Telling the customer that QKD means no intermediary can read the key, which is false in every trusted-node network and is the single most common misrepresentation in the field.
+      - Routing on fibre distance rather than on hop count and available pool depth, which picks paths that burn more relay key and traverse more trusted nodes than necessary.
+      - Building a star topology because it minimises links, which concentrates every key in the network at one node and creates the exact single point of compromise the design should avoid.
+    references:
+      - label: ETSI quantum key distribution standards
+        url: https://www.etsi.org/technologies/quantum-key-distribution
+      - label: Watrous, quantum computation lecture notes
+        url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+
+  - id: iq-179
+    title: Choose between QKD and post-quantum cryptography for one customer
+    kind: system-design
+    prompt: |
+      A national payments operator comes to you. They run two data centres
+      35 km apart carrying interbank settlement, 400 branch offices on
+      ordinary internet links, and a public API used by 2,000 fintechs. Their
+      board has read that quantum computers break RSA and has approved a
+      budget. They want to know whether to buy QKD, deploy post-quantum
+      cryptography, or both. Give me a decision, not a comparison. Defend it
+      with costs, with the threat model, and with what each technology
+      actually protects. Tell me under what change of facts you would decide
+      the other way, and tell me what you would say to the board member who
+      has already decided they want the quantum boxes.
+    difficulty: medium
+    pattern: QKD networking at scale
+    topics: [qkd, post-quantum-cryptography, threat-model, cost-model, migration]
+    companies: [IBM, Microsoft Azure Quantum, AWS Braket, Terra Quantum]
+    modelAnswer: |
+      The decision: deploy post-quantum cryptography everywhere, in hybrid
+      mode, starting now, and do not buy QKD. If the regulator later mandates
+      QKD on the settlement trunk, buy one pair of boxes for that single 35 km
+      link and run it as an additional input to the key derivation, never as a
+      replacement for the PQC half.
+
+      The threat model drives it. The real risk is store-now-decrypt-later:
+      an adversary records settlement traffic today and decrypts it when a
+      cryptanalytically relevant quantum computer exists. Anchoring on Gidney
+      and Ekera, RSA-2048 needs about 20 million noisy physical qubits and
+      about 8 hours at a 1e-3 physical error rate and a 1 microsecond cycle
+      time, and later work has moved that estimate by a factor of a few in
+      both directions. Nothing at that scale exists. So the question is not
+      "is my traffic being broken today", it is "what is the shelf life of
+      this data and when must it stop being interceptable". Settlement records
+      have a regulatory life of 7 to 10 years, which puts the deadline inside
+      any plausible planning horizon. That argues for urgency, and urgency
+      argues for the thing you can ship this quarter.
+
+      Coverage is the decisive asymmetry. Count the links that need
+      protecting: 2 data centre trunk links, 400 branch VPNs, and 2,000
+      fintech API clients over the public internet. QKD addresses 2 of those,
+      the ones with dedicated dark fibre between two endpoints you own. It
+      cannot cross the internet, cannot terminate on a mobile device, cannot
+      protect a TLS session from a browser, and cannot be bought for a branch
+      office in a shopping centre. PQC addresses all 2,402. A control that
+      covers 0.08 percent of the attack surface is not a security programme.
+
+      Cost, as order-of-magnitude figures. A QKD endpoint pair is a
+      six-figure capital purchase, call it 200k to 500k US dollars, plus a
+      dark fibre lease of a few thousand dollars a month, plus a service
+      contract, plus rack space and power in both halls, plus the operational
+      staff to run a system whose failure modes nobody in the organisation has
+      seen before. PQC is a software change: ML-KEM-768 hybridised with X25519
+      costs a TLS handshake about 1.2 kB of public key and 1.1 kB of
+      ciphertext, roughly 2 kB of extra handshake bytes, and tens of
+      microseconds of CPU per operation. On 2,000 fintech clients at a few
+      handshakes per second each, that extra 2 kB is a few megabits per second
+      of additional traffic and is invisible next to the payload. The
+      marginal cost is engineering time to inventory and upgrade the crypto,
+      which is the work you have to do anyway.
+
+      What each thing actually protects, stated plainly:
+      - PQC protects key agreement and signatures against a future quantum
+        adversary, everywhere, on any transport, under a computational
+        assumption that lattice problems remain hard.
+      - QKD protects key agreement on one point-to-point fibre span against
+        any adversary regardless of computing power, and provides no
+        authentication of its own, so it needs a classical or post-quantum
+        authenticated channel to work at all. It also does not protect data at
+        rest, does not protect signatures, and does not survive a compromised
+        intermediate node.
+
+      The migration programme, which is the actual deliverable:
+      1. Cryptographic inventory. Every place a key is agreed, every
+         certificate, every hardcoded algorithm, every HSM firmware version.
+         This takes longer than everyone expects and is the real project.
+      2. Hybrid key agreement first, because a hybrid is no weaker than its
+         stronger half, so an ML-KEM break costs nothing and an X25519 break
+         costs nothing.
+      3. Signatures second. They are harder because certificate chains,
+         firmware signing and long-lived roots all have to move together, and
+         a signature only needs to be unbroken at verification time, so the
+         deadline is later than for confidentiality.
+      4. Crypto agility as a permanent property: algorithm identifiers in
+         configuration, not in code, so the next migration is a rollout and
+         not a rewrite.
+
+      What I would say to the board member who wants the boxes: you are right
+      that the threat is real and you are right to fund it. The money buys
+      more risk reduction spent on the inventory and the migration than on two
+      appliances that protect one cable. If the regulator names QKD in a rule,
+      we will buy it for that link the week the rule lands, and because we
+      built hybrid key derivation, adding it is a configuration change rather
+      than a programme.
+
+      The trade-off I accepted: this design rests on the assumption that
+      ML-KEM is not broken by classical cryptanalysis. That is a real
+      assumption and lattice schemes are younger than RSA. It is why the
+      design is hybrid rather than a straight swap, and it is the one fact
+      whose change flips the decision: if a structural attack on module-LWE
+      appeared, the point-to-point links with an
+      information-theoretic option would suddenly be worth their price.
+    followUps:
+      - Which of the 2,402 links has the longest data shelf life, and how does that change the order you migrate them in?
+      - Why does a hybrid construction of the form KDF(pqc_secret || classical_secret) not weaken the result even if one half is broken?
+      - The regulator mandates QKD on the settlement trunk. What is the smallest change to your architecture that satisfies it?
+    commonMistakes:
+      - Treating QKD and PQC as competing answers to the same question. One protects a fibre span against any adversary, the other protects every protocol against a computational one, and only the second scales to a 2,400-endpoint estate.
+      - Forgetting that QKD requires an authenticated classical channel it does not itself provide, so a QKD deployment still depends on classical or post-quantum authentication and cannot remove that dependency.
+      - Migrating signatures with the same urgency as key agreement. Store-now-decrypt-later attacks confidentiality, and a signature only has to hold at verification time, so treating both as one deadline burns the budget in the wrong place.
+    references:
+      - label: NIST post-quantum cryptography project
+        url: https://csrc.nist.gov/projects/post-quantum-cryptography
+      - label: Gidney and Ekera, How to factor 2048 bit RSA integers in 8 hours
+        url: https://arxiv.org/abs/1905.09749
+
+  - id: iq-180
+    title: Authenticate the classical channel that QKD depends on
+    kind: system-design
+    prompt: |
+      QKD needs an authenticated classical channel for basis sifting, error
+      correction and privacy amplification, and it does not provide that
+      authentication itself. Design it. I want the MAC construction, the key
+      cost per authenticated message in bits, and the arithmetic showing what
+      that costs against a 1 Mbit/s key rate under two different message
+      granularities. Then solve the bootstrapping problem: on day one the two
+      sites share nothing. Then tell me what happens when the link has been
+      down long enough that the authentication reserve is exhausted, because
+      that is a deadlock and I want to know how you get out of it. Assume an
+      active man-in-the-middle on the classical channel from the first packet.
+    difficulty: hard
+    pattern: QKD networking at scale
+    topics: [qkd, authentication, wegman-carter, bootstrapping, key-consumption]
+    companies: [Terra Quantum, Quandela, IBM, Q-CTRL]
+    modelAnswer: |
+      The decision that matters is the granularity of authentication: one MAC
+      per sifting block, not one MAC per packet. That single choice moves the
+      authentication overhead from unaffordable to negligible, and it is the
+      number an interviewer is listening for.
+
+      The construction. Use Wegman-Carter authentication with an
+      epsilon-almost-strongly-universal2 hash family: hash the message with a
+      Toeplitz or polynomial hash keyed by h to a t-bit tag, then XOR the tag
+      with t fresh key bits. Forgery probability is bounded by epsilon plus
+      2^-t with no computational assumption. HMAC-SHA256 would work
+      computationally and would silently downgrade the whole system's claim to
+      the security of SHA-256, which defeats the purpose of the fibre.
+
+      Key cost. The hash key h is reusable across messages provided the tag is
+      freshly padded each time, the standard Wegman-Carter refinement, so the
+      recurring cost is t bits per message plus amortised rotation of h. With
+      t = 64 the forgery probability is about 5e-20 per attempt. Budget 128
+      bits per authenticated message and do the arithmetic at two
+      granularities:
+
+          per sifting block, blocks of 1e6 detections:
+            block rate  = 2.9e6 sifted bits/s / 1e6 = 2.9 blocks/s
+            key cost    = 2.9 * 128 = 371 bit/s
+            overhead    = 371 / 1e6 = 0.037 percent of the key rate
+
+          per network packet, 10,000 packets/s:
+            key cost    = 10,000 * 128 = 1.28 Mbit/s
+            overhead    = 128 percent of the key rate
+
+      The second case consumes more key than the link produces, so the system
+      never bootstraps and drains its reserve to zero. The design lesson is to
+      authenticate the semantic unit, not the transport unit. Ordinary TLS
+      covers packet integrity and ordering; the information-theoretic MAC
+      covers exactly the messages whose forgery breaks the security proof: the
+      basis announcements, the parameter-estimation sample, the error
+      correction syndromes and the privacy amplification seed.
+
+      Bootstrapping. On day one there is no shared key, and the honest
+      framing is that this is a chicken-and-egg problem with no
+      information-theoretic solution: something has to be trusted first. Three
+      options, in the order I would rank them:
+      1. Trusted courier delivering a pre-shared secret on a physical token to
+         each site, loaded into the HSM under dual control. Strongest, slowest,
+         and the only one that keeps the claim fully information-theoretic
+         from t = 0. Load 1 Mbit, which at 371 bit/s of steady authentication
+         demand is about 45 minutes of operation, so size the initial load at
+         64 Mbit instead and get months.
+      2. Post-quantum authenticated bootstrap using ML-DSA signatures over a
+         certificate chain, used once to establish the first shared secret.
+         This is defensible on a point that is worth stating explicitly:
+         confidentiality must hold forever, but authentication only has to
+         hold at the moment of use. An adversary who breaks ML-DSA in 2040
+         cannot retroactively have been the man in the middle in 2026. So a
+         computational bootstrap of authentication does not undermine the
+         information-theoretic confidentiality of the keys produced after it.
+      3. A password-authenticated exchange typed by two operators. Weakest,
+         because human-entropy secrets are guessable, and it belongs in a lab.
+
+      I use option 1 for the initial load and option 2 as the documented
+      recovery path, because a courier is not available at 3 a.m.
+
+      The exhaustion deadlock. This is the real operational hazard. If the
+      link is down for long enough that authentication key runs out, you
+      cannot authenticate the classical channel, so you cannot sift, so you
+      cannot make key, so you can never recover without human intervention.
+      The fix is a reserve that is structurally unreachable by ordinary
+      consumption:
+      - Partition the key store. A dedicated authentication pool that only the
+        QKD protocol stack can draw from, and a separate application pool. The
+        applications cannot starve the protocol, which is the first and most
+        common way this deadlock happens.
+      - A hard floor on the authentication pool, sized for restart. Restarting
+        the protocol from cold takes a few hundred authenticated messages, so
+        a floor of 1 Mbit is three orders of magnitude of headroom and costs
+        128 kB of memory. Below the floor the KME refuses to issue key to
+        applications and alarms; it does not refuse the protocol.
+      - Monitor pool depth in seconds of remaining consumption at the current
+        rate, not in bits, so the alert is actionable.
+      - The documented break-glass is the option 2 post-quantum reseed, under
+        dual control, raising an audit event a human must acknowledge.
+
+      The trade-off I accepted: reserving a floor that applications cannot
+      touch means that in a long outage the applications lose their key supply
+      before the protocol does, so the tunnels degrade to the PQC fallback
+      while the QKD stack is still holding key it will not release. That is
+      deliberate: a link that can restart itself is worth more than a few
+      extra minutes of information-theoretic tunnels. I would decide the other
+      way only if the restart path were fully automated and proven, at which
+      point the floor could shrink to the cost of a single restart.
+    followUps:
+      - Why can the Wegman-Carter hash key be reused across messages while the tag pad cannot, and what breaks if you reuse the pad?
+      - Which specific QKD protocol messages must carry an information-theoretic MAC, and which are safe under ordinary TLS?
+      - An attacker jams the classical channel to force your authentication reserve to zero. Is that an availability attack or a confidentiality attack, and what do you change?
+    commonMistakes:
+      - Using HMAC-SHA256 for the classical channel, which makes the whole QKD deployment only as strong as a hash function and removes the information-theoretic claim that justified the hardware.
+      - Authenticating per packet rather than per protocol block, which on this link costs 1.28 Mbit/s against a 1 Mbit/s supply and guarantees the reserve drains to zero.
+      - Letting application key requests draw from the same pool as protocol authentication, so a busy application starves the protocol and the link cannot restart without a site visit.
+    references:
+      - label: ETSI quantum key distribution standards
+        url: https://www.etsi.org/technologies/quantum-key-distribution
+      - label: NIST post-quantum cryptography project
+        url: https://csrc.nist.gov/projects/post-quantum-cryptography
+
+  - id: iq-181
+    title: Design a repeater-based network and say what does not exist yet
+    kind: system-design
+    prompt: |
+      Design an 800 km quantum network between two cities that uses genuine
+      quantum repeaters rather than trusted nodes, so that no intermediate
+      operator can read the key. Specify the repeater spacing, the
+      entanglement generation rate per elementary link, entanglement swapping,
+      purification, and the quantum memory requirement in coherence time and
+      in number of modes per node. Do the arithmetic on the end-to-end
+      entanglement rate. Then be explicit about which parts of this design
+      exist as deployed technology, which exist only as laboratory
+      demonstrations, and which do not exist at all. I will mark you down for
+      presenting a paper design as a product.
+    difficulty: hard
+    pattern: QKD networking at scale
+    topics: [quantum-repeaters, entanglement-swapping, purification, quantum-memory, honest-limits]
+    companies: [Quandela, PsiQuantum, Xanadu, IonQ]
+    modelAnswer: |
+      The decision that matters is repeater spacing, because it sets both the
+      elementary link rate and the number of nodes, and those pull in opposite
+      directions. Choose 20 km spacing, giving 40 elementary links across
+      800 km. Here is why, and then here is the honest statement that this
+      network cannot be built today.
+
+      Elementary link. Each 20 km span is served by a midpoint heralding
+      station, so each arm is 10 km, 2 dB, transmissivity 0.63 per arm.
+      Emit a photon entangled with a stationary memory qubit at each end, send
+      both to the midpoint, interfere them on a beamsplitter and detect. A
+      two-detector coincidence heralds an entangled memory pair.
+
+          arm transmissivity        0.63 each
+          detector efficiency       0.8 each
+          photon-memory entangling
+            success per attempt     1e-3 to 1e-2   (order of magnitude)
+          Bell-state measurement
+            success (linear optics) 0.5
+
+          heralding probability per attempt
+            ~ 5e-3 * 0.63^2 * 0.8^2 * 0.5 = 6.3e-4    (taking 5e-3)
+
+      At a 1 MHz attempt rate that is about 630 heralded pairs per second per
+      link, but the attempt rate is capped by the classical heralding round
+      trip: 10 km each way in fibre at 2e8 m/s is 100 microseconds, so without
+      multiplexing you get at most 1e4 attempts per second and about 6 heralded
+      pairs per second. Multiplexing is not optional. With 100 spectral or
+      temporal modes in parallel you recover roughly 600 pairs per second per
+      link. Treat all of these as order-of-magnitude figures.
+
+      Swapping. Connect 40 links by nested entanglement swapping: a Bell
+      measurement at an intermediate node consumes two short pairs and produces
+      one longer pair. Nesting over 40 links is log2(40) = 5.3, about 6 levels.
+      With linear-optical Bell measurements succeeding at 0.5 and both input
+      pairs needing to be alive at once, the rate falls by at least 2 per level
+      plus a synchronisation penalty of a few per level. Six levels of factor 2
+      is 64, and with the penalty the end-to-end rate lands of order 0.1 to 10
+      pairs per second, three to four orders below the elementary link rate.
+      That collapse is the defining property of repeater chains.
+
+      Purification. Every swap roughly doubles the infidelity, so after 6
+      levels an elementary fidelity of 0.99 degrades toward 0.5 and the pairs
+      are useless. Interleave entanglement purification: two pairs of fidelity
+      F are consumed to make one better pair, with success probability of order
+      0.5 and a threshold near F = 0.5 for the standard protocols. Budget 2 to
+      4 input pairs per purified output, another order of magnitude in cost,
+      which puts the honest end-to-end figure well under 1 pair per second.
+
+      Memory requirement. This is where the design meets physics.
+      - Coherence time. Fibre latency across 800 km at 2e8 m/s is 4 ms one way,
+        8 ms round trip, and nested purification and swapping need many
+        classical round trips at increasing length scales, so a node memory must
+        hold coherence for tens of round trips at the longest scale: 100 ms to
+        several seconds of usable storage while other operations proceed.
+      - Modes. 100 multiplexed modes per elementary link direction, so of order
+        200 to 1000 addressable memory qubits per node, each with a photonic
+        interface and high-fidelity local gates.
+      - Fidelity. Memory read/write and local two-qubit errors must sit below
+        the purification threshold, so of order 1e-3, which is at the level of
+        the best current gates rather than comfortably below it.
+
+      Now the honest accounting.
+      - Deployed today: nothing in this design. Production QKD networks are
+        trusted-node networks, and every metropolitan network in service uses
+        the relay scheme with all the trust consequences that carries.
+      - Laboratory demonstrations exist: photon-memory entanglement, heralded
+        entanglement between remote memories at metropolitan distances,
+        entanglement swapping between two elementary links, and multiplexed
+        memories with tens of modes. Trapped ions give seconds to tens of
+        seconds of coherence and rare-earth-doped crystals give useful
+        multimode storage, so the individual ingredients are real.
+      - Does not exist: a repeater node that beats direct transmission over
+        the same distance by a useful margin and runs unattended, a chain of
+        more than a small number of links, memories with the mode count and
+        coherence above at the same time, and any of it in a rack in a
+        telecom exchange. There is no product, there is no price, and there
+        is no date I would defend.
+
+      So what I would build for this customer today is the trusted-node
+      network with its trust boundary documented, plus post-quantum
+      cryptography carrying the real load, and a written note that the repeater
+      architecture above replaces the trusted nodes when memory arrives.
+
+      The trade-off I accepted in the paper design: 20 km spacing rather than
+      50 km buys a factor of about 6 in elementary link heralding probability
+      but triples the node count from 16 to 40, and every extra node adds
+      swapping loss and another set of memories. If memory coherence and mode
+      count improved by an order of magnitude the answer flips to longer spans
+      and fewer nodes, because node cost would then dominate loss cost.
+    followUps:
+      - Why does the end-to-end rate collapse by orders of magnitude across six nesting levels even when every individual operation is good?
+      - What multiplexing scheme would you choose, and what does each choice demand of the memory?
+      - What single experimental result would make you revise this from a paper design to a procurement plan?
+    commonMistakes:
+      - Presenting a repeater chain as available technology. Trusted-node networks are deployed and true quantum repeaters are not, and blurring that line is the field's most damaging habit.
+      - Ignoring the classical heralding round trip, which caps the attempt rate on a 20 km elementary link at about 1e4 per second regardless of how fast the source runs, so any rate estimate without multiplexing is wrong by orders of magnitude.
+      - Quoting an elementary link entanglement rate as the end-to-end rate, which omits the factor of hundreds to thousands lost across nested swapping and purification.
+    references:
+      - label: MIT OpenCourseWare, Quantum Information Science II
+        url: https://ocw.mit.edu/courses/8-371x-quantum-information-science-ii-spring-2018/
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+
+  - id: iq-182
+    title: Operate a QKD deployment against implementation attacks
+    kind: system-design
+    prompt: |
+      You now run the metro QKD network in production. The security proof
+      assumes ideal devices; your devices are not ideal. Design the operations
+      story. Name the implementation and side-channel attacks you defend
+      against, and for each one say what countermeasure is in the hardware and
+      what signal you monitor. Specify the detector blinding detection scheme
+      in enough detail that I could implement it. Cover certification and what
+      it does and does not buy you. Then specify the logging and telemetry:
+      what you record, what you must never record, and how an auditor proves
+      the link was secure last Tuesday without ever seeing key material.
+    difficulty: hard
+    pattern: QKD networking at scale
+    topics: [qkd, side-channels, detector-blinding, certification, telemetry]
+    companies: [Terra Quantum, Quandela, Q-CTRL, Infleqtion]
+    modelAnswer: |
+      The decision that matters is that the QBER is not the security monitor.
+      Every serious implementation attack is designed to keep the QBER inside
+      its normal band while handing the key to the attacker, so a system whose
+      only alarm is "QBER exceeded 5 percent" is blind to the attacks that
+      actually happen. The design is independent physical monitors instead.
+
+      The attack surface and what answers each one:
+
+      | Attack | Hardware countermeasure | Monitored signal |
+      |---|---|---|
+      | Photon number splitting | decoy states, two intensities | decoy yield and error ratios per intensity |
+      | Detector blinding | monitor photocurrent, attenuator | bias current, count-rate statistics |
+      | Time shift | tight gate window, matched detectors | efficiency mismatch versus arrival time |
+      | Trojan horse | isolators, spectral filter, watchdog | back-reflected power at the watchdog |
+      | Laser seeding | isolator on the source output | source spectrum and intensity histogram |
+      | Wavelength beamsplitter | narrow spectral filter at receiver | out-of-band power |
+      | Dead-time exploitation | symmetric enforced dead time | per-detector duty cycle |
+
+      Detector blinding, specified concretely because it has actually broken
+      fielded systems. Bright continuous illumination drives a gated InGaAs
+      avalanche photodiode out of Geiger mode into linear mode, where it clicks
+      only when a superimposed bright pulse exceeds a threshold. Eve measures,
+      resends bright pulses, and forces exactly the clicks she wants, and the
+      QBER stays low because she controls both bases. Detection scheme:
+      1. Continuously sample the APD bias current with a transimpedance
+         amplifier at 10 kHz or faster. It normally sits at the quiescent level
+         with shot-scale fluctuation, and blinding illumination raises it by
+         orders of magnitude. Alarm above a small multiple of quiescent, with a
+         latency budget in milliseconds.
+      2. Random efficiency testing. With probability 1e-3 per gate, drop the
+         detector efficiency by shifting the gate timing or inserting a
+         calibrated attenuation. In Geiger mode the click rate falls in
+         proportion; a blinded detector in linear mode keeps clicking because
+         the bright pulse still exceeds threshold. Alarm on a statistically
+         significant mismatch. This costs 0.1 percent of the key rate and
+         catches the attack even if the current monitor is circumvented.
+      3. Watch the click-rate distribution. Real single-photon statistics make
+         the per-gate click process close to Poisson with a known mean; a
+         resend attack makes it far more regular. Run a continuous Poissonian
+         consistency test per 1e5 gate window and alarm on a chi-squared
+         excursion.
+      4. Watch the double-click rate. Genuine detection produces double clicks
+         at a known small rate and several attacks suppress them to zero, so a
+         rate that falls to zero is as suspicious as a QBER spike.
+
+      Certification, and what it buys. ETSI publishes protection profiles and
+      implementation-security specifications for QKD modules, and Common
+      Criteria evaluation against them is the route. What it buys: an
+      independent party checked that the module implements the claimed
+      countermeasures against the attacks in scope, and a regulator has
+      something to point at. What it does not buy: protection against an attack
+      invented after the evaluation, coverage of your integration, or any
+      statement about the trusted nodes above it. It is a floor on
+      implementation quality, not a security proof about your network.
+
+      Telemetry. Record, per link, per 1-second bucket:
+      - sifted rate, secret key rate, QBER per basis, and the finite-key
+        parameters used, including block size and epsilon.
+      - decoy statistics: yield and error rate for signal and each decoy
+        intensity, plus estimated single-photon yield and phase error.
+      - detector health: bias current, dark counts, dead-time fraction,
+        double-click rate, efficiency-test pass rate.
+      - source health: mean photon number, modulator setpoint, watchdog
+        back-reflection power.
+      - alarm codes with severity and machine-readable cause, and every
+        transition of the fallback ladder.
+      - key accounting: key_id issued and consumed, pool depth. Identifiers
+        and counts only.
+
+      Never record: raw detection records, sifted key, error correction
+      syndromes, the privacy amplification seed or Toeplitz matrix, the final
+      key, or any hash of the final key under a publicly known function. That
+      last one catches people out: logging sha256(key) as an integrity check
+      writes a 256-bit commitment to a key that may later be brute forced in a
+      restricted keyspace, and a random key_id serves the purpose better.
+
+      The audit story. "Was the link secure last Tuesday" is three separable
+      questions, and the telemetry answers each without key material: did the
+      security parameters hold, from the QBER, decoy and finite-key record; did
+      any monitor fire, from the alarm log; and was every key used once, from
+      the key_id issue and consume ledger with its uniqueness constraint. Sign
+      each hourly bundle with a device key into a tamper-evident log, so the
+      auditor verifies a signed record rather than the operator's database.
+
+      The trade-off I accepted: the random efficiency test and the enforced
+      symmetric dead time cost key rate, of order 1 percent combined, and the
+      monitoring hardware adds cost and failure modes to every receiver. I take
+      that because the attacks it catches have actually been demonstrated
+      against commercial equipment. I would not remove these to buy back rate;
+      I would drop multiplexing or accept a shorter span first.
+    followUps:
+      - Why does a detector blinding attack leave the QBER inside its normal band, and which of your four tests would still catch it?
+      - Your certification report is two years old and a new implementation attack has been published. What is your process from publication to deployed countermeasure?
+      - What ledger schema and uniqueness constraint would prove to an auditor that no key was ever issued twice?
+    commonMistakes:
+      - Using QBER as the sole security monitor, which misses every attack engineered to keep the QBER inside its normal band, including detector blinding and time-shift attacks.
+      - Logging a hash of the final key as an integrity check, which writes a commitment to secret material into a log that is retained, replicated and eventually read by people who should not have it.
+      - Treating a Common Criteria certificate as a security guarantee for the deployment rather than a bounded statement about one module against a fixed list of attacks at a fixed date.
+    references:
+      - label: ETSI quantum key distribution standards
+        url: https://www.etsi.org/technologies/quantum-key-distribution
+      - label: OpenTelemetry documentation
+        url: https://opentelemetry.io/docs/

@@ -1,0 +1,196 @@
+---
+id: t2.m5.l1
+title: Factoring Reduces to Order Finding
+type: concept
+track: t2
+module: t2.m5
+level: L2
+minutes: 14
+objectives:
+  - State the reduction from factoring N to finding the multiplicative order r of a random a modulo N
+  - "Show that gcd(a^(r/2) - 1, N) is a non-trivial factor whenever r is even and a^(r/2) is not -1 mod N"
+  - Bound the probability that a random a fails the two conditions above
+prerequisites:
+  - t2.m4.l1
+  - t0.m6.l4
+sources:
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: Watrous, Quantum Computation lecture notes
+    url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+  - label: Quantum Algorithm Zoo
+    url: https://quantumalgorithmzoo.org/
+tags: [shor, number-theory]
+---
+
+There is no quantum factoring algorithm. There is a quantum *order-finding*
+algorithm, and a classical reduction, known since the 1970s and entirely
+independent of quantum mechanics, that turns order finding into factoring. Shor's
+contribution was to notice that the quantum part of the problem was the part
+phase estimation already solves. Getting the reduction straight first is what
+makes the quantum circuit in T2.M5.L4 legible.
+
+## The reduction
+
+To factor an odd composite $N$ that is not a prime power:
+
+1. Pick $a$ uniformly at random in $\{2, \dots, N-1\}$.
+2. Compute $g = \gcd(a, N)$. If $g > 1$ you got lucky and $g$ is a factor; stop.
+3. Otherwise find the **multiplicative order** $r$ of $a$ modulo $N$, the least
+   $r \ge 1$ with $a^r \equiv 1 \pmod N$.
+4. If $r$ is odd, go back to step 1.
+5. If $a^{r/2} \equiv -1 \pmod N$, go back to step 1.
+6. Return $\gcd(a^{r/2} - 1,\, N)$ and $\gcd(a^{r/2} + 1,\, N)$.
+
+Every step except 3 is cheap classically: greatest common divisors take Euclid's
+algorithm, modular exponentiation takes repeated squaring. Step 3 is the hard one,
+and it is the only quantum step.
+
+<Margin label="The excluded cases are easy anyway">
+Even $N$ is divisible by 2. A prime power $N = p^k$ is found by testing
+$\sqrt[k]{N}$ for $k$ up to $\log_2 N$. A prime $N$ is detected in polynomial time
+by a primality test, which does not factor it but tells you there is nothing to
+find. So the reduction only needs to handle odd composites with at least two
+distinct prime factors, which is exactly the RSA case.
+</Margin>
+
+## Why step 6 works
+
+Suppose $r$ is even and $a^{r/2} \not\equiv \pm 1 \pmod N$. Set $x = a^{r/2}$.
+Then $x^2 = a^r \equiv 1$, so
+
+$$
+N \mid x^2 - 1 = (x-1)(x+1) .
+$$
+
+$N$ divides the product. Does it divide either factor? If $N \mid x - 1$ then
+$x \equiv 1$, contradicting the order being $r$ rather than $r/2$. If
+$N \mid x + 1$ then $x \equiv -1$, excluded by step 5. So $N$ divides neither
+factor but divides their product, which means its prime factors are *split*
+between them. Therefore
+
+$$
+1 < \gcd(x - 1, N) < N ,
+$$
+
+a non-trivial factor, and likewise for $x+1$. Notice what did the work: finding a
+square root of 1 modulo $N$ other than $\pm 1$. Such square roots exist only when
+$N$ is composite with at least two distinct prime factors, which is precisely the
+case the reduction handles.
+
+## $N = 15$, worked
+
+Take $a = 7$. The powers of 7 modulo 15 are
+
+$$
+7^1 = 7, \quad 7^2 = 49 \equiv 4, \quad 7^3 \equiv 28 \equiv 13, \quad 7^4 \equiv 91 \equiv 1 ,
+$$
+
+so $r = 4$. It is even, and $a^{r/2} = 7^2 \equiv 4$, which is neither $1$ nor
+$14 \equiv -1$. So
+
+$$
+\gcd(4 - 1, 15) = \gcd(3, 15) = 3, \qquad \gcd(4 + 1, 15) = \gcd(5, 15) = 5 .
+$$
+
+$15 = 3 \times 5$. The orbit $1 \to 7 \to 4 \to 13 \to 1$ is what the quantum
+circuit will encode: multiplication by 7 modulo 15 is a permutation of the
+residues, and $r$ is the length of the cycle containing 1. On four qubits that
+permutation is a cyclic bit shift followed by a bitwise complement, which is the
+subject of the next lesson; applied four times it returns the register to its
+starting value.
+
+<Circuit
+  caption="Multiplication by 7 modulo 15 applied four times to the register loaded with 1. The register returns to 0001, which is the statement that the order of 7 is 4."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "order-of-7-mod-15",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "ld", gate: "x", targets: [3] },
+      { id: "a1", gate: "swap", targets: [2, 3] },
+      { id: "a2", gate: "swap", targets: [1, 2] },
+      { id: "a3", gate: "swap", targets: [0, 1] },
+      { id: "a4", gate: "x", targets: [0] },
+      { id: "a5", gate: "x", targets: [1] },
+      { id: "a6", gate: "x", targets: [2] },
+      { id: "a7", gate: "x", targets: [3] },
+      { id: "b1", gate: "swap", targets: [2, 3] },
+      { id: "b2", gate: "swap", targets: [1, 2] },
+      { id: "b3", gate: "swap", targets: [0, 1] },
+      { id: "b4", gate: "x", targets: [0] },
+      { id: "b5", gate: "x", targets: [1] },
+      { id: "b6", gate: "x", targets: [2] },
+      { id: "b7", gate: "x", targets: [3] },
+      { id: "c1", gate: "swap", targets: [2, 3] },
+      { id: "c2", gate: "swap", targets: [1, 2] },
+      { id: "c3", gate: "swap", targets: [0, 1] },
+      { id: "c4", gate: "x", targets: [0] },
+      { id: "c5", gate: "x", targets: [1] },
+      { id: "c6", gate: "x", targets: [2] },
+      { id: "c7", gate: "x", targets: [3] },
+      { id: "d1", gate: "swap", targets: [2, 3] },
+      { id: "d2", gate: "swap", targets: [1, 2] },
+      { id: "d3", gate: "swap", targets: [0, 1] },
+      { id: "d4", gate: "x", targets: [0] },
+      { id: "d5", gate: "x", targets: [1] },
+      { id: "d6", gate: "x", targets: [2] },
+      { id: "d7", gate: "x", targets: [3] }
+    ]
+  }}
+/>
+
+## How often does a random $a$ work
+
+Steps 4 and 5 send you back to the start, so the reduction is only useful if they
+fail rarely. They do. For an odd $N$ with $m \ge 2$ distinct prime factors and
+$a$ chosen uniformly from the units modulo $N$,
+
+$$
+\Pr\big[\, r \text{ even and } a^{r/2} \not\equiv -1 \,\big] \;\ge\; 1 - \frac{1}{2^{\,m-1}} \;\ge\; \frac12 .
+$$
+
+So at least half of all candidates work, and the expected number of restarts is at
+most 2. The proof runs through the Chinese remainder theorem: modulo each prime
+power factor the order of $a$ has some power of 2 in it, and the bad cases require
+all $m$ of those powers to agree, which happens for at most half the units.
+
+Check it on $N = 15$, whose units are $\{1,2,4,7,8,11,13,14\}$:
+
+| $a$ | $2$ | $4$ | $7$ | $8$ | $11$ | $13$ | $14$ |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| $r$ | $4$ | $2$ | $4$ | $4$ | $2$ | $4$ | $2$ |
+| $a^{r/2} \bmod 15$ | $4$ | $4$ | $4$ | $4$ | $11$ | $4$ | $14$ |
+| usable | yes | yes | yes | yes | yes | yes | no |
+
+Only $a = 14 \equiv -1$ fails, along with the trivial $a = 1$. Six of the eight
+units work, which is $75\%$, comfortably above the guaranteed $50\%$.
+
+<Callout tone="gotcha" title="Verify the order before you trust it">
+The quantum step returns a candidate $r$, and it can return a *divisor* of the
+true order rather than the order itself, because the post-processing of T2.M5.L3
+recovers a fraction in lowest terms. Always check $a^{r} \equiv 1 \pmod N$
+classically before using $r$, and if it fails, try small multiples of the
+candidate. This check costs one modular exponentiation and catches the most common
+failure of an otherwise correct implementation.
+</Callout>
+
+<Check question="You run the algorithm on $N = 21$ with $a = 8$ and find $r = 2$. What factors do you get, and why?">
+$8^2 = 64 \equiv 1 \pmod{21}$, so $r = 2$, which is even, and
+$a^{r/2} = 8 \not\equiv \pm 1$. Then $\gcd(8-1, 21) = \gcd(7, 21) = 7$ and
+$\gcd(8+1, 21) = \gcd(9, 21) = 3$, giving $21 = 3 \times 7$. Notice how little
+quantum work this needed: $r = 2$ means one bit of order. The hard instances are
+the ones where $r$ is close to $N$, which is the generic case for RSA moduli and
+the reason the counting register needs $2n$ qubits rather than a handful.
+</Check>
+
+## Where this comes from
+
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 5.3 and Appendix 4, for the reduction and the $1 - 2^{1-m}$ bound.
+- [Watrous, Quantum Computation notes](https://cs.uwaterloo.ca/~watrous/QC-notes/),
+  for the square-root-of-unity argument in the form used here.
+- [Quantum Algorithm Zoo](https://quantumalgorithmzoo.org/), for the placement of
+  factoring under the abelian hidden subgroup family.

@@ -1,0 +1,734 @@
+questions:
+  - id: iq-235
+    title: Design the stack from a Python experiment script to an AWG channel
+    kind: system-design
+    prompt: |
+      Draw me the software stack that takes a line of Python in a researcher's
+      experiment script and ends with samples coming out of an arbitrary
+      waveform generator channel. Name every layer, say what each one owns,
+      and say what must never appear in each one. Then tell me where the
+      abstraction is allowed to leak, because there are hardware facts that
+      cannot be hidden and pretending otherwise produces silent timing errors.
+      Assume a 2 GS/s AWG with 16-bit I and Q, a control rack with several
+      instruments, and a circuit of about 200 gates run for 4096 shots. Give
+      me the byte counts that decide whether an upload takes a second or a
+      minute.
+    difficulty: easy
+    pattern: Lab instrument integration
+    topics: [layering, pulse-compilation, instrument-drivers, abstraction-boundaries, waveform-memory]
+    companies: [Rigetti, IBM, Q-CTRL, Quandela]
+    modelAnswer: |
+      The boundary that matters is between the logical circuit and the timed
+      waveform. Above it, everything is device independent. Below it,
+      everything is calibration data. If calibration numbers appear above the
+      line, or vendor names appear below the circuit layer, the stack is
+      wrong and the experiment stops being reproducible next week.
+
+          experiment script (Python)
+             owns: intent, sweep ranges, analysis, plots
+             never: an amplitude in volts, a channel number, a SCPI string
+             |
+          quantum program / IR (OpenQASM 3 with defcal)
+             owns: gates, qubits, classical control flow, durations in ns
+             never: sample counts, vendor concepts
+             |
+          scheduler and pulse compiler
+             owns: absolute timing, frame and phase bookkeeping, channel
+                   assignment, per-channel delay compensation
+             never: a vendor name
+             |
+          calibration store (data, not code)
+             owns: amplitudes, frequencies, durations, DRAG coefficients,
+                   mixer corrections, per-channel delays
+             never: logic
+             |
+          instrument driver layer
+             owns: typed parameters with units and validators, sequencer
+                   program generation, waveform upload
+             never: physics
+             |
+          vendor SDK and firmware
+             owns: the sequencer program, DMA into waveform memory
+             |
+          AWG channel: samples at 2 GS/s
+
+      The rule that does the most work is that a hardcoded amplitude in a
+      script is a bug. The script says "run a Ramsey on qubit 3 over these
+      delays". The pi/2 pulse amplitude comes from the calibration store,
+      pinned by a calibration set id that gets recorded with the result. A
+      script that carries the amplitude produces data nobody can reproduce
+      after the next recalibration, and it produces it silently.
+
+      Where the abstraction must leak, deliberately.
+
+      Timing granularity. An AWG with a 2 GS/s clock and a 16-sample memory
+      granularity can only start a pulse on an 8 ns boundary. Pretending the
+      scheduler can place a pulse at an arbitrary nanosecond produces rounding
+      of up to 8 ns, and on a 30 ns single-qubit gate that is a 27 percent
+      timing error that no calibration will fix. So the timing model exposes a
+      per-channel granularity, the scheduler rounds explicitly, and it reports
+      the rounding it applied rather than swallowing it.
+
+      Per-channel delay. Coax carries at about 5 ns per metre. A 3 m
+      difference between two lines is 15 ns, which is half a single-qubit
+      gate. Trigger-to-first-sample latency differs per instrument as well.
+      These are numbers, they belong in the calibration store, and the
+      scheduler subtracts them so that t = 0 means the same instant at the
+      qubit rather than at the connector.
+
+      Now the byte counts, which decide the turnaround time.
+
+          one 40 ns two-qubit pulse at 2 GS/s, 16-bit I and Q
+              80 samples x 4 bytes = 320 bytes
+          200-gate circuit, 50 distinct pulse shapes
+              50 x about 320 bytes = 16 KB of waveform memory
+              plus a sequencer program of a few hundred instructions
+
+      That is the right design: distinct shapes uploaded once, the shot loop
+      expressed as a sequencer instruction. The wrong design flattens every
+      shot into one long waveform:
+
+          200 gates x 40 ns = 8 us per shot
+          8 us x 2 GS/s x 4 bytes = 64 KB per shot
+          x 4096 shots = 262 MB uploaded per circuit
+
+      Over a 1 Gb/s link that is about 2 seconds of pure transfer for the
+      naive version against under a millisecond for the correct one, and it
+      gets worse linearly with shot count. This is why the driver layer must
+      expose whether the instrument has a hardware shot loop, and why the
+      compiler must use it.
+
+      The trade-off I am accepting: strict layering makes a quick hack
+      impossible, and pulse-level researchers legitimately need to reach past
+      the IR to try a new shape at 2 a.m. So provide an explicit escape hatch,
+      a defcal override or a raw-waveform channel, that is logged, tagged to a
+      calibration set, and visible in the result metadata. An escape hatch
+      that is recorded is engineering. An escape hatch that is not recorded is
+      the same as no layering at all.
+    followUps:
+      - Where exactly does a hardcoded pulse amplitude in a script cause a failure that is silent rather than loud?
+      - How would you expose sample-rate granularity to the scheduler without leaking the vendor into the pulse compiler?
+      - Your instrument has no hardware shot loop. What does the upload cost become, and what would you do about it?
+    commonMistakes:
+      - Putting calibrated numbers in the experiment script, which makes every result unreproducible after the next recalibration and gives no error when it happens.
+      - Hiding sample-rate granularity behind the abstraction, so a pulse start rounds by up to 8 ns on a 30 ns gate with no diagnostic.
+      - Flattening every shot into one waveform instead of using a sequencer loop, turning a 16 KB upload into 262 MB for a 4096-shot circuit.
+    references:
+      - label: QCoDeS instrument framework documentation
+        url: https://qcodes.github.io/Qcodes/
+      - label: OpenQASM specification
+        url: https://openqasm.com/
+
+  - id: iq-236
+    title: Design the calibration data store and bind results to calibrations
+    kind: system-design
+    prompt: |
+      Design the store that holds calibration for a 100-qubit superconducting
+      device with about 200 coupled pairs. I want to know what a single
+      calibration record contains, how records are versioned, how a circuit
+      result three months from now can be traced to the exact calibration that
+      produced it, and what your retention policy is for records and for raw
+      traces. There is a specific failure I want the design to make
+      impossible: a user averaging energies measured before and after a
+      recalibration and reporting the mean as a result. Give me the schema,
+      the size arithmetic, and the promotion and rollback path.
+    difficulty: medium
+    pattern: Lab instrument integration
+    topics: [calibration-store, versioning, provenance, data-modelling, retention]
+    companies: [IBM, Rigetti, Q-CTRL, Atom Computing]
+    modelAnswer: |
+      The decision that matters is that calibration records are immutable and
+      that a device runs against a named, pinned set of them, exactly like a
+      lockfile. Editing a calibration value in place is the single bug that
+      makes months of data unreproducible, and it is the bug that every lab
+      commits at least once.
+
+      A calibration record contains four groups of fields.
+
+          identity     device_id, target (qubit 3, or edge 3-4), parameter
+                       name, value, unit
+          provenance   the experiment that produced it (Rabi, Ramsey, DRAG
+                       scan, error amplification), a pointer to the raw trace
+                       in object storage, the fit model, the fit parameters,
+                       chi-squared, and the uncertainty on the value
+          validity     produced_at, cooldown_id, mixing chamber temperature,
+                       flux bias point, firmware versions of the instruments
+                       involved
+          lineage      the ids of the calibration values this one depended on,
+                       because a DRAG coefficient is meaningless without the
+                       pi-pulse amplitude it was measured against
+
+      The uncertainty field is not decoration. It is what lets the nightly
+      pipeline decide whether a parameter has actually moved or whether it
+      moved by less than its own error bar, and that decision is what keeps
+      the pipeline inside its time budget.
+
+      Schema:
+
+          calibration_value(id, device_id, target, param, value, unit,
+                            sigma, fit_id, raw_uri, produced_at,
+                            produced_by_run, cooldown_id)
+          calibration_set(id, device_id, created_at, promoted_at,
+                          retired_at, manifest_hash, notes)
+          calibration_set_member(set_id, calibration_value_id)
+          device_active_set(device_id, set_id, since)
+          job(id, circuit_hash, calibration_set_id, submitted_at, ...)
+          result(job_id, payload_uri, calibration_set_id)
+
+      A set is a manifest pinning exactly one version of every parameter, and
+      `manifest_hash` is a hash over its members. Circuits reference a set id.
+      New calibration means new values, a new set, and a new id. Nothing is
+      ever updated in place, so `device_active_set` is the only mutable row in
+      the design and rollback is a single write to it.
+
+      Promotion and rollback. The nightly pipeline builds a candidate set and
+      runs acceptance gates against it: single-qubit randomised benchmarking
+      error below threshold, two-qubit error below threshold, readout
+      assignment error below threshold, on a specified fraction of the device.
+      Only a set that passes is promoted by pointing `device_active_set` at
+      it. Rollback is pointing it back, which takes milliseconds and is
+      auditable. Because sets are immutable, a rollback is exactly the state
+      you had, not an approximation of it.
+
+      Size arithmetic, because people assume this is expensive and it is not.
+
+          per qubit, about 20 parameters       100 x 20 = 2,000
+          per edge, about 10 parameters        200 x 10 = 2,000
+          total values per set                          4,000
+          at about 200 bytes per row                    800 KB per set
+          recalibrating a few times a day for a year
+              about 1,000 sets                          800 MB
+
+      So keep every set forever. It is under a gigabyte a year and it is the
+      most valuable metadata in the building. Raw traces are the large item: a
+      full daily suite across 100 qubits, with sweeps of tens to hundreds of
+      points at a few thousand shots each, runs to gigabytes per day. Policy:
+      raw traces hot in object storage for 90 days, then Parquet in cold
+      storage for 2 years, then discard the raw samples and keep the fits, the
+      residuals and the summary statistics forever. The fits are what you need
+      to answer "was qubit 37 drifting last March"; the raw samples are what
+      you need only when you suspect the fit itself.
+
+      Now the failure the question asks me to make impossible. Every result
+      carries `calibration_set_id`, echoed in the result payload, not merely
+      stored server-side. The client library refuses to combine results whose
+      set ids differ unless an explicit `allow_mixed_calibration=True` flag is
+      passed, and when it is passed the combined result is tagged as mixed all
+      the way through to any plot or report generated from it. The reason this
+      is worth enforcing in code: chemical accuracy is 1.6 millihartree, and a
+      recalibration can shift a measured energy by more than that, so the
+      incomparability is larger than the quantity being resolved. A warning in
+      the docs does not stop this. A type error does.
+
+      The trade-off. Immutability plus manifests means an operator cannot
+      tweak one parameter at 3 a.m. without creating a set, and ceremony at
+      3 a.m. is where processes go to die. So make the ceremony one command:
+      fork the active set, change one value with a required reason, promote.
+      That produces a full audit record in ten seconds. For a two-qubit
+      student rig recalibrated twice a year, a spreadsheet is the right answer
+      and this design is overhead with no return.
+    followUps:
+      - What is in the manifest hash, and what would break if you computed it over values but not over their uncertainties?
+      - How do you handle a parameter that is measured but fails its fit, so the pipeline has a value it does not trust?
+      - Three months later a user asks why one run has 3x the readout error of another. What single query answers it?
+    commonMistakes:
+      - Updating calibration values in place, which destroys the ability to reproduce any earlier result and gives no signal that it has happened.
+      - Storing the calibration set id server-side but not echoing it in the result payload, so client-side analysis has no way to detect mixed calibrations.
+      - Keeping raw traces forever because they seem precious, when the fits and residuals answer almost every retrospective question at a small fraction of the storage.
+    references:
+      - label: PostgreSQL documentation
+        url: https://www.postgresql.org/docs/
+      - label: QCoDeS source repository
+        url: https://github.com/QCoDeS/Qcodes
+
+  - id: iq-237
+    title: Design the automated nightly calibration pipeline
+    kind: system-design
+    prompt: |
+      Design the automated calibration pipeline that runs every night on a
+      100-qubit device with about 200 coupled pairs and must publish a usable
+      device by 08:00. I want the DAG of experiments and its dependency
+      ordering, how you parallelise it given that qubits share feedlines and
+      AWG channels, the acceptance gates, what happens when a single node
+      fails its fit, and a wall-clock budget for the whole run with the
+      arithmetic behind it. Assume a shot period of about 100 microseconds. I
+      am particularly interested in what the pipeline does when a qubit is
+      simply bad tonight: does the device come up, and what does a user who
+      targeted that qubit see?
+    difficulty: medium
+    pattern: Lab instrument integration
+    topics: [calibration-pipeline, dag-scheduling, acceptance-gates, drift, failure-handling]
+    companies: [Google Quantum AI, IBM, Q-CTRL, Infleqtion]
+    modelAnswer: |
+      The decision that matters is that partial success is the normal outcome.
+      The pipeline publishes a reduced but correct device rather than
+      succeeding or failing as a unit. One that fails the whole device because
+      qubit 37 would not fit its Ramsey gets switched off within a week.
+
+      The DAG, per qubit:
+
+          resonator spectroscopy
+             |-> readout frequency, amplitude and duration
+                   |-> discriminator training -> assignment error   [GATE]
+          qubit spectroscopy -> coarse frequency
+             |-> Rabi -> pi-pulse amplitude
+                   |-> Ramsey -> fine frequency, T2 star
+                         |-> DRAG scan -> DRAG coefficient
+                               |-> error amplification -> fine amplitude
+                                     |-> single-qubit RB -> error   [GATE]
+             |-> T1
+
+      Per edge: two-qubit gate calibration (drive amplitude, phase, echo
+      timing) then two-qubit RB or cross-entropy benchmarking [GATE]. Device
+      level: simultaneous RB for crosstalk, and a correlated readout confusion
+      matrix per multiplexing group.
+
+      Ordering is topological, and the interesting part is parallelism. Qubits
+      share feedlines and AWG channels, so the scheduler needs the hardware
+      resource graph, not just the experiment graph. With 8 feedlines you run
+      8 readout calibrations at once, and single-qubit experiments run as wide
+      as channel count allows. Two-qubit calibrations conflict when they share
+      a qubit, so edge-colour the coupling graph: about 5 colours on a
+      degree-4 lattice, 200 edges in 5 passes of about 40.
+
+      Wall clock, with the arithmetic.
+
+          a typical node: 50 points x 2,000 shots x 100 us = 10 s of device
+                        time, call it 15 s with overhead
+          single-qubit:   about 8 nodes per qubit x 100 qubits = 800 nodes
+                        = 12,000 s serial, about 10 minutes at 20-way
+          two-qubit:      about 60 s per edge x 200 edges = 12,000 s serial,
+                        5 colours x 40 parallel = about 25 minutes
+          device level:   about 10 minutes
+          ----------------------------------------------------------
+          target                                  about 45 minutes
+          hard budget with a kill switch          90 minutes
+
+      Ninety minutes is the number to defend, because it is what lets you
+      start at 05:00, absorb one full retry pass, and still publish by 08:00.
+
+      Failure handling, node by node:
+
+          fit fails (chi-squared above threshold, or a parameter outside
+          physical bounds)
+              -> retry once with a widened sweep range and more shots
+              -> on second failure, mark this target's subtree failed and
+                 prune it. Never propagate a value you do not trust: a bad
+                 pi-pulse amplitude poisons the DRAG scan, the error
+                 amplification and the RB that follow, so the RB gate then
+                 passes or fails for the wrong reason
+
+          acceptance gate fails (RB error above threshold)
+              -> the qubit or edge leaves tonight's published coupling map.
+                 The device comes up with 97 qubits and 190 edges
+
+          the same node fails on N consecutive nights
+              -> open a hardware ticket. Retrying it nightly hides a fault
+
+          the run crashes
+              -> resume. Every node writes its result keyed by (node, device,
+                 run_id), so a restart skips completed nodes
+
+      What the user sees. The published device description carries the reduced
+      coupling map and a per-qubit status. A user who targeted qubit 37 gets a
+      transpilation failure or an automatic remap, depending on whether they
+      pinned physical qubits, and the reason names the number: "qubit 37
+      excluded, single-qubit RB error 4.2e-3 above the 1.5e-3 threshold". That
+      is a support burden, and it is cheaper than a wrong scientific result
+      from a qubit you knew was bad.
+
+      Keeping the budget as the device grows. Do not re-measure what has not
+      moved. Keep a per-parameter drift model, the night-to-night standard
+      deviation, and for parameters whose drift is small against their own
+      uncertainty run a cheap single-point verification instead of a full
+      sweep. A verification node is about a tenth of a full one, so converting
+      70 percent of nodes cuts the suite by roughly 60 percent.
+
+      The trade-off. Incremental recalibration risks a slow common-mode drift
+      that no single verification catches, because each parameter looks stable
+      against its own history while the whole device walks. Mitigate with a
+      full from-scratch calibration weekly, after every thermal cycle and
+      after any firmware change. If device time were free I would run the full
+      suite nightly and skip the drift model entirely.
+    followUps:
+      - A single node fails its fit. Which downstream nodes do you prune, and why is propagating the value worse than pruning?
+      - How do you set the acceptance thresholds, and what happens to the published device if you set them too tight?
+      - What common-mode drift would incremental recalibration miss, and how does the weekly full run catch it?
+    commonMistakes:
+      - Failing the whole device when one qubit fails, so operators disable the pipeline and the device is calibrated by hand instead.
+      - Propagating a badly fitted parameter into its dependent experiments, which makes the downstream benchmark pass or fail for a reason unrelated to the qubit.
+      - Parallelising on the experiment DAG alone, ignoring shared feedlines and AWG channels, so concurrent nodes corrupt each other's measurements.
+    references:
+      - label: QCoDeS source repository
+        url: https://github.com/QCoDeS/Qcodes
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+
+  - id: iq-238
+    title: Abstract AWGs, digitisers and DC sources across vendors
+    kind: system-design
+    prompt: |
+      Your rack has instruments from four vendors: two AWG families, two
+      digitiser families, and several DC sources. You need one driver layer.
+      The obvious approach, a common base class with the operations they all
+      share, gives you a lowest-common-denominator API that throws away the
+      hardware loop on the instrument that has one. Design something better.
+      Tell me what the portable layer describes, how a driver declares what it
+      can do, how the compiler decides what to emit, and how you handle timing
+      and trigger topology, which is where vendor differences actually hurt.
+      Then tell me when this design is over-engineering and a thin wrapper is
+      the right call.
+    difficulty: medium
+    pattern: Lab instrument integration
+    topics: [driver-architecture, capability-negotiation, trigger-topology, api-design, conformance-testing]
+    companies: [Rigetti, Quantinuum, Q-CTRL, QuEra]
+    modelAnswer: |
+      The decision that matters is where you put the portable boundary. Do not
+      abstract the instruments. Abstract the intent, as a timed schedule, and
+      make each driver declare its capabilities as machine-readable numbers.
+      The compiler then lowers the schedule differently per instrument and
+      refuses, with a specific reason, when it cannot. That is feature
+      negotiation, and it is the opposite of a common base class.
+
+      Three pieces.
+
+      1. A capability manifest per instrument, all numbers, no prose:
+
+             sample_rate_hz, vertical_bits, channel_count
+             waveform_memory_bytes, min_pulse_ns, timing_granularity_ns
+             sequencer: {hardware_loop, conditional_branch, registers}
+             trigger_inputs, marker_outputs
+             trigger_to_first_sample_ns, and the jitter on it
+             settling_time_ms and slew_limit for DC sources
+             on_board_demodulation and discrimination for digitisers
+
+      2. A portable IR: a schedule of (channel, t_start_ns, pulse_ref, frame
+         ops) plus control flow, with durations in nanoseconds and no sample
+         counts anywhere.
+
+      3. A lowering pass per driver family that consults the manifest, and a
+         diagnostic when it fails: "instrument awg-b has no conditional
+         branch; the schedule requires one at t = 1200 ns on channel 3".
+
+      Why the lowest common denominator is not merely inelegant but expensive.
+      Take a 4096-shot experiment with a 200-gate circuit at 2 GS/s, 16-bit I
+      and Q:
+
+          with a hardware shot loop
+              upload 50 distinct pulse shapes, about 16 KB, plus a sequencer
+              program. Under a millisecond on a 1 Gb/s link
+          without one, flattening every shot
+              8 us per shot x 2 GS/s x 4 bytes = 64 KB per shot
+              x 4096 = 262 MB, about 2 seconds of transfer
+
+      A common base class that omits the hardware loop because one vendor
+      lacks it costs a factor of 16,000 in upload volume on the instruments
+      that have it. Negotiation costs a manifest field.
+
+      Parameters. Below the schedule, keep a typed parameter layer in the
+      QCoDeS style: every parameter carries a unit, a validator and a range,
+      so `awg.ch1.amplitude(5)` fails loudly rather than clipping. Exposing
+      the driver layer as a typed service with a generated client also fixes
+      the fact that vendor SDKs pin incompatible Python and native libraries.
+
+      Timing and trigger topology, which is the part that actually breaks.
+      Model the rack as two graphs and store both as data:
+
+          reference clock tree: source -> distribution amplifier -> instrument
+          trigger topology: star from a primary, or daisy chain, with the
+          cable length and the trigger-to-output latency on every edge
+
+      Then the compiler compensates per channel so that t = 0 means the same
+      instant at the qubit. Coax carries at about 5 ns per metre, so a 3 m
+      length difference is 15 ns, half a single-qubit gate. Instruments differ
+      in trigger-to-first-sample latency by tens to hundreds of nanoseconds,
+      and that number is a manifest field and a calibrated correction, not a
+      constant you can trust from a datasheet. A daisy chain adds a
+      per-hop delay that accumulates down the chain, so the topology graph is
+      not decoration: it determines the compensation.
+
+      Digitisers and DC sources get the same treatment. A digitiser declares
+      whether it demodulates and discriminates on board, and the compiler
+      either uses that or streams samples to the host, which changes data
+      volume by orders of magnitude. A DC source declares settling time and
+      slew limit, and the scheduler must respect them: a flux bias taking
+      10 ms to settle changes the schedule, and hiding it makes the first
+      points of every sweep wrong.
+
+      Conformance. A driver is not supported until it passes a suite run on
+      real hardware: play a known pulse, capture it, assert amplitude,
+      duration and start time; assert the hardware loop repeats as declared;
+      assert trigger latency matches the manifest within its jitter. An
+      unverified manifest claim is worse than none, because the compiler
+      trusts it.
+
+      When this is over-engineering. For a two-instrument rig with one vendor
+      and a six-month lifetime, a thin wrapper is correct and this design is
+      months of work with no return. The crossover is about three vendors or a
+      lifetime beyond a year, where the manifests and conformance suite repay
+      themselves in not rewriting the experiment layer per instrument.
+
+      The trade-off I am accepting: manifests plus a lowering compiler is much
+      more code than a wrapper, every new instrument needs a manifest and a
+      conformance run, and a wrong number in a manifest is a silent bug. I
+      take it because the alternative puts vendor conditionals in the
+      experiment scripts, and those never come back out.
+    followUps:
+      - A vendor's datasheet trigger latency disagrees with what your conformance test measures. Which do you trust, and what do you do with the manifest?
+      - How does the design change for an instrument whose sequencer has conditional branching when none of the others do?
+      - What is in your conformance suite for a DC source, given that you cannot capture its output on a fast digitiser?
+    commonMistakes:
+      - Building a common base class over the intersection of vendor features, which discards a hardware shot loop and turns a 16 KB upload into 262 MB.
+      - Trusting datasheet trigger-to-output latency instead of measuring it, so t equals zero means a different instant on each instrument by tens of nanoseconds.
+      - Hiding DC source settling time behind the abstraction, so the first points of every bias sweep are taken before the source has settled.
+    references:
+      - label: QCoDeS instrument framework documentation
+        url: https://qcodes.github.io/Qcodes/
+      - label: gRPC documentation
+        url: https://grpc.io/docs/
+
+  - id: iq-239
+    title: Synchronise dozens of instruments to picosecond timing
+    kind: system-design
+    prompt: |
+      Dozens of instruments in a rack must be synchronised well enough that
+      pulses on different channels land within a few picoseconds of their
+      intended relative times. Tell me first why the requirement is
+      picoseconds rather than nanoseconds, deriving it from a number. Then
+      design the clock distribution, the deterministic start, and the
+      per-channel delay calibration, including how you measure a picosecond
+      with a digitiser whose sample period is 500 picoseconds. Finally design
+      the drift monitoring that catches this when it silently breaks, because
+      it will, and a rack that worked yesterday and does not today is the
+      failure mode I care about. Qubit drive frequencies are around 5 GHz.
+    difficulty: hard
+    pattern: Lab instrument integration
+    topics: [clock-distribution, synchronisation, jitter, delay-calibration, drift-monitoring]
+    companies: [IonQ, Rigetti, Atom Computing, Quandela]
+    modelAnswer: |
+      Start with the derivation, because it sets everything else. A timing
+      error dt on a drive at frequency f becomes a phase error of
+      2*pi*f*dt. At f = 5 GHz:
+
+          dt = 1 ps    -> 0.031 rad  = 1.8 degrees
+          dt = 10 ps   -> 0.314 rad  = 18 degrees
+          dt = 30 ps   -> 0.94 rad   = 54 degrees
+          dt = 100 ps  -> 3.1 rad    = 180 degrees
+
+      If you want relative phase errors under a couple of degrees, which is
+      the level at which they stop dominating a well-calibrated single-qubit
+      gate, you need a few picoseconds. That is where the requirement comes
+      from. It is not a preference and it scales with drive frequency: at
+      100 MHz the same phase budget allows 50 times more skew.
+
+      The decision that matters: distribute one reference and derive every
+      sample clock from it, then get to picoseconds in software rather than in
+      cable lengths. Physical length matching gets you to tens of picoseconds
+      at best; calibrated per-channel delays get you to picoseconds; only
+      jitter is irreducible.
+
+      Clock distribution.
+
+          one 10 MHz or 100 MHz reference, oven-controlled or rubidium
+             |
+          low-phase-noise distribution amplifier, star, equal cable lengths
+             |-> 8 outputs -> second-stage amplifiers, 8 each
+                  |-> 64 instruments, each phase-locking its sample clock
+
+      Two fan-out stages at, say, 200 fs of added jitter each add in
+      quadrature to about 280 fs, comfortably inside a few-picosecond budget.
+      Instrument PLLs typically specify integrated jitter from a hundred
+      femtoseconds to a few picoseconds; that is the irreducible floor and it
+      is worth checking per instrument family before you buy.
+
+      Deterministic start. Locking frequency is not locking phase, and this is
+      the trap. Two instruments locked to the same 10 MHz can still start
+      their sequencers on different clock cycles, an integer-period ambiguity
+      that at 1 GS/s is 1 ns, which by the table above is 1,800 degrees of
+      phase and nonsense. So you need a synchronisation signal as well as the
+      reference, SYSREF in a JESD204-class link or a vendor sync bus, plus a
+      deterministic-latency mode. Then measure it rather than believing it.
+
+      Per-channel delay calibration, including the picosecond measurement.
+      Play a sharp-edged pulse from every channel into a fast digitiser, or
+      cross-correlate pairs of channels. A 2 GS/s digitiser has a 500 ps
+      sample period, so a single-shot edge resolves hundreds of picoseconds.
+      You recover resolution by averaging a repeated, phase-stable edge and
+      interpolating: timing uncertainty falls roughly as the sample period
+      divided by the signal-to-noise ratio and by the square root of the
+      averages, so 1e4 averages reach single-digit picoseconds. That is an
+      order-of-magnitude argument; validate it against a known inserted delay.
+
+      Store the per-channel delay in the calibration store with the set that
+      produced it, and have the scheduler subtract it. Do not match cables
+      below about a centimetre, roughly 50 ps: 1 ps would need 0.2 mm of coax,
+      which is not something you can build or maintain.
+
+      Drift monitoring, which is the part the question is really about.
+
+          sync witness      one channel per instrument plays a periodic marker
+                            into a spare digitiser input; a background task
+                            cross-correlates every minute. Cost: one digitiser
+                            input and about one percent of rack time
+          alert on level    any channel more than 5 ps from its calibrated
+                            value
+          alert on slope    any channel drifting more than 1 ps per hour. This
+                            catches a failing PLL or a loose connector before
+                            it crosses the threshold
+          rack temperature  logged beside the witness. Coax delay has a tempco
+                            of order 10 to 50 ppm per kelvin, so a 3 m cable
+                            at 15 ns of delay moves 1.5 ps over a 5 K
+                            excursion at 20 ppm/K, right at the budget edge.
+                            That is the mechanism behind "it worked yesterday"
+          sync epoch        any power cycle, firmware reload or clock re-lock
+                            increments an epoch id. The scheduler refuses jobs
+                            against a stale epoch until a resync completes
+
+      Alerting on the derivative rather than the level turns this from a
+      post-mortem tool into a preventive one, and the temperature log turns an
+      alert into a diagnosis.
+
+      The trade-off. The sync epoch rule costs availability: one instrument
+      reboot blocks the device until a resync, about ten minutes of
+      measurement. The alternative is running against a delay calibration that
+      may be an integer clock period wrong, which produces results that are
+      not obviously wrong, only quietly incorrect in phase. At 100 MHz drive
+      the phase budget relaxes by 50, the requirement becomes nanoseconds,
+      cable matching alone meets it, and most of this design disappears.
+    followUps:
+      - How do you validate that your averaged edge measurement really resolves picoseconds rather than reporting a small number confidently?
+      - An instrument reboots at 3 a.m. and the sync epoch increments. What exactly does the scheduler do to the queued jobs?
+      - How would the whole design change if the drive frequency were 100 MHz instead of 5 GHz?
+    commonMistakes:
+      - Assuming a shared 10 MHz reference gives deterministic start, when frequency lock still permits an integer clock period ambiguity of a nanosecond or more.
+      - Trying to reach picoseconds by matching cable lengths, which would require sub-millimetre matching, instead of calibrating per-channel delays in software.
+      - Monitoring only the absolute delay and not its slope, so a channel drifting 1 ps per hour is invisible until it has already crossed the threshold and corrupted data.
+    references:
+      - label: QCoDeS instrument framework documentation
+        url: https://qcodes.github.io/Qcodes/
+      - label: Prometheus documentation
+        url: https://prometheus.io/docs/
+
+  - id: iq-240
+    title: Design safety and access control for a shared cryogenic instrument
+    kind: system-design
+    prompt: |
+      One dilution refrigerator, one device inside it, and three constituencies
+      who all need access: cloud jobs from paying users, local researchers, and
+      the cryogenic engineers who own the fridge. Design the safety and access
+      control layer. I want the interlocks and where they live, the role model
+      for who may change what, the audit trail and its retention, and the
+      concurrency model that lets a cloud queue and a researcher at 2 a.m.
+      coexist without either being able to damage the device or silently
+      corrupt the other's data. Tell me what happens when the control software
+      crashes and what happens on a network partition. Warming up and cooling
+      down again takes 24 to 48 hours, so the cost of getting this wrong is not
+      an outage, it is a week.
+    difficulty: hard
+    pattern: Lab instrument integration
+    topics: [access-control, interlocks, audit-trail, leasing, fail-safe]
+    companies: [QuEra, Pasqal, Atom Computing, D-Wave]
+    modelAnswer: |
+      The decision that matters is that safety is hardware and access control
+      is software, and the two must never be confused. Anything that can
+      destroy the device or the fridge is enforced by a wired interlock that
+      ignores whether the software is running, the network is up, or who is
+      logged in. Access control governs who may do legitimate things.
+
+      Layer 0, hardware, not bypassable from any network:
+
+          compressor and vacuum interlocks on the fridge
+          magnet quench detection and dump
+          a fixed attenuator in the drive line, so no software path can
+             deliver more than the specified power to the sample
+          a thermal interlock disabling outputs above a mixing-chamber
+             threshold, and a key switch for high-power or bypass modes
+
+      Note what that implies: maximum drive power is a component in a cable,
+      not a validator in Python. A software limit stops honest mistakes but is
+      not a safety control: it fails open when the software crashes or when
+      someone talks to the vendor SDK directly.
+
+      Layer 1, software, enforced in the driver service and never in the
+      client: typed parameters with per-role limits. A cloud job sets drive
+      amplitude inside the calibrated range, a researcher a few dB above it,
+      and nobody exceeds the hardware limiter, because it is a cable.
+
+      Roles, and what each may change:
+
+          role             circuits  cal params  hw config  fridge  hi-power
+          cloud job          yes       no          no         no      no
+          researcher         yes       scoped      no         no      no
+          device operator    yes       yes         yes        yes     no
+          cryo engineer      yes       yes         yes        yes     yes
+
+      Privileged changes require an authenticated session with MFA, and
+      hardware changes outside working hours require a second approver or a
+      solo-override that pages the on-call and is visible by 8 a.m.
+
+      Concurrency: exactly one writer, held as a lease of
+      (device, owner, role, reason, acquired_at, ttl, heartbeat). Cloud jobs
+      take it per batch, 1 to 30 s, and release at the batch boundary. A
+      researcher takes an interactive lease with a longer TTL. The rules that
+      make coexistence work:
+
+          a calendar owns the device: the cloud queue holds it except during
+          booked lab windows, and a booked window drains the queue, so running
+          batches finish, queued jobs stay queued, and users see a maintenance
+          window with an end time rather than errors
+          an emergency lease preempts at the next batch boundary, so the worst
+          case for a cloud user is one batch, about 30 s, logged and paged
+          an interactive lease has a hard maximum and an idle timeout: idle 15
+          minutes warns on the console, idle 30 minutes releases the lease and
+          resumes the cloud queue
+          no preemption ever interrupts a fridge operation in progress
+
+      Audit trail. Append-only, and the process that writes it cannot delete
+      from it. Every row carries who, role, session id, lease id, instrument,
+      parameter, old and new value, timestamp, reason, calibration set id and
+      job id, plus every lease grant, release and preemption, every interlock
+      trip and every override. Postgres with monthly partitions, shipped to
+      object storage, retained seven years: not for compliance, but because
+      this is the record that explains a damaged sample, and that
+      investigation happens years later. A busy day is under a megabyte. And
+      because the rows carry calibration set id and job id, "why did every job
+      after 02:14 have three times the readout error" is one join.
+
+      Fail-safe behaviour.
+
+          control software crash
+              outputs to a defined safe state: DACs zeroed, DC sources ramped
+              to zero at their slew limit, never stepped, because a step into
+              a flux line is itself a hazard. The lease expires by TTL
+
+          network partition
+              stop accepting new jobs, finish or abort the current batch, and
+              report on reconnect. Never continue an unattended sweep you
+              cannot report
+
+          watchdog
+              the driver service heartbeats to the interlock controller and
+              loss of heartbeat disables outputs, which a software-only
+              design cannot cover: the software is what failed
+
+      The trade-off. Strict leasing costs utilisation: draining the queue
+      before a booked window wastes the tail, idle timeouts occasionally kill
+      a slow manual measurement, and the second-approver rule slows genuine
+      emergencies. The alternative, cooperative access by chat message, works
+      until the night it does not, and that night costs a 24 to 48 hour
+      thermal cycle plus, quite possibly, the sample. On a room-temperature
+      rig that power cycles in five minutes I would drop the second approver
+      and lengthen every timeout, because the asymmetry would be gone.
+    followUps:
+      - Which of your software limits would you move into hardware if you could only wire one more interlock, and why that one?
+      - A researcher needs the device for six hours overnight but keeps going idle for twenty minutes at a time. How do you handle that without either releasing the lease or letting them hold it while asleep?
+      - The audit trail says a parameter changed at 02:14 with no session id attached. What has gone wrong and how do you make that impossible?
+    commonMistakes:
+      - Enforcing a maximum drive power only in a software validator, which fails open when the control software crashes or when someone uses the vendor SDK directly.
+      - Granting an interactive lease with no idle timeout, so one researcher can hold a shared cryogenic instrument all night without using it.
+      - Stepping DC sources to zero on a crash instead of ramping at the slew limit, which turns a fail-safe path into a hazard on flux lines and magnets.
+    references:
+      - label: QCoDeS instrument framework documentation
+        url: https://qcodes.github.io/Qcodes/
+      - label: PostgreSQL documentation
+        url: https://www.postgresql.org/docs/

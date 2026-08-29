@@ -1,0 +1,199 @@
+---
+id: t2.m3.l5
+title: Fourier Sampling
+type: concept
+track: t2
+module: t2.m3
+level: L2
+minutes: 14
+objectives:
+  - "Describe the Fourier sampling template: prepare, query, transform, measure"
+  - "Show that Bernstein-Vazirani is Fourier sampling over Z_2^n with a single query"
+  - Predict the measurement distribution when the hidden structure is a coset rather than a single string
+prerequisites:
+  - t2.m3.l3
+  - t1.m10.l3
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: Watrous, Quantum Computation lecture notes
+    url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+tags: [fourier-sampling]
+---
+
+Deutsch-Jozsa, Bernstein-Vazirani, Simon, order finding and discrete log look like
+five different algorithms. They are one algorithm with five oracles. This lesson
+writes down the shared template, checks it against the case you already know, and
+then does the case that matters: what comes out when the hidden structure is a
+whole subgroup rather than a single string.
+
+## The template
+
+Four steps, always in this order.
+
+1. **Prepare** the uniform superposition over the group $G$:
+   $\frac{1}{\sqrt{|G|}}\sum_{x \in G}\ket{x}$.
+2. **Query** the oracle once, entangling a second register with $f(x)$.
+3. **Transform** the first register with the Fourier transform of $G$.
+4. **Measure** the first register, and post-process classically.
+
+The whole design question is which group $G$ makes step 3 cheap and step 4
+informative. For $G = \Z_2^{\,n}$ the transform is $H^{\otimes n}$, depth 1. For
+$G = \Z_{2^t}$ it is the QFT circuit of T2.M3.L2.
+
+<Margin label="Why the second register is discarded">
+Step 2 entangles the input register with $f$, and step 3 only touches the input
+register. Whether you measure the output register or throw it away is
+mathematically irrelevant, by the principle of deferred measurement from T1.M8.L2.
+Analyses usually say "measure it" because collapsing onto a definite $f$ value
+leaves the input register in a clean coset state, which is easier to reason about
+than the entangled whole.
+</Margin>
+
+## Bernstein-Vazirani is the one-string case
+
+Take $f(x) = s \cdot x \bmod 2$ for a hidden $s \in \{0,1\}^n$. Use the phase form
+of the oracle, so step 2 produces
+
+$$
+\frac{1}{\sqrt{2^n}}\sum_x (-1)^{s\cdot x}\ket{x} .
+$$
+
+That state is exactly $H^{\otimes n}\ket{s}$, because
+$H^{\otimes n}\ket{s} = \frac{1}{\sqrt{2^n}}\sum_x (-1)^{s \cdot x}\ket{x}$. Step 3
+applies $H^{\otimes n}$ again, and $H^{\otimes n}$ is its own inverse, so the
+register is $\ket{s}$ and step 4 reads $s$ with certainty from one query. A
+classical algorithm needs $n$ queries, one per bit.
+
+<Circuit
+  caption="Bernstein-Vazirani with hidden string 101 on three query qubits. The query register reads 101 with certainty after one oracle call."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "bv-101",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "x", gate: "x", targets: [3] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "h3", gate: "h", targets: [3] },
+      { id: "o0", gate: "x", targets: [3], controls: [0] },
+      { id: "o2", gate: "x", targets: [3], controls: [2] },
+      { id: "g0", gate: "h", targets: [0] },
+      { id: "g1", gate: "h", targets: [1] },
+      { id: "g2", gate: "h", targets: [2] }
+    ]
+  }}
+/>
+
+Two surviving strings, $\ket{1010}$ and $\ket{1011}$, at $0.5$ each. The first
+three bits are $101$ in both, so the query register is $\ket{101} = \ket{s}$ and
+the answer qubit is still in $\ket{-}$.
+
+## The coset case
+
+Now suppose $f$ is not a linear form but is **constant on cosets** of a subgroup
+$H \le \Z_2^{\,n}$, and distinct on distinct cosets. Use the bit-flip oracle.
+After step 2 and a measurement of the output register, the input register collapses
+onto a uniform superposition over one coset:
+
+$$
+\ket{x_0 + H} = \frac{1}{\sqrt{|H|}}\sum_{h \in H}\ket{x_0 + h} ,
+$$
+
+with the offset $x_0$ uniformly random and unknown. Apply $H^{\otimes n}$:
+
+$$
+H^{\otimes n}\ket{x_0 + H}
+= \frac{1}{\sqrt{2^n |H|}}\sum_{y}(-1)^{x_0 \cdot y}
+\left(\sum_{h \in H}(-1)^{h \cdot y}\right)\ket{y} .
+$$
+
+The inner sum is the character sum over a subgroup: it equals $|H|$ when
+$h \cdot y = 0$ for every $h \in H$, and 0 otherwise, because otherwise exactly
+half the terms are $+1$ and half $-1$. Define the **annihilator**
+
+$$
+H^{\perp} = \{\, y : h\cdot y = 0 \text{ for all } h \in H \,\} ,
+$$
+
+a subgroup of size $2^n/|H|$. Then the state is
+
+$$
+\sqrt{\frac{|H|}{2^n}}\sum_{y \in H^\perp}(-1)^{x_0 \cdot y}\ket{y} ,
+$$
+
+and measuring gives a **uniform random element of $H^\perp$**, with the unknown
+offset $x_0$ pushed entirely into signs that measurement cannot see.
+
+That is the payoff line of the whole module. One query, one Hadamard layer, and
+you get a free uniform sample from the orthogonal complement of the hidden
+subgroup. Collect enough samples and linear algebra gives you $H$.
+
+## An instance you can check
+
+Let $n = 3$ and $f(x) = x_0 \oplus x_1 \oplus x_2$, the parity. Parity is constant
+on cosets of the even-weight subgroup
+
+$$
+H = \{000,\, 011,\, 101,\, 110\}, \qquad |H| = 4 ,
+$$
+
+so $H^\perp$ has size $8/4 = 2$. Solving $y \cdot h = 0$ for the generators $011$
+and $101$ gives $y_1 = y_2$ and $y_0 = y_2$, so $H^\perp = \{000, 111\}$. The
+prediction is therefore: the query register reads $000$ or $111$, each with
+probability $0.5$, and nothing else ever.
+
+<Circuit
+  caption="Three CNOTs implement the parity oracle in bit-flip form. The query register reads 000 or 111 with probability 0.5 each, which is exactly the annihilator of the even-weight subgroup."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "coset-sampling-parity",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "o0", gate: "x", targets: [3], controls: [0] },
+      { id: "o1", gate: "x", targets: [3], controls: [1] },
+      { id: "o2", gate: "x", targets: [3], controls: [2] },
+      { id: "g0", gate: "h", targets: [0] },
+      { id: "g1", gate: "h", targets: [1] },
+      { id: "g2", gate: "h", targets: [2] }
+    ]
+  }}
+/>
+
+Four surviving strings at $0.25$ each: $\ket{0000}$, $\ket{0001}$, $\ket{1110}$ and
+$\ket{1111}$. Read the first three bits: $000$ twice and $111$ twice, so each of
+the two annihilator elements has probability $0.5$. The sign on $\ket{1111}$ is the
+$(-1)^{x_0 \cdot y}$ factor, and it carries no information you can measure.
+
+<Callout tone="note" title="The bigger the hidden subgroup, the smaller the sample space">
+$|H^\perp| = 2^n/|H|$. A one-element $H$ leaves $H^\perp$ everything, and you learn
+nothing. A large $H$ leaves few candidates, and each sample is worth a lot. Simon's
+case, $H = \{0, s\}$, sits at the informative end of the useless end: $H^\perp$ has
+$2^{n-1}$ elements, and each sample is one linear equation on $s$.
+</Callout>
+
+<Check question="Run the parity circuit and you read $000$. How much have you learned about $H$?">
+Nothing. $000$ lies in every annihilator, so the equation $h \cdot 000 = 0$ is
+satisfied by every $h$ and constrains nothing. This is the wasted-sample problem
+that every Fourier-sampling algorithm has: the all-zeros outcome occurs with
+probability $|H|/2^n$ and is always uninformative. In Simon's case that is
+$2/2^n$, negligible; in this parity instance it is $1/2$, which is why a subgroup
+that large is useless to sample. The general rule is that you need $\log_2|H^\perp|$
+independent non-zero samples, and the expected cost of collecting them is the
+subject of the next lesson.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), for the
+  four-step template and the character-sum computation of the coset case.
+- [Watrous, Quantum Computation notes](https://cs.uwaterloo.ca/~watrous/QC-notes/),
+  for the annihilator formalism that T2.M6 generalises to arbitrary abelian groups.

@@ -1,0 +1,697 @@
+questions:
+  - id: iq-183
+    title: Rank what breaks first between 50 and 200 qubits
+    kind: system-design
+    prompt: |
+      You run the platform team for a superconducting processor programme. The
+      current device is 50 qubits on a heavy-hex lattice and the roadmap says
+      200 in eighteen months. Before anyone writes a line of code, I want your
+      ranked list of what breaks on the way, ordered by when it bites rather
+      than by how dramatic it sounds. Be concrete and cover at least wiring and
+      heat load, calibration wall-clock time, crosstalk, frequency crowding and
+      fabrication yield, readout multiplexing, and verification against a
+      simulator. Attach a number to each. Then tell me which single one you
+      would fix first if you could only fund one, and why the others can wait.
+    difficulty: easy
+    pattern: Scaling 50 to 200 qubits
+    topics: [scaling, calibration, yield, verification, wiring]
+    companies: [IBM, Google Quantum AI, Rigetti, Atom Computing]
+    modelAnswer: |
+      Ranked by when it bites: calibration wall-clock first, verification
+      second, fabrication yield third, partial-health statistics fourth, wiring
+      and heat load fifth, readout multiplexing sixth. Crosstalk does not get
+      its own slot, because it is the mechanism underneath the first and third
+      items rather than an independent wall.
+
+      1. Calibration wall-clock. Heavy-hex carries roughly 1.2 couplers per
+      qubit, so 50 qubits is about 60 edges and 200 qubits is about 250. At 10
+      to 20 minutes per edge calibrated serially, 60 edges is 10 to 20 hours
+      and 250 edges is 42 to 83 hours. You cannot spend two to three days a day
+      on calibration. This bites immediately, it bites every single day, and it
+      eats availability rather than capability, which is why it is first.
+
+      2. Verification against a simulator. A statevector is 2^n x 16 bytes:
+      n=30 is 16 GiB, n=34 is 256 GiB, n=40 is 16 TiB, n=45 is 512 TiB, n=50 is
+      16 PiB. At 50 qubits an exact cross-check already needs one of the
+      largest machines in the world and only for shallow circuits; at 200 the
+      state has 2^200 amplitudes and no engineering answer exists. This is the
+      only item on the list with a hard wall rather than a cost curve.
+
+      3. Frequency crowding and fabrication yield. If the probability that a
+      given qubit satisfies all its frequency collision constraints is q, chip
+      yield goes roughly as q^n:
+
+          q       n=50      n=200
+          0.999   0.95      0.82
+          0.99    0.61      0.13
+          0.95    0.077     3e-5
+
+      A process good enough for 50 is marginal at 200 and hopeless at 0.95 per
+      qubit. This bites at fabrication, before you have a device at all.
+
+      4. Partial-health statistics. If a qubit has a 1 percent chance of being
+      out of spec on a given day, then P(everything in spec) is 0.99^50 = 0.61
+      against 0.99^200 = 0.13. At 50 qubits the device is fully healthy most
+      days; at 200 it is fully healthy roughly one day in eight. That is not a
+      physics failure, it is a product and software failure, because every
+      layer that assumed a static coupling map now breaks.
+
+      5. Wiring and heat load. Counting a drive line per qubit, a flux line per
+      coupler, and readout multiplexed 8 to 1 with input, output and pump
+      lines, 50 qubits needs about 130 lines and 200 qubits about 525. At an
+      order-of-magnitude 0.5 microwatt per line at the mixing chamber, against
+      10 to 30 microwatts of cooling power at 20 mK, 50 qubits is already tight
+      and 200 is roughly an order of magnitude over budget without
+      superconducting coax and moving attenuation to warmer stages.
+
+      6. Readout multiplexing. Six to ten qubits per feedline means 200 qubits
+      needs 20 to 30 feedlines, each with its own parametric amplifier and
+      output chain, and those amplifiers have finite bandwidth and a saturation
+      power. Painful engineering, but it scales with money and effort, so it
+      goes last.
+
+      Crosstalk, for completeness: static ZZ of 10 kHz to a few hundred kHz
+      between neighbours and microwave drive crosstalk 20 to 30 dB down. It
+      gets worse with density and it is why calibration must be done in context
+      and why frequency allocation is constrained. It is a mechanism, not a
+      separate wall.
+
+      If I could fund one thing, I fund calibration throughput. Verification
+      has no fix, so funding it buys a different strategy rather than a
+      solution. Yield is a fabrication problem owned by a different team and is
+      solved by tunable couplers or frequency trimming. Wiring and readout are
+      known engineering with known answers. Calibration is the one that
+      converts directly into device availability every day, and the fix,
+      parallel calibration by edge colouring plus a check-then-calibrate
+      dependency graph, is software my team can ship.
+
+      The trade-off in that choice: prioritising calibration means the 200-qubit
+      device arrives with a verification story that is still weak, and we will
+      ship results nobody can independently check. I accept that because a
+      device that is only available six hours a day cannot produce results at
+      all. If the roadmap were 50 to 1000 rather than 50 to 200, wiring and
+      heat load would move to the top of this list.
+    followUps:
+      - Which of these six items would you re-rank for a trapped-ion machine, and why?
+      - At what qubit count does partial health become the dominant software concern rather than a nuisance?
+      - How would you convince a hardware lead that verification deserves budget when it has no fix?
+    commonMistakes:
+      - Ranking crosstalk as the top scaling wall, when it is the mechanism behind calibration cost and frequency crowding rather than an independent failure mode.
+      - Treating simulation-based verification as a cost curve, when 2^n x 16 bytes makes it a hard wall at roughly 45 qubits with no engineering escape.
+      - Ignoring that at 200 qubits the whole device is in spec only about one day in eight, so software written against a static coupling map fails constantly.
+    references:
+      - label: Preskill, Quantum computing in the NISQ era and beyond
+        url: https://arxiv.org/abs/1801.00862
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+
+  - id: iq-184
+    title: Keep daily calibration inside a fixed time budget
+    kind: system-design
+    prompt: |
+      Calibration is eating the device. On the 50-qubit machine, single-qubit
+      calibration takes about 5 minutes per qubit and two-qubit gate
+      calibration about 15 minutes per coupler, run serially. Heavy-hex gives
+      about 1.2 couplers per qubit. The 200-qubit device must hold total daily
+      calibration under 90 minutes, which is three 30-minute windows in a 24
+      hour day. Do the arithmetic for both device sizes, then design the
+      pipeline that closes the gap. I want the parallelisation scheme, the
+      cadence tiers, what happens when a calibration fit fails, and the
+      specific way your parallel scheme can give you a wrong answer.
+    difficulty: medium
+    pattern: Scaling 50 to 200 qubits
+    topics: [calibration, edge-colouring, drift, scheduling, pipelines]
+    companies: [IBM, Google Quantum AI, Q-CTRL, Rigetti]
+    modelAnswer: |
+      The decision that matters is to parallelise in space by edge colouring
+      and to replace full recalibration with a check-then-calibrate dependency
+      graph. Together they turn two-qubit calibration from a cost that grows
+      with the number of couplers into a cost that grows with the chromatic
+      number of the lattice, which is 3 or 4 and does not grow at all.
+
+      The arithmetic first, because it is what justifies the redesign.
+
+          scheme                       50 qubits     200 qubits
+          couplers (1.2 per qubit)     60            250
+          serial 1q at 5 min each      4.2 h         16.7 h
+          serial 2q at 15 min per edge 15 h          62 h
+          serial total                 19 h          79 h
+          all pairs, n(n-1)/2 edges    1225 pairs    19900 pairs
+          all pairs at 15 min          12.8 days     207 days
+
+      Two things fall out. Serial calibration of lattice edges is already
+      impossible at 50 and absurd at 200. And you must never calibrate all
+      pairs: the pair count is quadratic and only the 250 physical couplers
+      exist as gates. The superlinearity people worry about is not n^2 pairs,
+      it is edges multiplied by the number of simultaneous contexts you need,
+      because a gate calibrated with idle neighbours is not the gate your
+      compiler will run.
+
+      Parallelisation by edge colouring. Colour the coupling graph so no two
+      edges of a colour share a qubit. Heavy-hex has maximum degree 3, so 3 or
+      4 colours suffice by Vizing's bound of at most degree plus one; a square
+      lattice needs 4. Every edge of one colour is calibrated simultaneously,
+      because the experiments touch disjoint qubits and the control system has
+      an independent channel per qubit. Wall-clock becomes
+
+          colours x experiments per edge x seconds per experiment
+          = 4 x 5 x 60 s = 1200 s = 20 minutes
+
+      for the whole device, independent of qubit count up to the channel count
+      of the rack. Single-qubit calibration parallelises across all qubits at
+      once for the same reason, so it is also flat in n. That is the entire
+      trick, and it is why the 200-qubit number in the table above is a
+      strawman rather than a fate.
+
+      Cadence tiers, because even 20 minutes three times a day is most of the
+      budget.
+
+          tier          cadence        content                    cost
+          drift check   every 8 h      cheap pass/fail probes     5 min
+          targeted fix  as needed      recalibrate failed subtree 15 min
+          full refresh  weekly         everything from scratch    2 h
+          from cold     after warm-up  spectroscopy upward        8 h
+
+      The drift check is a dependency graph over parameters: each node has a
+      cheap check experiment and an expensive calibrate experiment, and a node
+      is recalibrated only if its check fails, which then invalidates its
+      dependants. Run the checks in the same colour groups, so 450 checks at 5
+      seconds each cost 4 groups x 5 s, not 450 x 5 s. This is the published
+      calibration-graph approach and it is the difference between recalibrating
+      everything and recalibrating the 3 percent that moved.
+
+      When a fit fails. Do not retry blindly. Classify: a failed Rabi
+      amplitude fit with a sensible residual is drift, so recalibrate; a failed
+      fit with a nonsense residual, or a T1 that dropped by a factor of three,
+      is a two-level-system defect or a real fault, so blacklist the qubit or
+      edge, publish the new coupling map to the transpiler within minutes, and
+      raise a ticket with the raw trace attached. Keep the raw trace of every
+      failed fit forever; that corpus is what trains the drift model that later
+      lets you stretch the check interval.
+
+      The specific way parallel calibration lies to you. Colour groups couple
+      the estimates. One bad qubit inside a group perturbs its neighbours'
+      spectroscopy and can shift the fitted parameters of edges that are
+      themselves fine, and the failure presents as a diffuse rise in error
+      across the group rather than as one bad edge. Countermeasures: reject
+      outliers on fit residual within a group before accepting any of the
+      group's results; demote any flagged edge to serial recalibration; and
+      once a week run a serial reference calibration on a sampled 10 percent of
+      edges and compare with the parallel values, alerting if the systematic
+      difference exceeds 20 percent of the error budget.
+
+      The trade-off. Calibrating in context gives you the number that matches
+      how the gate is actually used, which is the correct measurement, and it
+      costs you the ability to attribute a bad result to a single edge. The
+      check-then-calibrate graph keeps you inside 90 minutes a day and hides
+      slow correlated drift, because you only ever fix what fails a threshold.
+      The weekly serial reference sample is the price of catching that. If
+      per-experiment time fell by 10x through faster readout and active reset,
+      I would drop the tiering and recalibrate everything every 8 hours, which
+      is simpler and strictly better.
+    followUps:
+      - How would you choose the check thresholds so you neither recalibrate constantly nor drift past your error budget?
+      - A colour group's fits all shift by a similar amount overnight. Is that drift or an artefact, and how do you tell?
+      - What would you measure to justify stretching the drift check interval from 8 hours to 24?
+    commonMistakes:
+      - Quoting the pairwise n(n-1)/2 count as the calibration cost, when only the roughly 250 physical couplers are gates and the real growth is edges times contexts.
+      - Calibrating each edge in isolation with idle neighbours, which produces a number that does not describe the gate the compiler actually schedules.
+      - Recalibrating the whole device every window instead of running cheap checks and fixing only the failed subtree, which spends the entire daily budget on parameters that did not move.
+    references:
+      - label: QCoDeS instrument control documentation
+        url: https://qcodes.github.io/Qcodes/
+      - label: Google Quantum AI Cirq experiments
+        url: https://quantumai.google/cirq/experiments
+
+  - id: iq-185
+    title: Allocate frequencies on a crowded transmon lattice
+    kind: system-design
+    prompt: |
+      Your 50-qubit device uses fixed-frequency transmons with cross-resonance
+      two-qubit gates, and fabrication gives a qubit frequency spread with a
+      one sigma of roughly 50 to 100 MHz. The 200-qubit design is on the table
+      and the fabrication lead says yield is fine. Walk me through why
+      frequency crowding gets much harder between 50 and 200, what the
+      collision conditions actually are, and what the yield consequence is in
+      numbers. Then tell me what tunable couplers change and what they cost.
+      Make a recommendation for the 200-qubit device and say what you would
+      need to see to change your mind.
+    difficulty: medium
+    pattern: Scaling 50 to 200 qubits
+    topics: [frequency-crowding, transmon, tunable-couplers, yield, fabrication]
+    companies: [IBM, Rigetti, Google Quantum AI, Alice & Bob]
+    modelAnswer: |
+      The recommendation first: go to tunable couplers for the 200-qubit
+      device, or if the wiring budget forbids that, keep fixed frequency but
+      add post-fabrication laser-annealed frequency trimming and fabricate 220
+      qubits to ship 200. Doing neither gives you a yield that is exponentially
+      small in qubit count, and no amount of process discipline fixes an
+      exponent.
+
+      Why it gets hard. A cross-resonance gate between two fixed-frequency
+      transmons needs the control-to-target detuning inside a usable band,
+      roughly zero to the anharmonicity magnitude, so of order 50 to 350 MHz,
+      and it must avoid a family of collision conditions, each with a forbidden
+      window of order 10 to 30 MHz:
+
+          near degeneracy, |f_c - f_t| below about 17 MHz
+          the |11> to |02> collision, detuning equal to the anharmonicity,
+            which is about -300 to -340 MHz on a transmon
+          the two-photon collision at half the anharmonicity
+          the same conditions applied to next-nearest neighbours sharing a
+            control qubit, since the drive reaches them too
+
+      So each qubit must land in a window that is simultaneously acceptable
+      against every neighbour and several next-nearest neighbours. On a
+      degree-3 heavy-hex lattice that is a handful of constraints per qubit; on
+      a degree-4 square lattice it is more, which is a large part of why
+      heavy-hex exists at all, at the cost of connectivity and therefore more
+      SWAPs in every compiled circuit.
+
+      The yield arithmetic, which is the whole answer. Let q be the probability
+      that a given qubit satisfies all of its constraints. Treating failures as
+      roughly independent, chip yield goes as q^n:
+
+          q       n=50      n=200
+          0.999   0.95      0.82
+          0.99    0.61      0.13
+          0.95    0.077     3e-5
+          0.90    0.005     7e-10
+
+      At 50 qubits, q = 0.99 gives you a working chip more often than not, and
+      the fabrication lead is telling the truth. At 200 the same process gives
+      13 percent, so you fabricate eight devices to ship one. To
+      hold 200 qubits at a comfortable yield you need q near 0.999, and since
+      the forbidden windows are 10 to 30 MHz wide, that requires a frequency
+      spread of a few MHz rather than the 50 to 100 MHz an untrimmed process
+      delivers. Laser annealing of the junctions after measurement brings the
+      spread to of order 10 to 20 MHz, which is the difference between the
+      third row of that table and the second.
+
+      What tunable couplers change. An added tunable element between two qubits
+      lets you switch the effective coupling on and off with a flux bias, so
+      the gate no longer requires the fixed detuning to sit inside a narrow
+      window, and static ZZ can be nulled by parking the coupler at its
+      zero-coupling bias. That removes most of the collision conditions above
+      and leaves a much weaker requirement: avoid outright degeneracies and
+      keep away from the coupler band. In the table, q moves from 0.99 towards
+      0.999 or better, so 200-qubit yield moves from 0.13 to 0.82.
+
+      What they cost, and this is where the decision is actually made.
+      One extra flux line per coupler. On a 200-qubit lattice with 250 couplers
+      that is 250 additional lines going into the fridge, which lands directly
+      in the mixing chamber heat budget of 10 to 30 microwatts, and is the
+      reason this decision cannot be made by the fabrication team alone.
+      Flux noise as a new dephasing channel, and a DC bias point that drifts,
+      so the coupler is one more thing to recalibrate on every cycle.
+      Roughly double the calibration parameters, which pushes straight back
+      into the daily calibration budget.
+      More fabrication complexity, hence a different yield problem, this one at
+      the process level rather than the frequency-allocation level.
+
+      So the honest framing is that tunable couplers trade an exponential
+      problem for three linear ones. Frequency allocation yield is q^n and
+      cannot be beaten by effort; wiring, flux noise and calibration time all
+      scale with engineering investment. Trading an exponent for a coefficient
+      is nearly always the right move at 200 qubits.
+
+      What would change my mind. If laser annealing on this process line were
+      demonstrated at a spread below 10 MHz across a full wafer, with a
+      measured per-qubit collision-free probability above 0.999 on a
+      200-qubit-sized layout, then fixed frequency wins: no flux lines, no flux
+      noise, half the calibration parameters, and a much easier cryogenic
+      budget. I would also change my mind if the fridge budget were already
+      exhausted, because 250 extra flux lines is not something you can find
+      later.
+    followUps:
+      - How would you allocate frequencies across a 200-qubit lattice given a measured distribution rather than a target one?
+      - What does a collision look like in the data if it slips through allocation and reaches a shipped device?
+      - How many spare qubits would you fabricate to ship 200 working ones at q equal to 0.99?
+    commonMistakes:
+      - Reporting yield as a per-qubit number without raising it to the n-th power, which hides that a process fine at 50 qubits gives 13 percent at 200.
+      - Listing only the near-degeneracy condition and missing the |11> to |02> collision at the anharmonicity, which is the constraint that most tightly bounds the usable detuning band.
+      - Recommending tunable couplers without accounting for one extra flux line per coupler, which is 250 more lines landing in a 10 to 30 microwatt cooling budget.
+    references:
+      - label: Rigetti documentation
+        url: https://docs.rigetti.com/
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+
+  - id: iq-186
+    title: Replace simulator cross-checks at 200 qubits
+    kind: system-design
+    prompt: |
+      At 50 qubits your team still validates hardware results by running the
+      same circuit on a statevector simulator on a large shared cluster, for
+      shallow cases at least. At 200 qubits that is over. Design the
+      verification strategy that replaces it. Tell me exactly where the
+      simulation wall is in bytes, what each replacement layer actually
+      validates and what it does not, how much device time the whole programme
+      costs as a percentage, and what you will now have to tell a user about a
+      200-qubit result that you never had to say at 50. Assume superconducting
+      hardware with two-qubit error rates around 5e-3.
+    difficulty: medium
+    pattern: Scaling 50 to 200 qubits
+    topics: [verification, benchmarking, mirror-circuits, stabilizer-simulation]
+    companies: [Google Quantum AI, Quantinuum, IBM, Q-CTRL]
+    modelAnswer: |
+      The decision that matters is to stop trying to validate the answer and
+      start validating the machinery, then report a quantitative confidence
+      alongside every result. Concretely: a benchmarking layer that produces a
+      predicted fidelity, a Clifford analogue that checks the whole software
+      and control path at full width, and a mirror circuit that measures
+      end-to-end fidelity without any simulator.
+
+      Where the wall is, in bytes. A complex128 statevector is 2^n x 16 bytes:
+      n=30 is 16 GiB, n=34 is 256 GiB, n=40 is 16 TiB, n=45 is 512 TiB, n=50 is
+      16 PiB. Exact statevector simulation therefore runs out at roughly 45
+      qubits on the largest machines available, and a single-qubit gate touches
+      every amplitude so it is memory-bandwidth bound rather than FLOP bound.
+      Tensor-network contraction pushes past that for shallow circuits of low
+      entanglement and does nothing for a deep one. At 200 qubits the state
+      has 2^200 amplitudes and there is no engineering answer at all.
+
+      Layer 1, component benchmarking. Randomized benchmarking, simultaneous
+      RB, and cycle benchmarking on the actual layers your compiler emits, not
+      on idealised isolated gates. Output: a per-layer error rate you can
+      multiply. Validates the gates in context. Does not validate the compiler,
+      the routing or the readout path.
+
+      Layer 2, predict then compare. Predicted circuit fidelity is the product
+      over operations of one minus the error. Work it: 20 layers of 100
+      two-qubit gates is 2000 gates at 5e-3, giving exp(-10) = 4.5e-5. That
+      number is itself the most useful verification output on the device,
+      because it says the experiment is meaningless before you run it. Invert
+      it to get the usable budget: about 200 two-qubit gates gives exp(-1) =
+      0.37, so design experiments at that depth. Verification at 200 qubits is
+      therefore also a scoping tool, which it never had to be at 50.
+
+      Layer 3, Clifford analogues. Replace every non-Clifford gate with a
+      Clifford of the same shape, preserve the layer structure, the routing and
+      the schedule, and simulate exactly with a stabilizer simulator: Gottesman
+      and Knill gives polynomial cost, and Stim samples millions of shots per
+      second at 200 qubits. Validates the transpiler, the qubit mapping, the
+      scheduling, the classical control flow and the readout demultiplexing at
+      full width, which is where most real bugs live. Does not validate any
+      non-Clifford physics, and cannot detect an error that only appears for
+      magic-state-like inputs.
+
+      Layer 4, mirror circuits. Run U followed by its inverse with Pauli twirls
+      inserted between the halves, and measure the return to the initial state.
+      Gives an end-to-end fidelity at full width and full depth with no
+      simulator anywhere. Validates the composite behaviour of the whole stack.
+      Without the twirling, coherent errors cancel between the two halves and
+      the mirror reports a fidelity better than the device delivers, which is
+      the single most common way this technique is misused.
+
+      Layer 5, problem structure. Symmetry and conservation checks native to
+      the workload: particle number and total spin in a chemistry ansatz,
+      post-selection onto the correct symmetry sector, Pauli check sandwiching,
+      and known-answer instances hidden inside a parameter sweep. Validates the
+      result against physics rather than against a reference. Only available
+      when the problem has structure to exploit.
+
+      Layer 6, cross-device agreement. Route a sampled fraction of jobs to a
+      second device of a different make and require agreement inside stated
+      error bars. Disagreement tells you one of them is wrong without telling
+      you which, which is still far more than you had.
+
+      Cost. Standing benchmarking of layers 1 and 3 costs of order 5 percent of
+      device time. A mirror canary of the same shape as the user's circuit,
+      running at 1 to 2 percent of each job's shots, costs another 1 to 2
+      percent. Call the programme 6 to 7 percent of the device.
+
+      What you must now tell the user, and never had to at 50: that no party
+      can confirm the specific output distribution is correct, that the result
+      carries a predicted fidelity of a stated value derived from benchmarking
+      on the same qubits in the same window, and that the mirror canary run
+      alongside their job returned a measured fidelity of a stated value. Put
+      both numbers in the result payload as first-class fields, not in a
+      footnote, because a user who does not see them will assume the counts
+      mean what they would have meant at 20 qubits.
+
+      The trade-off. Six to seven percent of a very expensive device buys
+      confidence in the machinery and no confidence at all in any particular
+      answer, and the layers that give the strongest guarantees, Clifford
+      analogues and mirrors, are precisely the ones furthest from what the user
+      ran. If your workloads were shallow enough for tensor-network contraction
+      to reach depth 20 at 200 qubits, I would spend the same money on a
+      contraction cluster instead and get genuine cross-checks on the real
+      circuits.
+    followUps:
+      - What fraction of a job's shots would you spend on a mirror canary, and how do you defend that number to a paying user?
+      - How would you extend Clifford analogue testing to catch a bug that only triggers on non-Clifford angles?
+      - Which of these layers would catch a transpiler that silently swapped two qubit labels, and which would miss it?
+    commonMistakes:
+      - Running mirror circuits without Pauli twirling, so coherent errors cancel between the two halves and the reported fidelity flatters the device.
+      - Claiming tensor-network methods remove the simulation wall, when they help only for shallow or low-entanglement circuits and not for deep ones.
+      - Reporting 200-qubit counts without a predicted fidelity and a measured canary fidelity, which lets users read them the way they read 20-qubit counts.
+    references:
+      - label: Stim stabilizer circuit simulator
+        url: https://github.com/quantumlib/Stim
+      - label: Qiskit Aer simulator documentation
+        url: https://qiskit.github.io/qiskit-aer/
+
+  - id: iq-187
+    title: Close the cryogenic and wiring budget at 200 qubits
+    kind: system-design
+    prompt: |
+      Design the cryogenic and wiring budget for a 200-qubit superconducting
+      device with tunable couplers, in one dilution refrigerator. Count the
+      lines: drive, flux, readout in and out, and amplifier pump. Then work the
+      heat load at both the 4 kelvin stage and the mixing chamber, against
+      cooling power of a few watts at 4 K and 10 to 30 microwatts at 20
+      millikelvin. Tell me whether the budget closes, and if it does not, what
+      you change. I want a specific position on what readout multiplexing buys
+      you and on whether cryo-CMOS is the answer at this scale or a distraction
+      from it. Compare against the 50-qubit device throughout.
+    difficulty: hard
+    pattern: Scaling 50 to 200 qubits
+    topics: [cryogenics, wiring, heat-load, multiplexing, cryo-cmos]
+    companies: [IBM, Rigetti, Infleqtion, Atom Computing]
+    modelAnswer: |
+      The decision that matters is that the mixing chamber, not the 4 kelvin
+      stage, is the wall, and it is closed by moving attenuation to warmer
+      stages and using superconducting coax below 4 K, not by cryo-CMOS.
+      Cryo-CMOS is the right answer at ten thousand qubits and a distraction at
+      two hundred.
+
+      Count the lines.
+
+          item                          per unit      50 q    200 q
+          qubit drive                   1 per qubit   50      200
+          coupler flux                  1 per coupler 60      250
+          readout input, 8 to 1 mux     1 per 8       7       25
+          readout output                1 per 8       7       25
+          amplifier pump                1 per chain   7       25
+          total                                       131     525
+
+      Four times the qubits, four times the lines. The line count, not the
+      qubit count, is what the refrigerator sees.
+
+      The 4 kelvin stage. Conducted load down a stainless coax from 50 K to 4 K
+      is of order 1 milliwatt per line, which moves with diameter and material.
+      525 lines at 1 milliwatt is 0.5 watts against a few watts of pulse-tube
+      cooling. This budget closes with room to spare, which is why people who
+      quote 4 K numbers conclude the problem is easy.
+
+      The mixing chamber. Per attenuated line the load at 20 millikelvin is of
+      order 0.1 to 1 microwatt, dominated by dissipation of the drive power in
+      the final attenuator plus residual conduction. Take 0.5 microwatt as a
+      mid-range figure and treat it as order-of-magnitude:
+
+          50 qubits:   131 x 0.5 = 65 microwatts
+          200 qubits:  525 x 0.5 = 263 microwatts
+          cooling power at 20 mK: 10 to 30 microwatts
+
+      So the budget does not close, and it did not close at 50 either. Real
+      50-qubit systems already run per-line loads far below 0.5 microwatt
+      through choices that must be pushed harder at 200, not invented there.
+
+      What changes it, in order of leverage.
+
+      Move the attenuation up. Cooling power at 100 millikelvin is several
+      hundred microwatts, one to two orders of magnitude more than at 20
+      millikelvin. Put the bulk of the attenuation at 4 K and 100 mK and keep
+      only the last 10 to 20 dB at the mixing chamber. This is the single
+      biggest lever and it is worth an order of magnitude, bounded by how much
+      thermal photon population you are willing to let reach the qubit.
+
+      Superconducting coax below 4 K. An NbTi centre conductor removes
+      conduction almost entirely between 4 K and the mixing chamber, leaving
+      attenuator dissipation. Worth a factor of two to five.
+
+      Exploit duty cycle. The drive-related load scales with average power,
+      not peak, so a device driven 10 percent of the time dissipates about 10
+      percent of that term. It is why a continuous calibration campaign warms
+      the fridge and a bursty workload does not, and it is a scheduler lever.
+
+      Readout multiplexing. Eight to one is already in the table and is what
+      keeps readout at 75 of 525 lines rather than 600. Going to 16 to 1 halves
+      those 75 to about 38, saving 7 percent of the total line count, and costs
+      amplifier bandwidth and readout crosstalk between the qubits sharing a
+      feedline. That is a poor trade at 200 qubits: you spend readout fidelity,
+      which the user sees, to save a small fraction of a budget dominated by
+      drive and flux lines. Take the 8 to 1 and stop.
+
+      Cryo-CMOS. A controller at 4 K generating drive tones locally removes the
+      room-temperature lines above 4 K. Even at an optimistic 10 milliwatts per
+      qubit, 200 qubits is 2 watts at 4 K, which a multi-pulse-tube system
+      carries. But you still need a line per qubit from 4 K down to the mixing
+      chamber unless you multiplex there too, and that lower section is exactly
+      where the budget is tight, so cryo-CMOS buys the stage that was never the
+      constraint. At ten thousand qubits, needing 25000 lines that no attenuator
+      placement rescues, there is no alternative.
+
+      The design I would ship: room-temperature electronics, NbTi coax below
+      4 K, attenuation moved up with only about 20 dB at the mixing chamber,
+      8 to 1 readout multiplexing, flex-ribbon microcoax assemblies so 525
+      lines physically fit through the feedthroughs, and a duty-cycle cap in
+      the scheduler that bounds average drive power. That gets per-line mixing
+      chamber load towards 0.05 microwatt, so 525 lines is about 26
+      microwatts, which is at the edge of a 30 microwatt budget. It is a
+      factor-of-a-few fight, not a comfortable margin, and I would say exactly
+      that to the programme lead rather than presenting it as solved.
+
+      The trade-off. Moving attenuation to warmer stages raises the thermal
+      photon population reaching the qubits, which costs dephasing and readout
+      fidelity, so the fridge budget is being paid for out of coherence. The
+      duty-cycle cap costs throughput, which is revenue. If dilution
+      refrigerator cooling power at 20 millikelvin improved by 10x, none of this
+      would be a design constraint at 200 qubits, which is why that single
+      number is the one to track on the hardware roadmap.
+    followUps:
+      - How much thermal photon population can you tolerate at the qubit before the attenuation you moved upward costs more than it saved?
+      - What does the duty-cycle cap do to your published throughput, and how would you present that to product?
+      - At what line count does cryo-CMOS stop being a distraction and become the only option?
+    commonMistakes:
+      - Working the heat budget at the 4 kelvin stage, where it closes easily, and concluding the wiring problem is solved while the mixing chamber is an order of magnitude over.
+      - Pushing readout multiplexing to 16 to 1 to save lines, when readout is already only 14 percent of the line count and the cost is readout fidelity the user sees.
+      - Proposing cryo-CMOS at 200 qubits, which addresses the stage that was never the constraint and leaves the mixing chamber line count unchanged.
+    references:
+      - label: QCoDeS instrument control documentation
+        url: https://qcodes.github.io/Qcodes/
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+
+  - id: iq-188
+    title: Rebuild the software stack for a 200-qubit device
+    kind: system-design
+    prompt: |
+      The hardware team will deliver 200 qubits. Your software has been running
+      a 50-qubit device for two years and assumes a coupling map that changes
+      once a day, transpilation that finishes in seconds, and a dashboard an
+      operator reads with their own eyes. Tell me what has to change. I want
+      the calibration data volume in bytes per day and your retention decision,
+      how transpiler runtime grows and what you do about it, the result payload
+      size, and specifically the observability a 200-qubit device needs that a
+      50-qubit device does not. Give me the statistic that explains why the
+      operational model has to change, not just the tooling.
+    difficulty: hard
+    pattern: Scaling 50 to 200 qubits
+    topics: [observability, transpilation, data-volume, retention, device-health]
+    companies: [IBM, Classiq, Q-CTRL, Xanadu]
+    modelAnswer: |
+      The statistic that changes everything: if a qubit has a 1 percent chance
+      of being out of spec on a given day, the probability that the whole
+      device is in spec is 0.99^50 = 0.61 at fifty qubits and 0.99^200 = 0.13
+      at two hundred. At 50 the device is fully healthy most days and partial
+      health is an exception you handle by hand. At 200 it is fully healthy
+      about one day in eight, so partial health is the normal operating state
+      and every layer that assumed a static device model has to take a live one
+      instead. That is the design decision; the rest is consequences.
+
+      Calibration data volume. One experiment sweeps of order 100 points at
+      2000 shots, recording demodulated I and Q as float32 pairs, so
+      100 x 2000 x 8 bytes = 1.6 MB per experiment.
+
+          single-qubit, 8 experiments per qubit   13 MB per qubit
+          200 qubits                              2.6 GB
+          250 edges, 5 experiments each           2.0 GB
+          full calibration                        about 5 GB
+          three per day                           15 GB per day
+          one device per year                     5.5 TB
+
+      At 50 qubits it is about a quarter of that. Fitted parameters are tiny by
+      comparison: 200 qubits at 50 floats plus 250 edges at 20 floats is about
+      15000 floats, 120 kB per snapshot, under 150 MB a year.
+
+      Retention decision: keep fitted parameters and residuals forever, since
+      they are free and are what every later investigation joins on; keep raw
+      traces 30 days, and indefinitely for any fit that failed or triggered a
+      blacklist, because that corpus trains the drift model that later lets you
+      stretch the check interval. Delete the rest on schedule, not because
+      5.5 TB is expensive but because unindexed traces nobody queries are a
+      liability.
+
+      Transpiler runtime. The growth is not in the router's asymptotics, it is
+      in the work the router is given. A QAOA layer on a dense graph has
+      n(n-1)/2 interaction terms against a fixed roughly 1.2n physical edges:
+
+          50 qubits:   1225 terms / 60 edges  = 20 rounds of routing
+          200 qubits:  19900 terms / 250 edges = 80 rounds
+
+      Routing rounds grow linearly in n on top of a circuit that already grew
+      quadratically, and heuristic routers like SABRE run several stochastic
+      trials on top of that, so transpilation goes from seconds at 50 qubits to
+      minutes at 200 on dense circuits. Four changes: cache compilation keyed
+      by sha256 of the circuit IR, coupling map version, basis gates,
+      optimisation level and seed, which pays for itself because sweeps
+      resubmit the same shape thousands of times; split compilation into a
+      device-independent stage and a cheap device-specific final stage so a
+      coupling map change does not force a full recompile; move transpilation
+      off the submit path with a p95 budget of 30 seconds; and precompute
+      layouts for the standard circuit families.
+
+      Result payload. 200 qubits packs to 25 bytes per shot, so 4096 shots is
+      100 kB and 10 million shots is 250 MB. A counts dictionary is useless at
+      this width because nearly every outcome is distinct, so the durable form
+      is a packed bit matrix stored column-major as one bitplane per qubit,
+      compressed. That layout also serves the query users actually make, which
+      is the marginal over a handful of qubits, without reading the whole
+      object.
+
+      Observability that 200 needs and 50 does not.
+      Per-qubit and per-edge time series: 200 plus 250 is 450 entities times
+      about 10 metrics is 4500 series per device. Trivial for a metrics store
+      and far past what a person reads, so dashboards become aggregates plus
+      anomaly detection with drill-down, never 450 tiles.
+      A device health score that gates admission, computed from the live
+      snapshot, so a job is refused before it burns device time on a chip that
+      cannot support it.
+      A closed-loop blacklist that drops a qubit or edge from the coupling map
+      within minutes and republishes it to the transpiler. At 50 qubits a human
+      does this daily; at 200, given the 0.13 statistic, no human is fast enough.
+      The calibration snapshot id stamped on every job record, so a spike in
+      job failures can be correlated with one snapshot and the coupling map
+      rolled back.
+      Fridge telemetry joined to qubit metrics on one timeline, because the
+      correlated failure mode at 200 qubits, a thermal excursion or a pump
+      glitch, hits many qubits at once and looks exactly like a software
+      regression until you overlay the temperature.
+      Alerting on a parameter's rate of change rather than its value, because
+      once a value crosses a threshold the jobs that ran on the way are bad.
+
+      The trade-off. Closed-loop blacklisting keeps the device usable and
+      destroys run-to-run reproducibility, because the coupling map a job
+      compiles against may differ from last week's. Mitigate by pinning the
+      coupling map version into the job manifest and offering a pinned-map mode
+      for experiment series, which will sometimes refuse to run because a
+      pinned qubit is out, and that refusal is the correct behaviour. There is
+      a second tension: the compilation cache that makes the transpiler
+      affordable is invalidated by every coupling map change, so the more
+      responsive the blacklist, the lower the cache hit rate. At 50 qubits I
+      would build none of this, and I would be right not to.
+    followUps:
+      - How would you set the blacklist threshold so it neither thrashes the coupling map nor leaves a bad edge in service?
+      - What is the cache hit rate below which the two-stage compiler stops paying for itself?
+      - Which single metric would you put on the status page as the device health score, and how is it computed?
+    commonMistakes:
+      - Carrying over the assumption that the device is either up or down, when at 200 qubits it is fully in spec about one day in eight and partial health is normal.
+      - Keeping raw calibration traces forever at 15 GB per day while discarding fitted parameters and residuals, which are tiny and are what every investigation joins on.
+      - Leaving transpilation on the synchronous submit path after it grows from seconds to minutes, which turns a compiler slowdown into an API outage.
+    references:
+      - label: IBM Quantum transpilation guide
+        url: https://docs.quantum.ibm.com/guides/transpile
+      - label: Prometheus documentation
+        url: https://prometheus.io/docs/

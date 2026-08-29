@@ -1,0 +1,800 @@
+questions:
+  - id: iq-155
+    title: Draw the latency budget of one VQE iteration end to end
+    kind: system-design
+    prompt: |
+      Walk me through where the time actually goes in a single iteration of a
+      variational loop. Take a concrete case: a 12-qubit Hamiltonian split
+      into 100 qubit-wise commuting measurement groups, 4096 shots per group,
+      circuits of roughly 150 two-qubit layers, running on a shared
+      superconducting device behind a cloud API. Break the iteration into
+      circuit generation, submission, queue wait, device execution, readout
+      and result return, and the classical optimiser update. Put a number on
+      every term, say which one dominates and by how much, and tell me which
+      term you would attack first. Assume nothing about the queue except that
+      the device is shared with other users. If a figure is only good to an
+      order of magnitude, say so out loud rather than quoting three digits.
+    difficulty: easy
+    pattern: Hybrid HPC and QPU loop
+    topics: [latency-budget, vqe, queueing, hybrid-loop, profiling]
+    companies: [IBM, Quantinuum, Q-CTRL, Multiverse Computing]
+    modelAnswer: |
+      The term that dominates is queue wait, and it is not close. Everything
+      the candidate is tempted to optimise, the optimiser step, the circuit
+      builder, the serialisation, together account for well under one percent
+      of the iteration.
+
+      Here is the budget for one energy evaluation:
+
+          stage                          time         share
+          -----------------------------------------------------
+          circuit generation and bind    5 ms         0.006%
+          transpile, if repeated         2 s          2.3%
+          submission round trip          0.2 s        0.2%
+          queue wait                     60 s         68%
+          device execution               25 s         28%
+          result return and assembly     0.4 s        0.5%
+          classical optimiser update     2 ms         0.002%
+          -----------------------------------------------------
+          total                          about 88 s
+
+      Two of those numbers are derived rather than asserted, so here is the
+      arithmetic.
+
+      Device execution. Per shot the circuit is about 150 two-qubit layers at
+      roughly 300 ns each, which is 45 microseconds of gate time, plus about
+      2 microseconds of readout, plus about 10 microseconds of active reset.
+      Call it 60 microseconds of device time per shot. The evaluation needs
+      100 groups x 4096 shots = 409,600 shots, so
+      409,600 x 60 microseconds = 24.6 s. If the device uses passive reset
+      instead, the shot period is set by several T1 times, so 5 x 250
+      microseconds = 1.25 ms per shot, and execution becomes 512 s. Active
+      reset is worth a factor of 20 here, which is the first thing to check
+      on an unfamiliar device.
+
+      Result return. 409,600 shots of 12 bits packed into 2 bytes is 0.8 MB.
+      At 100 Mbit/s that is 65 ms of transfer. The rest of the 0.4 s is
+      deserialisation and histogramming. This term is negligible and stays
+      negligible until you start returning per-shot records for classical
+      shadows, at which point it grows by the shot count, not by the group
+      count.
+
+      Queue wait. On a shared device this is the only number I will not quote
+      precisely: it is minutes at the median and can be hours at the tail. Use
+      60 s as an order-of-magnitude placeholder and measure your own p50 and
+      p95 before designing anything.
+
+      So the ratios that matter. Queue beats device execution by about 2.4x.
+      Queue beats the optimiser update by 60 s against 2 ms, which is a factor
+      of 30,000, four and a half orders of magnitude. A 400-iteration run at
+      88 s per iteration is 9.8 hours, of which 6.7 hours is waiting in line.
+
+      Note the two different things called readout. On-device readout is
+      2 microseconds per shot and lives inside the 25 s execution term.
+      Network result return is 0.4 s and is a separate line. Conflating them
+      is how people conclude that readout is the problem when it is not.
+
+      What I attack first: the queue, with a session or reservation primitive
+      that pays the queue once per run instead of once per iteration. That
+      alone takes the run from 9.8 hours to about 2.9 hours. Only after that
+      does device execution become the top line, and then the lever is
+      measurement grouping and shot allocation, not scheduling.
+
+      The trade-off I am accepting: optimising for wall clock by holding a
+      lease means the device sits idle during my classical step, which lowers
+      utilisation for everyone else. If the classical step were minutes rather
+      than milliseconds, for example a full tensor reconstruction between
+      iterations, I would decide the other way and go back to fair-share
+      queueing, because holding a device idle for minutes per iteration is
+      indefensible.
+    followUps:
+      - How does the budget change if the device uses passive reset rather than active reset, and what does that do to your shot allocation?
+      - If you cut the shot count by a factor of ten, what happens to the wall clock and what happens to the error bar?
+      - Which of these terms would you expose to the customer as a metric, and which would you keep internal?
+    commonMistakes:
+      - Optimising the classical optimiser step, which is 2 ms against a 60 s queue wait, a factor of 30,000 in the wrong direction.
+      - Quoting a single precise queue-wait figure for a shared device instead of measuring p50 and p95 and stating that the tail is what hurts.
+      - Confusing on-device readout time, which is microseconds per shot inside execution, with network result return, which is a separate sub-second term.
+    references:
+      - label: IBM Quantum primitives guide
+        url: https://docs.quantum.ibm.com/guides/primitives
+      - label: Kandala et al, Hardware-efficient variational quantum eigensolver
+        url: https://arxiv.org/abs/1704.05018
+
+  - id: iq-156
+    title: Co-schedule a QPU with a Slurm-managed HPC cluster
+    kind: system-design
+    prompt: |
+      You run a 512-node Slurm cluster and one QPU. The QPU is a single
+      non-preemptible resource: there is exactly one, and a running job owns
+      the control rack. A chemistry group wants a 6-hour hybrid run that
+      touches the QPU every few seconds for a 25-second batch. Behind them
+      sit forty other users, some of whom want a 30-second calibration probe
+      and some of whom want four hours. Calibration needs a maintenance
+      window every day. Design the reservation model: how the QPU appears to
+      Slurm, how a hybrid job holds it, what the preemption granularity is,
+      how you stop one group from owning the machine for a week, and what a
+      queued user's worst-case wait actually is. Give numbers for utilisation
+      and for the tail wait, not adjectives.
+    difficulty: medium
+    pattern: Hybrid HPC and QPU loop
+    topics: [slurm, scheduling, reservations, resource-management, hybrid-loop]
+    companies: [IBM, Pasqal, Microsoft Azure Quantum, Terra Quantum]
+    modelAnswer: |
+      The decision that matters is that Slurm should not schedule the QPU at
+      the granularity of a batch job. Make the QPU a Slurm generic resource
+      that grants a lease, and put a QPU-side broker behind that lease that
+      schedules at the granularity of one circuit batch. Two levels, because
+      the two timescales differ by four orders of magnitude: Slurm allocations
+      are hours, circuit batches are seconds.
+
+      Level one, Slurm. Declare the device as `gres/qpu:1` on a single node
+      that represents the control rack, with `Flags=CountOnly` so nothing else
+      binds to it, and require `--exclusive` on that resource. Jobs request
+      `--gres=qpu:1`. Slurm now serialises QPU-using jobs for free and gives
+      you accounting, fair-share and QOS for nothing. Add:
+
+        - a recurring daily maintenance reservation of 90 minutes for
+          calibration, so the calibration pipeline is a first-class scheduled
+          job and not something that races user work;
+        - a QOS with `MaxWallDurationPerJob=4:00:00` on the QPU partition, so
+          no single job can hold it for a week. A 6-hour run is therefore
+          submitted as two chained 4-hour-capped jobs with a checkpoint
+          between them, which is a feature, not a workaround;
+        - `GrpTRESRunMins` on each account, so a group that has consumed its
+          monthly device minutes drops behind everyone else automatically.
+
+      Level two, the broker. The Slurm allocation does not give the job raw
+      access to the sequencer. It gives it a lease token. The broker holds the
+      device and accepts batches. This is what makes gap-filling possible: the
+      lease holder submits a 25 s batch, the broker runs it, and if the lease
+      holder has no outstanding batch, the broker may run one queued short job
+      from a `probe` class before the next batch arrives.
+
+      Now the numbers, which decide whether gap-filling is worth building.
+
+      Duty cycle. The chemistry run is 25 s of device time and about 0.2 s of
+      classical work per iteration, so it uses 99.2 percent of the wall clock
+      it holds. There is no meaningful gap to fill. Exclusive allocation is
+      correct and the broker's gap-filling never fires. Build the lease anyway,
+      because the second workload you get will not look like this one: a job
+      doing 25 s on device and 30 s of classical reconstruction has a
+      45 percent duty cycle, and there the gap-filling is worth roughly half
+      the device.
+
+      Preemption granularity. The smallest safe preemption unit is one batch,
+      because a batch is what the sequencer has loaded. Interrupting inside a
+      batch means aborting shots and reloading waveform memory, which costs 1
+      to 10 s of re-arm. So preemption granularity equals batch duration. If
+      the lease holder submits 25 s batches, a queued probe waits at most 25 s
+      plus the re-arm. If you want a tighter tail, cap the maximum batch
+      duration at, say, 5 s in the QOS, and pay for it: at a 1 s re-arm cost,
+      5 s batches lose 17 percent of the device to re-arm against 4 percent
+      for 25 s batches.
+
+      Worst-case wait for a queued user, then, is not the batch time. It is
+      the running job's remaining wall clock, because Slurm will not preempt a
+      4-hour allocation for a 30-second probe. So the honest answer to the
+      user with the 30 s probe is: up to 4 hours behind a running job, unless
+      you carve out capacity. Carve it out with a small recurring reservation,
+      for example 10 minutes every hour reserved for the `probe` QOS. That
+      caps probe wait at 60 minutes and costs 17 percent of the device.
+
+      The trade-off. Two-level scheduling means Slurm's view of utilisation is
+      a lie: Slurm sees the device as 100 percent busy whenever a lease is
+      held, whether or not circuits are running. So the broker must export the
+      real duty cycle separately, and billing must be based on the broker's
+      numbers, not on Slurm's allocated minutes. If the QPU were preemptible
+      at the shot level, which no current control stack supports, I would
+      collapse this to a single scheduler and let Slurm do the whole job.
+    followUps:
+      - What does your worst-case wait become if you drop the probe reservation, and how would you justify that number to the user who wants a 30-second calibration check?
+      - How do you bill a user who holds the lease but submits no circuits for ten minutes?
+      - The calibration pipeline overruns its 90-minute window by 40 minutes. What does the scheduler do to the jobs behind it?
+    commonMistakes:
+      - Letting Slurm schedule the QPU at job granularity only, so a 30-second probe waits behind a 4-hour allocation with no carve-out and no explanation.
+      - Assuming a lease is free to interrupt. Re-arming waveform memory and the sequencer costs 1 to 10 s, so preemption granularity is a batch, not a shot.
+      - Reporting Slurm allocated minutes as device utilisation, which counts idle lease time as busy and hides a workload with a 45 percent duty cycle.
+    references:
+      - label: Slurm workload manager documentation
+        url: https://slurm.schedmd.com/documentation.html
+      - label: AWS Braket developer documentation
+        url: https://docs.aws.amazon.com/braket/
+
+  - id: iq-157
+    title: Design the session primitive that stops per-iteration re-queueing
+    kind: system-design
+    prompt: |
+      Today every iteration of a customer's variational loop is an independent
+      job: it is transpiled, submitted, queued, executed and returned. A
+      400-iteration run therefore pays the queue 400 times. Design the session
+      or batch primitive that fixes this. I want the object model, the
+      lifecycle including how the lease is acquired and released, what happens
+      when the client stalls, the interactive timeout, the maximum session
+      length, and the fairness rule that stops one session from owning the
+      device. Then quantify the saving: wall clock before and after, bytes on
+      the wire before and after, and what it costs the operator in utilisation.
+      Assume a 25-second circuit batch per iteration and a queue whose median
+      wait is of order 60 seconds.
+    difficulty: medium
+    pattern: Hybrid HPC and QPU loop
+    topics: [sessions, batching, queueing, api-design, hybrid-loop]
+    companies: [IBM, AWS Braket, IonQ, Classiq]
+    modelAnswer: |
+      The decision that matters is that a session is a lease on the device
+      with a short idle grace period, not a long-lived reservation. Get that
+      wrong in either direction and you either lose the saving or you hand one
+      customer the machine.
+
+      Object model. Three nouns:
+
+        Session    id, owner, device, opened_at, max_duration, grace_ms,
+                   state in {opening, active, draining, closed}
+        Program    a transpiled, parameterised ISA circuit, content-addressed
+                   by hash, uploaded once, referenced by every job
+        Job        session_id, program_hash, parameter_array, shots,
+                   idempotency_key
+
+      Lifecycle. The client opens a session, which enters the normal fair-share
+      queue exactly once. When it reaches the head, the session becomes active
+      and the client's jobs bypass the queue. Each job runs immediately if the
+      lease is held. When a job completes and no next job has arrived within
+      `grace_ms`, the lease is released and the session goes to `draining`: the
+      next job from that session re-enters the queue like anyone else, and the
+      session closes on `max_duration` or on an explicit close.
+
+      The three timers, and why each exists:
+
+        grace_ms        default 2 s to 10 s. Covers the classical step. Long
+                        enough that a 200 ms optimiser update never loses the
+                        lease, short enough that a stalled client costs the
+                        operator seconds, not minutes.
+        interactive     60 s with no job at all closes the session. Protects
+        timeout         against a client that crashed holding a session.
+        max_duration    8 hours, hard. Forces a checkpoint boundary and gives
+                        the scheduler a guaranteed release point.
+
+      Now the arithmetic, which is the actual answer to the question.
+
+      Before. Per iteration: transpile 2 s, submit 0.2 s, queue 60 s, execute
+      25 s, return 0.4 s, so about 88 s. Over 400 iterations that is 9.8
+      hours, of which 6.7 hours is queue.
+
+      After. Queue is paid once: 60 s. Per iteration: parameter bind 5 ms,
+      submit 0.2 s, execute 25 s, return 0.4 s, so about 25.6 s. Over 400
+      iterations that is 2.85 hours plus the one-time 60 s. The run goes from
+      9.8 hours to 2.9 hours, a 3.4x reduction in wall clock, and the residual
+      is now 97 percent device execution, which is where you want it.
+
+      Bytes on the wire. A transpiled 12-qubit, 150-layer ISA circuit
+      serialised with its calibration references is of order 200 KB. Sent 400
+      times that is 80 MB, and re-transpiled 400 times it is 800 s of compiler
+      time you also paid for. With a content-addressed program, the circuit is
+      uploaded once and each iteration sends 60 float64 parameters, which is
+      480 bytes plus framing. Call it 1 KB per iteration. That is a 200x
+      payload reduction and, more importantly, it removes 800 s of transpile
+      from the critical path.
+
+      Fairness. A session that never releases is a lock, so the rules are:
+      a per-account cap on concurrent active sessions, typically one; a
+      session-minutes budget per account per day that counts lease-held time
+      rather than executed time; and an ageing rule so that a queued
+      non-session job whose wait exceeds a threshold, say 15 minutes, forces
+      the active session into `draining` at its next batch boundary. Worst
+      case for the queued user is therefore 15 minutes plus one batch, 25 s.
+
+      Cost to the operator. Idle lease time is device time nobody bought. With
+      a 0.2 s classical step and a 2 s grace, the expected idle per iteration
+      is min(grace, gap) plus the tail, roughly 0.2 s of real gap plus up to
+      2 s if the client stalls. At 0.2 s of gap against 25 s of execution the
+      duty cycle is 99.2 percent, so this session costs the operator under one
+      percent. A session whose classical step is 30 s would cost 55 percent,
+      which is why `grace_ms` must be short and why a slow-classical workload
+      belongs in batch mode instead.
+
+      Batch mode is the other half of the answer. For non-interactive work,
+      where all circuits are known up front, do not use a session at all:
+      submit the whole array as one job, let the scheduler pack it, and accept
+      a queue wait. Batch gets better utilisation, sessions get better latency,
+      and the customer picks per workload.
+
+      The trade-off I am accepting: sessions convert a fair queue into a
+      priority lock for the session holder, and they make utilisation depend
+      on a customer's classical code, which the operator does not control. I
+      accept that because the alternative costs the customer 7 hours per run.
+      If the device were cheap and plentiful, or the queue median were 2 s
+      rather than 60 s, the whole primitive would not be worth its complexity.
+    followUps:
+      - What is the right default for the grace period, and how would you measure it from production traces rather than guessing?
+      - How does the design change if the classical step takes 30 seconds instead of 200 milliseconds?
+      - A client crashes holding an active session. Which timers fire, in what order, and what does the device do at each one?
+    commonMistakes:
+      - Making a session a time-boxed reservation rather than a lease with a short grace period, which hands the device to one customer whether or not they are using it.
+      - Re-serialising and re-transpiling the full circuit every iteration, paying 200 KB and about 2 s of compiler time for what should be a 480-byte parameter array.
+      - Quoting the saving as if the queue were paid once per run without checking that the fairness rule cannot force the session back into the queue mid-run.
+    references:
+      - label: IBM Quantum primitives guide
+        url: https://docs.quantum.ibm.com/guides/primitives
+      - label: IonQ developer documentation
+        url: https://docs.ionq.com/
+
+  - id: iq-158
+    title: Decide where the classical optimiser process runs
+    kind: system-design
+    prompt: |
+      Same hybrid loop, four candidate homes for the classical optimiser: the
+      researcher's laptop, a cloud VM in the same region as the QPU control
+      plane, a login or compute node on the HPC cluster next to the device,
+      and the control rack's own host machine. Pick one and defend it with
+      numbers: round-trip latency from each to the device, the compute each
+      can offer, what happens when the process dies four hours into a six-hour
+      run, and what each costs. Then tell me the change of assumption that
+      would flip your answer to a different box. I do not want a list of
+      considerations, I want a decision.
+    difficulty: medium
+    pattern: Hybrid HPC and QPU loop
+    topics: [placement, latency, hybrid-loop, hpc-integration, reliability]
+    companies: [Google Quantum AI, Rigetti, Q-CTRL, Xanadu]
+    modelAnswer: |
+      Put the optimiser on a compute node of the cluster that sits beside the
+      device, or on a cloud VM in the same region if there is no such cluster.
+      Not the laptop, and not the control rack.
+
+      The reasoning starts by separating two loops that people keep merging.
+
+          loop              period            where it must live
+          -------------------------------------------------------------
+          real-time         100 ns to 5 us    FPGA in the control rack
+          feedback
+          iteration loop    0.25 s to 25 s    anywhere within 100 ms
+          -------------------------------------------------------------
+
+      Mid-circuit feedback has to land inside T2, which on a good transmon is
+      100 to 400 microseconds, so the budget there is microseconds and only
+      the FPGA qualifies. The optimiser loop runs once per 25 s batch. A
+      50 ms network round trip is 0.2 percent of that. This is the whole
+      argument: the optimiser is latency-insensitive by four to six orders of
+      magnitude relative to the thing that actually needs to be in the rack.
+
+      Now the four candidates against the criteria that do bind.
+
+          option        RTT       compute        6h survival    notes
+          ----------------------------------------------------------------
+          laptop        50-150ms  4-8 cores      poor           lid, wifi,
+                                                                sleep
+          cloud VM      5-50 ms   as purchased   good           needs the
+          same region                                           vendor API
+          cluster node  1-10 ms   hundreds of    good           scheduler
+          next to it              cores, GPUs                   dependency
+          control rack  under     1 host, shared with the real-time stack
+          host          1 ms      and safety-critical           do not
+                                                                touch
+          ----------------------------------------------------------------
+
+      The laptop fails on availability, not on latency. A 6-hour run needs a
+      process that survives a closed lid, a wifi handover and a corporate VPN
+      idle timeout. It also has to receive results: 0.8 MB per iteration times
+      400 iterations is 320 MB over a residential uplink, which is fine in
+      total but miserable when the uplink is contended. Use the laptop to
+      launch and monitor, never to host the loop.
+
+      The control rack host is the interesting wrong answer. It has the lowest
+      latency and it is right there. Reject it for three reasons. It is
+      shared, safety-critical infrastructure: an optimiser that allocates 30
+      GB and swaps will add jitter to the sequencer host and to the
+      calibration daemons. It has no HPC: a run that needs a CCSD reference or
+      a tensor reconstruction wants hundreds of cores it does not have. And it
+      is the one machine you cannot casually restart. The rule I would write
+      down is: nothing runs in the control rack unless it must complete inside
+      a microsecond.
+
+      Between the cluster node and the cloud VM, pick the cluster if the
+      classical step is heavy. The test is simple: if a single classical step
+      exceeds about one core-minute, it belongs on the cluster, because there
+      the step is parallel and the interconnect is real. Classical shadows
+      post-processing, circuit-cutting reconstruction and any CI or CASSCF
+      reference all cross that line. A 60-parameter L-BFGS update does not: it
+      is microseconds, and for that workload a two-core VM is enough and the
+      cluster's scheduler is pure overhead, because now you have to hold a
+      Slurm allocation for six hours to run something that uses 0.002 percent
+      of it.
+
+      Cost sanity check. A 6-hour run at 25 s of device time per iteration
+      consumes 2.85 hours of QPU. QPU time is the expensive line by orders of
+      magnitude; a cloud VM at a few dollars an hour for six hours is noise.
+      So cost does not decide this. Availability and classical compute do.
+
+      What flips the decision. If the loop period drops from 25 s to 10 ms,
+      for example a fast calibration loop that retunes a pulse amplitude from
+      an error-amplification sweep, then a 50 ms round trip is 5x the loop
+      period and the answer moves to the control rack host, or into the FPGA
+      itself if it drops below a millisecond. That is the same rule applied to
+      a different number, not a different rule.
+
+      The trade-off I am accepting: putting the optimiser outside the rack
+      makes the run depend on a network and on a scheduler, and it means the
+      customer's code and the device's code are in different failure domains,
+      so every failure needs a checkpoint and a resume story. I take that
+      because the alternative is an unmaintainable rack and a run that dies
+      when someone shuts a laptop.
+    followUps:
+      - Where do you draw the line for classical work that must move to the cluster, and how would you measure whether a given step has crossed it?
+      - What is the smallest loop period for which you would still keep the optimiser off the control rack host?
+      - The cluster's scheduler will not give you a 6-hour allocation. What do you do instead, and what does it cost?
+    commonMistakes:
+      - Arguing for the control rack on latency grounds, when the iteration loop is 25 s and a 50 ms round trip is 0.2 percent of it.
+      - Hosting a 6-hour run on a laptop, which fails on process survival and on a contended uplink long before it fails on latency.
+      - Taking a 6-hour cluster allocation for an optimiser that uses two cores, so the run depends on a scheduler it does not need.
+    references:
+      - label: NVIDIA CUDA-Q documentation
+        url: https://nvidia.github.io/cuda-quantum/
+      - label: Slurm workload manager documentation
+        url: https://slurm.schedmd.com/documentation.html
+
+  - id: iq-159
+    title: Design fault handling for a six-hour hybrid run
+    kind: system-design
+    prompt: |
+      A 400-iteration variational run is scheduled for six hours on a shared
+      superconducting device. Four things will happen and you must design for
+      all of them. The device drifts: T1 and T2 vary qubit to qubit and hour to
+      hour. The operator recalibrates at hour three, so the objective function
+      changes underneath the optimiser. The device goes offline for
+      twenty minutes at hour four. And a single job fails at iteration 400,
+      after five hours and fifty minutes. Design the checkpointing, the
+      resumption, the drift detection, and the error classification. Tell me
+      what state is durable, how often you write it, what it costs, and which
+      failures you retry versus which you must surface. A run that silently
+      averages pre-calibration and post-calibration energies is a failed
+      answer.
+    difficulty: hard
+    pattern: Hybrid HPC and QPU loop
+    topics: [checkpointing, drift, fault-tolerance, hybrid-loop, resumption]
+    companies: [IBM, Quantinuum, "Alice & Bob", Multiverse Computing]
+    modelAnswer: |
+      The decision that matters: drive the optimiser as an explicit ask-tell
+      state machine whose entire state is durable outside the client process,
+      and treat every energy sample as carrying the id of the calibration that
+      produced it. Once those two things are true, all four failures have
+      mechanical answers. Without them, none of them do.
+
+      Durable state, and its size:
+
+          parameters                 60 float64           480 B
+          iteration index and seed                        16 B
+          optimiser internals        trust radius,
+                                     L-BFGS memory    about 20 KB
+          history                    400 x (energy,
+                                     sigma, calib_id) about 13 KB
+          active calibration set id                       16 B
+          --------------------------------------------------------
+          total                                       under 40 KB
+
+      Forty kilobytes. Writing that takes of order 10 ms against a 25 s
+      iteration, 0.04 percent, so there is no argument for checkpointing less
+      often than every iteration. The interesting design is not the
+      checkpoint, it is what it must contain for a resume to be correct.
+
+      Idempotency. Shots are not idempotent, so a retried job must not be
+      double counted. Every evaluation carries an idempotency key of
+      `hash(iteration, program_hash, parameter_array, shots, seed)` and results
+      are stored under it, so a retry after a timeout whose first attempt also
+      landed produces one record, not two.
+
+      Drift detection. Interleave a witness circuit every 10 iterations, one
+      whose exact value you know. Cost is about 1 percent of the budget. Fire
+      on a 3-sigma move against the witness's own shot noise: at 4096 shots a
+      bounded observable has a standard error near 1.6e-2, so 3 sigma is about
+      5e-2, and smaller moves you cannot see and should not react to.
+
+      Now the four failures.
+
+      1. Drift within tolerance. Continue. Record the calibration set id
+         alongside every sample so the drift is analysable later. Prefer an
+         optimiser that tolerates a moving objective. SPSA and other stochastic
+         methods survive it; L-BFGS does not, because a curvature estimate
+         built from pre-drift and post-drift evaluations is garbage that looks
+         like a valid Hessian.
+
+      2. Recalibration at hour three. A new calibration set is a new objective
+         function. Energies before and after are not comparable at the
+         millihartree level, and chemical accuracy is 1.6 millihartree, so the
+         incomparability is larger than the quantity being resolved. On a
+         calibration change: stop, re-evaluate the current point on the new
+         calibration, record both values with their calibration ids, and reset
+         the optimiser's internal state, meaning the trust region radius and
+         any curvature memory. Keep the parameters, discard the curvature.
+
+      3. Device offline for twenty minutes. Back off exponentially with
+         jitter, capped at 60 s, for up to 30 minutes. The session lease
+         expires long before, so resuming costs one queue wait. Failing over
+         to a sibling device is allowed but is not a continuation: a different
+         device is a different objective, exactly like case 2. Never let a
+         line search straddle two devices.
+
+      4. A failed job at iteration 400. Classification decides everything:
+
+             transient       network timeout, 5xx, queue error, session
+                             expired            -> retry, 3 attempts
+             semi-transient  qubit dropped from the coupling map by the
+                             nightly pipeline   -> re-transpile, then treat
+                                                   as case 2
+             deterministic   circuit rejected by the validator, parameter
+                             out of range       -> fail loudly, no retry
+
+         Retrying a deterministic failure burns queue slots and hides the bug.
+         The distinction must be explicit in the error taxonomy the API
+         returns, not inferred from a message string.
+
+      Resume path. On restart, load the checkpoint, verify the active
+      calibration set id against the device's current one, and branch: same id,
+      continue; different id, run the case 2 procedure. Then replay any
+      completed-but-unrecorded result by idempotency key. Total resume cost is
+      one queue wait plus one energy evaluation, about 85 s, against a run that
+      would otherwise start from zero and lose up to 5 hours 50 minutes.
+
+      The trade-off. Full resumability forces the optimiser into an ask-tell
+      loop, so you cannot use a stock `scipy.optimize` call with a callback and
+      you have to own the optimiser's state explicitly. That is real
+      engineering cost and it rules out some library optimisers entirely. For a
+      10-minute run I would skip all of it, checkpoint at the end, and restart
+      on failure. The crossover is roughly where the expected cost of a restart,
+      failure probability times run length, exceeds a day of engineering, which
+      for a device with a few percent hourly failure rate lands around the
+      one-hour run.
+    followUps:
+      - How do you decide whether to fail over to a sibling device or wait, and what evidence would you need from the history to justify either?
+      - What witness circuit would you interleave, and how do you keep its cost under one percent of the budget?
+      - Your optimiser is L-BFGS and the operator recalibrates every three hours. What do you change, and what do you lose by changing it?
+    commonMistakes:
+      - Continuing a gradient-based line search across a recalibration, which feeds the curvature estimate energies from two different objectives and produces a confident wrong step.
+      - Retrying a deterministic failure such as a rejected circuit, which consumes queue slots and hides the real error behind a retry loop.
+      - Omitting an idempotency key, so a retry after a timeout whose first attempt landed silently double counts shots and corrupts the error bars.
+    references:
+      - label: Preskill, Quantum computing in the NISQ era and beyond
+        url: https://arxiv.org/abs/1801.00862
+      - label: PostgreSQL documentation
+        url: https://www.postgresql.org/docs/
+
+  - id: iq-160
+    title: Bound the reconstruction cost of a circuit-cutting workload
+    kind: system-design
+    prompt: |
+      A customer wants to run a 100-qubit circuit on a 60-qubit device by
+      cutting it into fragments. Every cut multiplies the classical
+      post-processing and the sampling overhead, and the growth is exponential
+      in the number of cuts. Design the data path: where the cut finder runs,
+      where the fragment circuits run, what comes back over the wire and how
+      much of it, where reconstruction happens and on what hardware, and, most
+      importantly, the admission control that refuses a job before it burns a
+      week of device time. Give me the formula you gate on, a table of cut
+      count against cost, and the line where you say no. Target precision on
+      the final expectation value is 1e-2.
+    difficulty: hard
+    pattern: Hybrid HPC and QPU loop
+    topics: [circuit-cutting, admission-control, hpc-integration, sampling-overhead, hybrid-loop]
+    companies: [IBM, AWS Braket, Classiq, Terra Quantum]
+    modelAnswer: |
+      The decision that matters is that admission control runs before anything
+      else, and it gates on sampling overhead, not on classical FLOPs. For
+      wire and gate cutting the exponential lands on the shot budget. The
+      classical reconstruction is embarrassingly parallel and, at the cut
+      counts that are affordable at all, it is not the binding constraint.
+
+      The formula. A quasiprobability decomposition of a cut has a one-norm
+      gamma. Composing k independent cuts multiplies them, and the variance of
+      the final estimator scales as the square of the product, so
+
+          shots_required = gamma_total^2 / epsilon^2
+          gamma_total    = product over cuts of gamma_i
+
+      The per-cut constants depend on the decomposition and move as the
+      literature improves, so treat them as representative: a CNOT gate cut
+      has gamma of about 3, a wire cut about 4. What is not in dispute is that
+      the product is exponential in k.
+
+      At epsilon = 1e-2, the uncut baseline is 1/epsilon^2 = 1e4 shots. Take
+      wire cuts at gamma = 4, so gamma^2 = 16 per cut. At 60 microseconds of
+      device time per shot:
+
+          k    gamma_total^2   shots        QPU time
+          ------------------------------------------------
+          1    16              1.6e5        9.6 s
+          2    256             2.6e6        2.6 min
+          3    4.1e3           4.1e7        41 min
+          4    6.6e4           6.6e8        11 hours
+          5    1.0e6           1.0e10       7 days
+          6    1.7e7           1.7e11       116 days
+          ------------------------------------------------
+
+      That table is the answer to "where do you say no". The line is k = 4 for
+      anything that must finish overnight, and k = 3 for anything interactive.
+      k = 6 is not a slow job, it is not a job. Admission control computes
+      gamma_total from the cut list and the requested epsilon, converts to QPU
+      seconds using the device's measured shot period, compares against the
+      user's remaining budget, and rejects with the number in the message:
+      "this cut set implies 1.7e11 shots, which is 116 days of device time".
+      Rejecting with a number is what stops the argument.
+
+      Note what this means for the original ask. Cutting a 100-qubit circuit
+      onto a 60-qubit device needs far more than four cuts unless the circuit
+      has a genuinely narrow bottleneck in its entanglement structure. So the
+      honest first answer is usually: not cuttable at this precision, and here
+      is the k your circuit needs against the k your budget allows.
+
+      Data path, with sizes.
+
+          user circuit
+             |
+          cut finder        HPC login node, 60 s time box. Finding a
+             |              minimum-gamma cut set is graph partitioning and
+             |              is NP-hard, so run a heuristic under a budget
+          subexperiment     each cut expands into a few measurement and
+          expansion         preparation settings, so distinct circuits grow
+             |              like 6^k. k=3 is a few hundred circuits
+          QPU batch         fragments are independent, so this is one batch
+             |              job, not a session: no classical work between
+          counts            sparse histograms. k=3: about 200 subexperiments
+             |              x 4096 shots x 4 bytes = 3.3 MB. Negligible
+          reconstruction    sum over 4^k quasiprobability terms of products
+             |              of fragment expectation values. k=5 is 1024
+             |              terms. Seconds on one core, milliseconds over
+             |              MPI ranks
+          estimate + sigma
+
+      So: the wire is 3 MB, the CPU is seconds, and the QPU is 41 minutes.
+      The imbalance is the point. Anyone who designs this system around the
+      classical reconstruction has optimised the free part.
+
+      One caveat: if you reconstruct by exactly contracting fragment tensors
+      rather than by sampling the decomposition, the exponential moves into
+      classical memory as 4^k complex numbers per cut group, and the cluster's
+      memory does bind. The admission controller must know which algorithm the
+      job requested.
+
+      Sample-based approaches are the other family. There the classical cost
+      is set by how many configurations you retain for a subspace
+      diagonalisation, not by the cut count, so the bound is a memory bound on
+      the eigensolver that you name up front and cap at what a node holds.
+
+      The trade-off. Cutting buys circuit width with shots: it converts a
+      width problem into a time problem at an exponential exchange rate. That
+      is worth doing only when k is small and epsilon is loose, and it is worth
+      building only because the alternative, waiting for a wider device, is not
+      available this year. If the device were wide enough, or if the estimate
+      needed epsilon = 1e-3, which multiplies every row of that table by 100,
+      I would not cut at all.
+    followUps:
+      - Your cut finder returns k equals 7 as the best it can do in 60 seconds. What do you tell the customer, and what would you offer them instead?
+      - How does the table change if the target precision moves from 1e-2 to 1e-3, and what does that do to your admission threshold?
+      - Where does the exponential move if you reconstruct by exact tensor contraction instead of by sampling, and what resource binds then?
+    commonMistakes:
+      - Sizing the system around classical reconstruction FLOPs, which are seconds, while the sampling overhead is the term that costs days.
+      - Quoting gamma per cut as an exact constant. It depends on the decomposition and on the gate being cut, so quote it as representative and let the exponential in k carry the argument.
+      - Admitting a job on qubit count alone, so a six-cut circuit is accepted and consumes months of device time before anyone notices.
+    references:
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+      - label: Open MPI documentation
+        url: https://www.open-mpi.org/doc/
+
+  - id: iq-161
+    title: Build the observability and SLO model for a hybrid service
+    kind: system-design
+    prompt: |
+      You operate a hybrid quantum service. Customers open sessions, submit
+      parameterised circuit batches, and run classical optimisers of their own
+      that you cannot see. Two support tickets a week say "your QPU is slow".
+      Design the observability and SLO model that settles that argument with
+      data. Tell me the spans and metrics you emit per iteration, the derived
+      quantities that separate your latency from the customer's, the SLOs you
+      publish and the ones you refuse to publish, what you alert on and at what
+      burn rate, and what a customer sees on a dashboard at the end of a
+      six-hour run. Assume 400 iterations per run and a few hundred concurrent
+      sessions, so telemetry volume is not your constraint.
+    difficulty: hard
+    pattern: Hybrid HPC and QPU loop
+    topics: [observability, slo, tracing, hybrid-loop, alerting]
+    companies: [AWS Braket, Microsoft Azure Quantum, Rigetti, Q-CTRL]
+    modelAnswer: |
+      The decision that matters is which single number settles the argument.
+      It is lease-held-idle time: seconds during which the customer held the
+      lease and had no job outstanding. If that is 70 percent of the session,
+      the bottleneck is their optimiser. Everything else exists to make that
+      number trustworthy.
+
+      One trace per iteration, with these spans:
+
+          iteration
+            |- bind_parameters        client side, reported by the SDK
+            |- submit                 client to API, network
+            |- admission              validation, entitlement, budget check
+            |- queue_wait             accepted to lease acquired
+            |- device_execution       first pulse to last shot
+            |- result_return          last shot to bytes on the client
+            |- classical_step         client side, reported by the SDK
+
+      Three of those, bind, submit and classical_step, are visible only if the
+      client SDK instruments itself and propagates trace context. Make that
+      non-optional for sessions, because without it you cannot distinguish
+      "your optimiser is slow" from "we did not measure it". At 400 iterations
+      x 7 spans that is 2,800 spans per run, so sample at 100 percent: this is
+      not web traffic and the volume argument for sampling does not apply.
+
+      Metrics, as histograms and counters, labelled by device and account:
+
+          queue_wait_seconds                 histogram
+          device_execution_seconds_total     counter
+          session_seconds_total, lease_idle_seconds_total    counters
+          shots_executed_total, job_errors_total{class}      counters
+          calibration_age_seconds, witness_fidelity          gauges
+
+      Derived quantities, which is where the value is:
+
+          duty_cycle      = device_execution_seconds / session_seconds
+          idle_share      = lease_idle_seconds / session_seconds
+          shot_efficiency = shots_executed x shot_period / execution_seconds
+
+      duty_cycle plus idle_share is the verdict. If idle_share is 0.7, the
+      customer's classical step dominates. If queue_wait p95 is 900 s on a
+      25 s batch, it is mine. shot_efficiency catches the third case: an
+      efficiency of 0.3 means 70 percent of nominal execution went on passive
+      reset or on re-arming waveform memory, which is an operator bug.
+
+      SLOs I publish:
+
+          submission API availability      99.9%
+          accepted-to-first-result on a    p95 <= 90 s, reserved
+          reference circuit                capacity only
+          device availability              95% of published hours,
+                                           calibration windows excluded
+          result durability                99.999%, accepted means committed
+
+      SLOs I refuse to publish:
+
+          time to solution for a customer's run. It is dominated by their
+          optimiser and their shot budget, so publishing it means owning a
+          number I do not control.
+
+          queue wait on fair-share capacity. That wait is a function of
+          everyone else's demand, so an SLO on it forces me to hold idle
+          reserved capacity while pricing it as fair-share.
+
+      Alerting. Multi-window burn-rate alerts on the SLOs: page when 2 percent
+      of the monthly error budget burns in one hour, ticket when 5 percent
+      burns in six hours. Never alert on raw CPU. Two domain alerts that are
+      not SLO burn: calibration_age_seconds above its policy threshold, since
+      stale calibration degrades every result while no latency metric moves;
+      and witness_fidelity dropping more than 3 sigma of its own shot noise
+      over a rolling window, which leads the tickets. For backlogs alert on
+      the derivative, not the level: a queue 200 deep and draining is fine, a
+      queue 40 deep growing at 3 jobs per minute will be 200 deep in an hour.
+
+      What the customer sees. One panel per session: a stacked bar of wall
+      clock split into queue wait, device execution, result return and lease
+      idle, plus one generated sentence. "This session held the device for
+      5 h 51 m. 2 h 49 m was device execution (48 percent). 2 h 55 m was
+      lease-held idle waiting for your optimiser (50 percent). Queue wait was
+      61 s total." That closes the ticket, sometimes in the customer's favour.
+
+      The trade-off. Publishing idle-share hands customers a billing argument:
+      if they were idle, why did they pay for the lease? Decide that before
+      the metric ships. My answer is that lease time is billed because it is
+      exclusive, which is exactly why the metric must be visible. Requiring
+      SDK-side spans also means an old client produces a session with a hole
+      in it, so the dashboard shows "unmeasured" rather than blaming the
+      device. Without client spans I would infer idle from lease-held minus
+      outstanding-job time, which is coarser but is measured on my side.
+    followUps:
+      - A customer disputes the idle-share number and says your clock is wrong. What evidence do you produce?
+      - Which of these metrics would you keep if you could only keep three, and why those three?
+      - How would you detect that a device is nominally executing but is wasting most of its time on reset or re-arm?
+    commonMistakes:
+      - Publishing an SLO on end-to-end time to solution, which is dominated by the customer's optimiser and shot budget and therefore cannot be defended.
+      - Sampling hybrid traces at a web-traffic rate, when 400 iterations of 7 spans per run is small enough to keep at 100 percent and the whole point is per-iteration attribution.
+      - Alerting on raw queue depth rather than on its growth rate, which pages for a deep queue that is draining and stays silent for a shallow one that is not.
+    references:
+      - label: OpenTelemetry documentation
+        url: https://opentelemetry.io/docs/
+      - label: Prometheus documentation
+        url: https://prometheus.io/docs/

@@ -1,0 +1,234 @@
+---
+id: t2.m2.l3
+title: Choosing the Iteration Count
+type: concept
+track: t2
+module: t2.m2
+level: L2
+minutes: 12
+objectives:
+  - "Derive the success amplitude sin((2k+1)*theta) with sin(theta) = sqrt(M/N)"
+  - Compute the optimal iteration count floor(pi/(4*theta)) for N = 8 with one marked item and for N = 16 with two
+  - "Bound the success probability that the optimal integer count achieves when pi/(4*theta) is not an integer"
+prerequisites:
+  - t2.m2.l2
+  - t0.m2.l2
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: Watrous, Quantum Computation lecture notes
+    url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+tags: [grover, iterations]
+---
+
+Grover is a rotation, and a rotation does not stop when it reaches the target. It
+keeps going. So the algorithm has one free parameter, the number of iterations,
+and getting it wrong costs you the answer entirely rather than a few percent. The
+rule is a floor, not a round, and this lesson shows where the floor comes from and
+what it guarantees.
+
+## The success probability, exactly
+
+From the previous lesson, $k$ iterations leave the state at angle $(2k+1)\theta$
+from $\ket{r}$, so measuring returns a marked item with probability
+
+$$
+P(k) = \sin^2\big((2k+1)\theta\big), \qquad \sin\theta = \sqrt{M/N} .
+$$
+
+Set the argument to $\pi/2$ and solve for $k$ to find the ideal real-valued count:
+
+$$
+(2k^\star + 1)\theta = \frac{\pi}{2}
+\quad\Longrightarrow\quad
+k^\star = \frac{\pi}{4\theta} - \frac{1}{2} .
+$$
+
+$k$ has to be an integer, and the standard choice is
+
+$$
+k_{\mathrm{opt}} = \left\lfloor \frac{\pi}{4\theta} \right\rfloor .
+$$
+
+<Margin label="Floor, not round">
+Taking the floor of $\pi/(4\theta)$ is the same as rounding $k^\star$ to the
+nearest integer whenever the fractional part of $\pi/(4\theta)$ is not exactly
+$1/2$, and it never overshoots by more than one step. Rounding $\pi/(4\theta)$
+*up* is the classic bug: it can push $(2k+1)\theta$ past $\pi/2$ by more than
+$\theta$ and cost real probability. For small $M/N$, $\theta \approx \sqrt{M/N}$,
+which is where the familiar $\lfloor \frac{\pi}{4}\sqrt{N/M} \rfloor$ comes from.
+</Margin>
+
+## Two worked counts
+
+**$N = 8$, $M = 1$.** $\sin\theta = 1/\sqrt8 = 0.353553$, so
+$\theta = 0.3613671$ and $\pi/(4\theta) = 2.173408$. The floor is
+$k_{\mathrm{opt}} = 2$, and
+
+$$
+P(2) = \sin^2(5\theta) = \left(\frac{11\sqrt2}{16}\right)^{2} = \frac{121}{128} = 0.9453125 .
+$$
+
+<Circuit
+  caption="Three qubits, marked 101, two iterations. Amplitude 0.972272 on the marked string, which is 11*sqrt(2)/16, and probability 121/128."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "grover-n8-k2",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "o1a", gate: "x", targets: [1] },
+      { id: "o1z", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "o1b", gate: "x", targets: [1] },
+      { id: "d1a", gate: "h", targets: [0] },
+      { id: "d1b", gate: "h", targets: [1] },
+      { id: "d1c", gate: "h", targets: [2] },
+      { id: "d1d", gate: "x", targets: [0] },
+      { id: "d1e", gate: "x", targets: [1] },
+      { id: "d1f", gate: "x", targets: [2] },
+      { id: "d1z", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "d1g", gate: "x", targets: [0] },
+      { id: "d1h", gate: "x", targets: [1] },
+      { id: "d1i", gate: "x", targets: [2] },
+      { id: "d1j", gate: "h", targets: [0] },
+      { id: "d1k", gate: "h", targets: [1] },
+      { id: "d1l", gate: "h", targets: [2] },
+      { id: "o2a", gate: "x", targets: [1] },
+      { id: "o2z", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "o2b", gate: "x", targets: [1] },
+      { id: "d2a", gate: "h", targets: [0] },
+      { id: "d2b", gate: "h", targets: [1] },
+      { id: "d2c", gate: "h", targets: [2] },
+      { id: "d2d", gate: "x", targets: [0] },
+      { id: "d2e", gate: "x", targets: [1] },
+      { id: "d2f", gate: "x", targets: [2] },
+      { id: "d2z", gate: "z", targets: [2], controls: [0, 1] },
+      { id: "d2g", gate: "x", targets: [0] },
+      { id: "d2h", gate: "x", targets: [1] },
+      { id: "d2i", gate: "x", targets: [2] },
+      { id: "d2j", gate: "h", targets: [0] },
+      { id: "d2k", gate: "h", targets: [1] },
+      { id: "d2l", gate: "h", targets: [2] }
+    ]
+  }}
+/>
+
+The other seven amplitudes are $-0.088388 = -\sqrt2/16$ each, for
+$1/128 = 0.0078125$ apiece. Two queries, and the answer is wrong once in about
+nineteen runs.
+
+**$N = 16$, $M = 2$.** Now $\sin\theta = \sqrt{2/16} = 1/\sqrt8$, the *same*
+$\theta$ as before, so $k_{\mathrm{opt}} = 2$ again and the total probability on
+the marked set is again $121/128$. It is split evenly, so each of the two marked
+strings carries $121/256 = 0.47265625$ and each amplitude is $11/16 = 0.6875$.
+This is the graph-colouring lab of T2.M2.L7, and the coincidence is not one:
+$\theta$ depends on $M/N$ alone, so doubling both the space and the solution count
+leaves the iteration count unchanged.
+
+## What the floor guarantees
+
+$k_{\mathrm{opt}}$ is within half a step of $k^\star$, and one step of the
+rotation is $2\theta$, so the final angle is within $\theta$ of $\pi/2$:
+
+$$
+\left| (2k_{\mathrm{opt}}+1)\theta - \frac{\pi}{2} \right| \le \theta .
+$$
+
+Therefore
+
+$$
+P(k_{\mathrm{opt}}) \ge \cos^2\theta = 1 - \frac{M}{N} .
+$$
+
+For $N = 8$ that promises at least $0.875$ and delivers $0.9453125$. For a real
+search with $N = 2^{40}$ the promise is $1 - 2^{-40}$, so for large instances the
+integer rounding is free. The bound only bites when the search space is tiny,
+which is exactly the regime the labs in this module run in.
+
+| $k$ | $(2k+1)\theta$ | $P(k)$ for $N=8$, $M=1$ |
+| --- | --- | --- |
+| $0$ | $0.361367$ | $0.125$ |
+| $1$ | $1.084101$ | $0.78125$ |
+| $2$ | $1.806836$ | $0.9453125$ |
+| $3$ | $2.529570$ | $0.330078$ |
+| $4$ | $3.252304$ | $0.012207$ |
+
+## Overshooting is not a small error
+
+At $N = 4$ the ideal count is exactly 1 and the success probability is exactly 1.
+Run a second iteration and the state rotates from $90$ degrees to $150$ degrees,
+where $\sin^2 = 1/4$.
+
+<Circuit
+  caption="Two qubits, marked 11, two iterations instead of one. The probability has fallen from 1 back to 0.25, the value it had before the algorithm started."
+  show={['probabilities']}
+  ir={{
+    version: 1,
+    name: "grover-n4-k2",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "o1", gate: "z", targets: [1], controls: [0] },
+      { id: "a1", gate: "h", targets: [0] },
+      { id: "a2", gate: "h", targets: [1] },
+      { id: "a3", gate: "x", targets: [0] },
+      { id: "a4", gate: "x", targets: [1] },
+      { id: "a5", gate: "z", targets: [1], controls: [0] },
+      { id: "a6", gate: "x", targets: [0] },
+      { id: "a7", gate: "x", targets: [1] },
+      { id: "a8", gate: "h", targets: [0] },
+      { id: "a9", gate: "h", targets: [1] },
+      { id: "o2", gate: "z", targets: [1], controls: [0] },
+      { id: "b1", gate: "h", targets: [0] },
+      { id: "b2", gate: "h", targets: [1] },
+      { id: "b3", gate: "x", targets: [0] },
+      { id: "b4", gate: "x", targets: [1] },
+      { id: "b5", gate: "z", targets: [1], controls: [0] },
+      { id: "b6", gate: "x", targets: [0] },
+      { id: "b7", gate: "x", targets: [1] },
+      { id: "b8", gate: "h", targets: [0] },
+      { id: "b9", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+All four outcomes at $25\%$: the extra query has undone the first one completely.
+An algorithm that ran $k = 2$ here would be indistinguishable from guessing while
+costing twice as much.
+
+<Callout tone="warning" title="You need M to choose k, and often you do not know M">
+Every formula above needs $M$. When $M$ is unknown, the standard fix is the
+Boyer, Brassard, Hoyer and Tapp schedule: pick $k$ uniformly from
+$\{0, \dots, \lceil m \rceil - 1\}$, run, check the answer with one extra query,
+and on failure multiply $m$ by $6/5$ and repeat. The expected total is still
+$O(\sqrt{N/M})$ queries, with a worse constant. Never guess $M = 1$ when it might
+be larger: over-rotation is the failure mode, and it is silent.
+</Callout>
+
+<Check question="You have $N = 2^{20}$ and are told $M$ is either 1 or 4. You run $k = \lfloor \frac{\pi}{4}\sqrt{N} \rfloor = 804$ iterations. What happens in each case?">
+With $M = 1$ this is right and succeeds with probability essentially 1. With
+$M = 4$ the true angle is $\theta_4 = 2\theta_1$ to excellent accuracy, so the
+state has rotated to about $2 \times \pi/2 = \pi$, and
+$\sin^2(\pi) \approx 0$: the algorithm returns an unmarked string almost
+certainly. The correct count for $M = 4$ is 402. This asymmetry is why the
+unknown-$M$ schedule randomises $k$ rather than betting on a value, and why any
+Grover implementation should be tested at the largest $M$ it might face, not the
+smallest.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), for the
+  $\sin((2k+1)\theta)$ derivation and the $1 - M/N$ guarantee.
+- [Watrous, Quantum Computation notes](https://cs.uwaterloo.ca/~watrous/QC-notes/),
+  for the unknown-$M$ schedule and its expected query count.
+- [PennyLane Codebook](https://pennylane.ai/codebook), whose Grover module has the
+  learner sweep $k$ and watch the probability curve turn over.

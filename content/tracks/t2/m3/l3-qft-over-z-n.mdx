@@ -1,0 +1,184 @@
+---
+id: t2.m3.l3
+title: QFT over Z_N
+type: concept
+track: t2
+module: t2.m3
+level: L2
+minutes: 12
+objectives:
+  - "Define the QFT over an arbitrary cyclic group Z_N rather than over Z_2^n"
+  - Explain why order finding needs Z_N and how the power-of-two register approximates it
+  - Bound the error introduced when N is not a power of two
+prerequisites:
+  - t2.m3.l2
+sources:
+  - label: Watrous, Quantum Computation lecture notes
+    url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+  - label: Quantum Algorithm Zoo
+    url: https://quantumalgorithmzoo.org/
+tags: [qft, group]
+---
+
+The circuit of the last lesson factorised because $N$ was a power of two. Order
+finding needs a transform over $\Z_r$ for an $r$ nobody knows in advance, and $r$
+is almost never a power of two. What happens when you use the wrong group is not
+a catastrophe and not a detail: it is a specific, bounded loss of probability, and
+the whole of Shor's post-processing exists to clean it up.
+
+## The transform over a cyclic group
+
+For any finite abelian group $G$ the Fourier transform is defined by the
+characters of $G$, the homomorphisms $\chi: G \to \C^\times$. For the cyclic group
+$\Z_N$ the characters are $\chi_k(j) = e^{2\pi i jk/N}$, indexed by $k \in \Z_N$,
+and the transform is
+
+$$
+F_{\Z_N}\ket{j} = \frac{1}{\sqrt N}\sum_{k \in \Z_N} e^{2\pi i jk/N}\ket{k} .
+$$
+
+This is the same formula as before with no assumption that $N = 2^n$. When $N$ *is*
+a power of two, $\Z_N \cong \Z_2^{\,n}$ as a set of bitstrings and the exponent
+splits across bits, which is what gave the product form. For other $N$ the group
+does not decompose that way and the seven-gate circuit does not exist. Efficient
+exact circuits for $F_{\Z_N}$ do exist, by Kitaev's construction and its
+refinements, but they are considerably more work and almost nobody builds them.
+
+<Margin label="Why $\Z_2^n$ is the easy case">
+$\Z_2^{\,n}$ is a product of $n$ copies of $\Z_2$, and the Fourier transform of a
+product group is the tensor product of the transforms. The transform over $\Z_2$
+is the Hadamard. So Fourier sampling over $\Z_2^{\,n}$, which is Bernstein-Vazirani
+and Simon, needs nothing but $H^{\otimes n}$: no rotations, no swaps, depth 1.
+Everything expensive about the QFT comes from $\Z_{2^n}$ being a *cyclic* group of
+order $2^n$ rather than a product of small ones.
+</Margin>
+
+## What order finding actually needs
+
+Order finding produces a register in a superposition over an arithmetic
+progression: the values $x_0, x_0 + r, x_0 + 2r, \dots$ modulo the register size.
+The period $r$ is the answer. If you had a register of size exactly $r$, or any
+multiple of $r$, the transform would put all the weight on exact multiples of
+$2^t/r$ and reading a peak would give $r$ immediately.
+
+You do not. You have $t$ qubits, so a register of size $2^t$, and $r$ divides
+$2^t$ only if $r$ is itself a power of two. What comes out of the QFT is a
+distribution peaked *near* the multiples of $2^t/r$ rather than on them, and the
+peaks have skirts.
+
+## The cost of the mismatch, exactly
+
+Consider the cleanest form of the problem. Feed the transform a state whose
+amplitudes are a pure phase ramp at frequency $\varphi$:
+
+$$
+\ket{\Psi_\varphi} = \frac{1}{\sqrt{2^t}}\sum_{j=0}^{2^t-1} e^{2\pi i \varphi j}\ket{j} ,
+$$
+
+which is a product state, one qubit per binary place, and which the inverse QFT
+maps back to $\ket{2^t \varphi}$ when $2^t\varphi$ is an integer. Take $t = 3$ and
+$\varphi = 5/8$, exactly representable in three bits.
+
+<Circuit
+  caption="Phase ramp at 5/8 through the inverse QFT on three qubits. The register reads 101 with probability 1: no leakage at all."
+  show={['probabilities']}
+  ir={{
+    version: 1,
+    name: "exact-frequency-5-8",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "p0", gate: "p", targets: [0], params: [15.707963267948966] },
+      { id: "p1", gate: "p", targets: [1], params: [7.853981633974483] },
+      { id: "p2", gate: "p", targets: [2], params: [3.9269908169872414] },
+      { id: "i0", gate: "swap", targets: [0, 2] },
+      { id: "i1", gate: "h", targets: [2] },
+      { id: "i2", gate: "p", targets: [1], controls: [2], params: [-1.5707963267948966] },
+      { id: "i3", gate: "h", targets: [1] },
+      { id: "i4", gate: "p", targets: [0], controls: [2], params: [-0.7853981633974483] },
+      { id: "i5", gate: "p", targets: [0], controls: [1], params: [-1.5707963267948966] },
+      { id: "i6", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+Now change one number. Take $\varphi = 1/3$, which no three-bit register can hold.
+
+<Circuit
+  caption="The same circuit at frequency 1/3. The nearest representable value, 3/8, takes 68.78% and the second nearest, 2/8, takes 17.49%; the rest leaks across all eight outcomes."
+  show={['probabilities']}
+  ir={{
+    version: 1,
+    name: "leaky-frequency-1-3",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "p0", gate: "p", targets: [0], params: [8.377580409572781] },
+      { id: "p1", gate: "p", targets: [1], params: [4.1887902047863905] },
+      { id: "p2", gate: "p", targets: [2], params: [2.0943951023931953] },
+      { id: "i0", gate: "swap", targets: [0, 2] },
+      { id: "i1", gate: "h", targets: [2] },
+      { id: "i2", gate: "p", targets: [1], controls: [2], params: [-1.5707963267948966] },
+      { id: "i3", gate: "h", targets: [1] },
+      { id: "i4", gate: "p", targets: [0], controls: [2], params: [-0.7853981633974483] },
+      { id: "i5", gate: "p", targets: [0], controls: [1], params: [-1.5707963267948966] },
+      { id: "i6", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+The probability of the nearest outcome $\ket{011}$ is $0.687838$, and the second
+nearest $\ket{010}$ takes $0.174940$; the remaining six outcomes share $0.137222$
+between them. In closed form, writing $\delta = \varphi - k/2^t$ for the offset
+from the outcome $k$,
+
+$$
+\Pr[k] = \frac{1}{2^{2t}}\left|\frac{\sin(\pi 2^t \delta)}{\sin(\pi \delta)}\right|^2 ,
+$$
+
+a Dirichlet kernel: a central lobe with $1/\delta^2$ tails.
+
+## The bound worth remembering
+
+For any $\varphi$, the outcome nearest to $2^t\varphi$ has probability at least
+
+$$
+\frac{4}{\pi^2} = 0.405285 .
+$$
+
+The worst case is $\varphi$ exactly halfway between two representable values, and
+even then the best outcome carries more than two fifths of the weight. Since
+$4/\pi^2$ is a constant, a constant number of repetitions gives the nearest value
+with any confidence you like. Combined with a register of $t \ge 2n$ bits, that is
+enough for the continued-fraction step of T2.M5.L3 to recover $r$ exactly.
+
+<Callout tone="note" title="Never use the wrong group deliberately">
+Approximating $\Z_r$ by $\Z_{2^t}$ is forced on you because $r$ is unknown. When
+the group *is* known and is not a power of two, use the right transform. The
+dihedral hidden subgroup problem of T2.M6.L3 is the standard cautionary tale:
+substituting a nearby abelian group there does not merely lose a constant, it
+loses the structure the algorithm was going to exploit.
+</Callout>
+
+<Check question="You run the leaky circuit above once and read $\ket{010}$, which is $2/8 = 0.25$ rather than the true $1/3$. Have you failed?">
+Not necessarily. A single sample is a draw from the Dirichlet distribution, and
+$0.174940$ of the time it lands on the second-nearest value. With three bits you
+cannot tell $0.25$ from $0.333$ anyway, which is the real problem: the register is
+too short. The fix is more bits, not more shots. Adding bits narrows the spacing
+$2^{-t}$ so that the nearest value is genuinely close to $\varphi$, and the
+$4/\pi^2$ bound then guarantees that a handful of shots pins it down. This is the
+precision-versus-confidence split that T2.M4.L3 makes precise.
+</Check>
+
+## Where this comes from
+
+- [Watrous, Quantum Computation notes](https://cs.uwaterloo.ca/~watrous/QC-notes/),
+  for the character-theoretic definition and the $4/\pi^2$ bound.
+- [Quantum Algorithm Zoo](https://quantumalgorithmzoo.org/), for the pointers to
+  exact QFT constructions over arbitrary cyclic groups.

@@ -1,0 +1,171 @@
+---
+id: t2.m3.l6
+title: Revealing XOR Patterns
+type: concept
+track: t2
+module: t2.m3
+level: L2
+minutes: 12
+objectives:
+  - Explain how the Simon algorithm turns a hidden XOR mask into a uniform distribution over its orthogonal complement
+  - "Compute the expected number of samples needed to span an (n-1)-dimensional subspace over GF(2)"
+  - Solve a three-bit Simon instance by Gaussian elimination over GF(2)
+prerequisites:
+  - t2.m3.l5
+  - t1.m10.l4
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: Watrous, Quantum Computation lecture notes
+    url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+  - label: Quantum Algorithm Zoo
+    url: https://quantumalgorithmzoo.org/
+tags: [simon, fourier-sampling]
+---
+
+Simon's algorithm is the smallest exponential separation that survives
+randomisation, and it is the historical seed of Shor: reading it, Shor asked what
+the same trick would do over $\Z_N$ instead of $\Z_2^n$. Seen through the previous
+lesson it needs no new ideas at all. It is coset Fourier sampling with the
+smallest interesting subgroup.
+
+## The problem and its subgroup
+
+$f : \{0,1\}^n \to \{0,1\}^n$ is promised to be two-to-one with a hidden mask
+$s \ne 0$:
+
+$$
+f(x) = f(y) \iff y = x \oplus s .
+$$
+
+Find $s$. In the language of T2.M3.L5, $f$ is constant on the cosets of the
+subgroup $H = \{0, s\}$, which has $|H| = 2$. So one query of the coset-sampling
+routine returns a uniform element of
+
+$$
+H^\perp = \{\, y : y \cdot s = 0 \,\} ,
+$$
+
+a subspace of dimension $n-1$ containing $2^{n-1}$ strings. Each sample is one
+linear equation $y \cdot s = 0$ over $\mathrm{GF}(2)$, and $n-1$ independent
+equations pin $s$ down to a one-dimensional solution space whose only non-zero
+element is $s$ itself.
+
+<Margin label="Why classical algorithms are stuck">
+Classically you learn nothing until you see a collision, and collisions among
+$2^{n-1}$ distinct output values arrive only after about $2^{n/2}$ queries by the
+birthday bound. The lower bound is $\Omega(2^{n/2})$ and it holds for randomised
+algorithms with bounded error, which is what makes Simon a genuine exponential
+separation rather than an exact-computation curiosity like Deutsch-Jozsa.
+</Margin>
+
+## A three-bit instance
+
+Take $s = 110$ and define $f(x) = x \oplus (x_0 \cdot s)$, that is, XOR $s$ into
+the output whenever the leading bit of $x$ is 1.
+
+| $x$ | $000$ | $001$ | $010$ | $011$ | $100$ | $101$ | $110$ | $111$ |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| $f(x)$ | $000$ | $001$ | $010$ | $011$ | $010$ | $011$ | $000$ | $001$ |
+
+Four values, each hit twice, and the two preimages of every value differ by $110$.
+The circuit copies $x$ into the output register with three CNOTs and then XORs $s$
+into it controlled on $x_0$, which is two more CNOTs. The copy and the conditional
+XOR both touch qubit 3, so those two gates cancel; leaving both in makes the
+construction legible.
+
+<Circuit
+  caption="Simon's algorithm on a three-bit instance with mask 110. The query register lands on 000, 001, 110 or 111 with probability 0.25 each, which is exactly the set of y with y.s = 0."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "simon-mask-110",
+    qubits: 6,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "c0", gate: "x", targets: [3], controls: [0] },
+      { id: "c1", gate: "x", targets: [4], controls: [1] },
+      { id: "c2", gate: "x", targets: [5], controls: [2] },
+      { id: "s0", gate: "x", targets: [3], controls: [0] },
+      { id: "s1", gate: "x", targets: [4], controls: [0] },
+      { id: "g0", gate: "h", targets: [0] },
+      { id: "g1", gate: "h", targets: [1] },
+      { id: "g2", gate: "h", targets: [2] }
+    ]
+  }}
+/>
+
+Sixteen surviving strings at $0.0625$ each. Read the first three bits of each and
+you get only $000$, $001$, $110$ and $111$, four values with four output strings
+apiece, so $0.25$ each. Check against the prediction: $y \cdot 110 = y_0 \oplus y_1$,
+which is 0 exactly for those four. The other four strings, $010$, $011$, $100$ and
+$101$, never appear.
+
+## Solving the linear system
+
+Suppose two runs return $y^{(1)} = 001$ and $y^{(2)} = 111$. Write the equations:
+
+$$
+\begin{aligned}
+0\cdot s_0 + 0 \cdot s_1 + 1 \cdot s_2 &= 0 \\
+1\cdot s_0 + 1 \cdot s_1 + 1 \cdot s_2 &= 0
+\end{aligned}
+$$
+
+The first gives $s_2 = 0$. Substituting into the second gives $s_0 \oplus s_1 = 0$,
+so $s_0 = s_1$. The solution space is $\{000, 110\}$, and the promise says
+$s \ne 0$, so $s = 110$. Two samples sufficed here; had the second been $000$ or a
+repeat of the first, it would have added no rank and another run would have been
+needed.
+
+## How many samples
+
+Samples are uniform on an $(n-1)$-dimensional space. Having collected $k$
+independent vectors, the next one is dependent exactly when it lands in their span,
+which has $2^k$ of the $2^{n-1}$ elements. So the expected number of runs to reach
+rank $n-1$ is
+
+$$
+E_n = \sum_{k=0}^{n-2} \frac{2^{n-1}}{2^{n-1} - 2^{k}} .
+$$
+
+| $n$ | $E_n$ | overhead $E_n - (n-1)$ |
+| --- | --- | --- |
+| $3$ | $3.3333$ | $1.3333$ |
+| $4$ | $4.4762$ | $1.4762$ |
+| $8$ | $8.5989$ | $1.5989$ |
+| $64$ | $64.6067$ | $1.6067$ |
+
+The overhead converges to about $1.6067$ and never grows, so $n + 2$ runs are
+comfortably enough in practice. Total cost: $O(n)$ queries and one $O(n^3)$
+Gaussian elimination, against $\Omega(2^{n/2})$ classically.
+
+<Callout tone="gotcha" title="Independence is over GF(2), not over the reals">
+The vectors $001$, $110$ and $111$ are linearly *dependent* over
+$\mathrm{GF}(2)$, since $001 \oplus 110 = 111$, even though as real vectors they
+are independent. Rank must be computed with XOR arithmetic throughout. Using a
+floating-point rank routine on Simon samples is a real bug that produces a
+confident wrong $s$, and it passes every test in which $n$ is small enough that
+the sample happened to be independent both ways.
+</Callout>
+
+<Check question="You run the circuit above four times and get $000$, $111$, $111$, $001$. Can you determine $s$, and how many of the four runs were useful?">
+Yes. Discard $000$, which is always a solution and constrains nothing, and discard
+the repeat of $111$. What remains is $\{111, 001\}$, rank 2, which is $n - 1 = 2$,
+and the elimination above gives $s = 110$. Two of the four runs were useful, which
+is close to the expected $E_3 = 3.3333$ runs for rank 2. Note that you cannot tell
+in advance which runs will be useful, so the algorithm's cost is a random variable;
+the guarantee is on its expectation and, via a Chernoff bound, on its tail.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), for Simon as
+  an instance of coset sampling and for the classical lower bound.
+- [Watrous, Quantum Computation notes](https://cs.uwaterloo.ca/~watrous/QC-notes/),
+  for the rank-accumulation analysis of the sample count.
+- [Quantum Algorithm Zoo](https://quantumalgorithmzoo.org/), for Simon's place in
+  the abelian hidden subgroup family that T2.M6 formalises.

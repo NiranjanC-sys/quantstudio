@@ -1,0 +1,177 @@
+---
+id: t2.m4.l2
+title: Iterative QPE
+type: concept
+track: t2
+module: t2.m4
+level: L2
+minutes: 12
+objectives:
+  - Rewrite phase estimation as a single ancilla reused with mid-circuit measurement and feed-forward rotations
+  - Compare the qubit count and the circuit depth of the iterative and the textbook forms
+  - Explain why iterative QPE is the practical choice on hardware with few qubits but fast classical feedback
+prerequisites:
+  - t2.m4.l1
+  - t1.m8.l3
+sources:
+  - label: IBM Quantum Learning courses
+    url: https://quantum.cloud.ibm.com/learning/en/courses
+  - label: Watrous, Quantum Computation lecture notes
+    url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+tags: [qpe, mid-circuit]
+---
+
+The textbook circuit spends $t$ qubits to hold $t$ bits of answer, then throws
+$t-1$ of them away the moment the register is measured. On a machine with 127
+qubits and a shallow coherence budget that is an unaffordable luxury. Iterative
+phase estimation extracts the same $t$ bits with one ancilla, by measuring each
+bit as soon as it is ready and feeding the result forward as a rotation.
+
+## Reading the bits from the bottom up
+
+Write the phase in binary, $\varphi = 0.b_1 b_2 \cdots b_t$. The trick is that the
+*last* bit is the easiest one to get. Apply $U^{2^{t-1}}$ once, controlled on a
+single ancilla in $\ket+$. The phase kicked back is
+
+$$
+2\pi \varphi 2^{t-1} = 2\pi \big( b_1b_2\cdots b_{t-1}.b_t \big) ,
+$$
+
+and phases are defined modulo $2\pi$, so everything left of the point vanishes and
+the ancilla ends in $(\ket0 + e^{2\pi i \cdot 0.b_t}\ket1)/\sqrt2$. That is
+$\ket+$ if $b_t = 0$ and $\ket-$ if $b_t = 1$. A Hadamard and a measurement read
+$b_t$ with certainty.
+
+Now go up one bit. Apply $U^{2^{t-2}}$, which kicks back $2\pi \cdot 0.b_{t-1}b_t$.
+The known $b_t$ contributes a known $2\pi \cdot 0.0b_t = \pi b_t / 2$, so rotate it
+away with a phase gate of angle $-\pi b_t/2$ on the ancilla before the final
+Hadamard. What is left is $2\pi \cdot 0.b_{t-1}$, and the measurement reads
+$b_{t-1}$ with certainty. Repeat: in the round that determines bit $b_m$, the
+correction is
+
+$$
+-2\pi \times 0.0\,b_{m+1}b_{m+2}\cdots b_t ,
+$$
+
+which is a single phase gate whose angle depends on the bits already measured. It
+is zero in the first round, since no bits are known yet.
+
+<Margin label="Why the correction is a phase and not a conditional gate">
+The feed-forward is one $R_z$ angle computed classically from the measured bits.
+It does not need a conditional application of a two-qubit gate, only a
+classically-parameterised single-qubit rotation, which every control stack can do
+between shots. That is why iterative QPE was implementable on hardware years
+before mid-circuit measurement was reliable enough for error correction.
+</Margin>
+
+## The rounds, run
+
+Take $\varphi = 5/8 = 0.101_2$ and $t = 3$. Round 1 applies $U^{4}$ with no
+correction and should return $b_3 = 1$.
+
+<Circuit
+  caption="Round 1 of iterative QPE for phi = 5/8. The controlled U^4 kicks back a phase of pi, so the ancilla is |-> and the Hadamard sends it to |1>: the last bit is 1."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "ipe-round-1",
+    qubits: 2,
+    clbits: 1,
+    ops: [
+      { id: "e", gate: "x", targets: [1] },
+      { id: "h", gate: "h", targets: [0] },
+      { id: "cu", gate: "p", targets: [1], controls: [0], params: [15.707963267948966] },
+      { id: "h2", gate: "h", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+Round 2 applies $U^{2}$, kicking back $2\pi \cdot 0.b_2b_3 = 2\pi \cdot 0.01 =
+\pi/2$, and corrects by $-\pi/2$ because $b_3 = 1$ was just measured.
+
+<Circuit
+  caption="Round 2, with the feed-forward correction of -pi/2 set by the measured b3 = 1. The ancilla comes back to |+> and reads 0: the middle bit is 0."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "ipe-round-2",
+    qubits: 2,
+    clbits: 1,
+    ops: [
+      { id: "e", gate: "x", targets: [1] },
+      { id: "h", gate: "h", targets: [0] },
+      { id: "cu", gate: "p", targets: [1], controls: [0], params: [7.853981633974483] },
+      { id: "k", gate: "p", targets: [0], params: [-1.5707963267948966] },
+      { id: "h2", gate: "h", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+Round 3 applies $U$ itself. The known bits are $b_2b_3 = 01$, so the correction is
+$-2\pi \times 0.001_2 = -2\pi/8 = -\pi/4$.
+
+<Circuit
+  caption="Round 3, correcting by -pi/4 for the known bits 01. The ancilla reads 1, so the leading bit is 1 and the estimate is 0.101 = 5/8."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "ipe-round-3",
+    qubits: 2,
+    clbits: 1,
+    ops: [
+      { id: "e", gate: "x", targets: [1] },
+      { id: "h", gate: "h", targets: [0] },
+      { id: "cu", gate: "p", targets: [1], controls: [0], params: [3.9269908169872414] },
+      { id: "k", gate: "p", targets: [0], params: [-0.7853981633974483] },
+      { id: "h2", gate: "h", targets: [0] },
+      { id: "m", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+Bits $1$, $0$, $1$ read from the bottom up assemble to $\varphi = 0.101_2 = 5/8$,
+the same answer the four-qubit circuit of the previous lesson produced in one shot.
+
+## The trade
+
+| | textbook QPE | iterative QPE |
+| --- | --- | --- |
+| counting qubits | $t$ | $1$ |
+| applications of $U$ | $2^t - 1$ | $2^t - 1$ |
+| inverse QFT | $t(t-1)/2$ rotations | none |
+| mid-circuit measurement | no | $t-1$ times |
+| classical latency in the loop | none | $t-1$ round trips |
+
+The oracle cost is identical, because the controlled powers are the same powers.
+What iterative QPE buys is $t-1$ qubits and the entire inverse QFT; what it pays
+is $t-1$ measure-and-decide round trips, each of which must complete inside the
+coherence time of the ancilla and the eigenstate register.
+
+<Callout tone="gotcha" title="The eigenstate register still has to survive">
+Only the counting register shrinks. The register holding $\ket u$ is present for
+every round and must stay coherent through all $2^t - 1$ applications of $U$, so
+the total coherence requirement is unchanged. Iterative QPE is a width
+optimisation, not a depth one, and reporting it as "phase estimation on 2 qubits"
+without saying how many qubits $\ket u$ occupies is the standard way to make a
+resource estimate look better than it is.
+</Callout>
+
+<Check question="Your hardware needs 4 microseconds to measure, decide and apply the correction, and the ancilla has $T_2 = 80$ microseconds. How many bits can you extract iteratively before the feedback latency alone exhausts the coherence?">
+Twenty rounds of 4 microseconds each fill the whole $80$ microsecond budget, so
+even ignoring the time spent applying $U$ you cannot exceed about 20 bits, and in
+practice you want the total well under $T_2$, so a dozen is more honest. That is
+the constraint that decides between iterative and textbook QPE on a given device:
+if classical latency times $t$ is comparable to $T_2$, spend the qubits instead and
+run the textbook version, whose entire counting register is measured once at the
+end.
+</Check>
+
+## Where this comes from
+
+- [IBM Quantum Learning](https://quantum.cloud.ibm.com/learning/en/courses), whose
+  dynamic-circuits material implements iterative phase estimation with real
+  mid-circuit measurement and feed-forward.
+- [Watrous, Quantum Computation notes](https://cs.uwaterloo.ca/~watrous/QC-notes/),
+  for the bit-by-bit derivation and the equivalence with the textbook circuit.

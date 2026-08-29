@@ -1,0 +1,251 @@
+---
+id: t2.m2.l7
+title: Grover for Graph Colouring
+type: lab
+track: t2
+module: t2.m2
+level: L2
+minutes: 40
+objectives:
+  - Derive the two proper two-colourings of the four-cycle and encode them as marked bitstrings
+  - Mark a two-element solution set with two masked multi-controlled Z gates on four qubits
+  - Verify that two iterations concentrate 0.9453125 of the probability on the two proper colourings
+prerequisites:
+  - t2.m2.l6
+sources:
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+  - label: Quantum Algorithm Zoo
+    url: https://quantumalgorithmzoo.org/
+tags: [grover, graph-colouring, lab]
+---
+
+The SAT lab had one marked item. Real constraint problems usually have several,
+and the iteration count depends on how many. This lab is the smallest instance
+where that matters: a four-cycle with two proper two-colourings, sixteen
+candidate assignments, and a rotation angle that turns out to be identical to the
+previous lab's for a reason worth understanding.
+
+## The instance
+
+Four vertices in a cycle, edges $(0,1)$, $(1,2)$, $(2,3)$ and $(3,0)$. One qubit
+per vertex, its value the colour. An assignment is proper when no edge joins two
+equal colours, so the colours must alternate around the cycle. On an even cycle
+there are exactly two such assignments, obtained from each other by swapping the
+colours:
+
+$$
+0101 \quad\text{and}\quad 1010 .
+$$
+
+Read left to right as vertices 0, 1, 2, 3 with qubit 0 the most significant bit.
+Check the first: $v_0 = 0 \ne v_1 = 1$, $v_1 = 1 \ne v_2 = 0$, $v_2 = 0 \ne v_3 = 1$,
+$v_3 = 1 \ne v_0 = 0$. All four edges satisfied.
+
+<Margin label="Why an odd cycle has none">
+Alternating colours around a cycle of odd length forces $v_0 \ne v_0$ when you
+come back round. The triangle needs three colours, and a Grover circuit for it
+would mark the empty set: $M = 0$, $\theta = 0$, and the iterate becomes the
+identity on $\ket{s}$. The histogram stays uniform no matter how many iterations
+you run, which is the correct answer and looks exactly like a broken oracle.
+</Margin>
+
+## The iteration count
+
+$N = 16$ and $M = 2$, so
+
+$$
+\sin\theta = \sqrt{\frac{2}{16}} = \frac{1}{\sqrt8} ,
+$$
+
+the same $\theta = 0.361367$ as the $N = 8$, $M = 1$ instance of the previous
+lab. $\theta$ depends only on the *ratio* $M/N$, so doubling both the space and
+the solution count changes nothing: $\lfloor \pi/(4\theta)\rfloor = 2$ again, and
+the probability on the marked set is again $121/128 = 0.9453125$. It is now split
+between two strings, so each carries $121/256 = 0.47265625$ and each amplitude is
+$11/16 = 0.6875$.
+
+## The oracle
+
+Two elements in the solution set, so two masked multi-controlled $Z$ gates, one
+per element, in either order. They are diagonal and commute. Mask $0101$ by
+flipping qubits 0 and 2; mask $1010$ by flipping qubits 1 and 3.
+
+<Circuit
+  caption="Four qubits, two masked three-controlled Z gates per iteration, two iterations. Both proper colourings reach amplitude 0.6875 and probability 0.472656."
+  show={['amplitudes', 'probabilities']}
+  ir={{
+    version: 1,
+    name: "grover-colouring-c4",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "h3", gate: "h", targets: [3] },
+      { id: "o4", gate: "x", targets: [0] },
+      { id: "o5", gate: "x", targets: [2] },
+      { id: "o6", gate: "z", targets: [3], controls: [0, 1, 2] },
+      { id: "o7", gate: "x", targets: [0] },
+      { id: "o8", gate: "x", targets: [2] },
+      { id: "o9", gate: "x", targets: [1] },
+      { id: "o10", gate: "x", targets: [3] },
+      { id: "o11", gate: "z", targets: [3], controls: [0, 1, 2] },
+      { id: "o12", gate: "x", targets: [1] },
+      { id: "o13", gate: "x", targets: [3] },
+      { id: "d14", gate: "h", targets: [0] },
+      { id: "d15", gate: "h", targets: [1] },
+      { id: "d16", gate: "h", targets: [2] },
+      { id: "d17", gate: "h", targets: [3] },
+      { id: "d18", gate: "x", targets: [0] },
+      { id: "d19", gate: "x", targets: [1] },
+      { id: "d20", gate: "x", targets: [2] },
+      { id: "d21", gate: "x", targets: [3] },
+      { id: "d22", gate: "z", targets: [3], controls: [0, 1, 2] },
+      { id: "d23", gate: "x", targets: [0] },
+      { id: "d24", gate: "x", targets: [1] },
+      { id: "d25", gate: "x", targets: [2] },
+      { id: "d26", gate: "x", targets: [3] },
+      { id: "d27", gate: "h", targets: [0] },
+      { id: "d28", gate: "h", targets: [1] },
+      { id: "d29", gate: "h", targets: [2] },
+      { id: "d30", gate: "h", targets: [3] },
+      { id: "o31", gate: "x", targets: [0] },
+      { id: "o32", gate: "x", targets: [2] },
+      { id: "o33", gate: "z", targets: [3], controls: [0, 1, 2] },
+      { id: "o34", gate: "x", targets: [0] },
+      { id: "o35", gate: "x", targets: [2] },
+      { id: "o36", gate: "x", targets: [1] },
+      { id: "o37", gate: "x", targets: [3] },
+      { id: "o38", gate: "z", targets: [3], controls: [0, 1, 2] },
+      { id: "o39", gate: "x", targets: [1] },
+      { id: "o40", gate: "x", targets: [3] },
+      { id: "d41", gate: "h", targets: [0] },
+      { id: "d42", gate: "h", targets: [1] },
+      { id: "d43", gate: "h", targets: [2] },
+      { id: "d44", gate: "h", targets: [3] },
+      { id: "d45", gate: "x", targets: [0] },
+      { id: "d46", gate: "x", targets: [1] },
+      { id: "d47", gate: "x", targets: [2] },
+      { id: "d48", gate: "x", targets: [3] },
+      { id: "d49", gate: "z", targets: [3], controls: [0, 1, 2] },
+      { id: "d50", gate: "x", targets: [0] },
+      { id: "d51", gate: "x", targets: [1] },
+      { id: "d52", gate: "x", targets: [2] },
+      { id: "d53", gate: "x", targets: [3] },
+      { id: "d54", gate: "h", targets: [0] },
+      { id: "d55", gate: "h", targets: [1] },
+      { id: "d56", gate: "h", targets: [2] },
+      { id: "d57", gate: "h", targets: [3] }
+    ]
+  }}
+/>
+
+The fourteen improper colourings sit at $-1/16 = -0.0625$, so each carries
+$1/256 = 0.00390625$ and the fourteen together carry $14/256 = 0.0546875$. Read
+the register and you get a proper colouring $94.53\%$ of the time, and you cannot
+predict which of the two you will get, because the algorithm is exactly symmetric
+under swapping the colours.
+
+<Callout tone="note" title="Marking a predicate would scale; marking a list does not">
+Four qubits and two solutions make the list-based oracle trivial. The predicate
+version computes one XNOR per edge into an ancilla and ANDs the ancillas, which
+for this graph means four ancillas plus a target, so nine qubits and roughly forty
+gates per oracle call. That version generalises to any graph and any number of
+colours; the list version generalises to nothing. The lab constrains you to four
+qubits precisely so that you have to notice the difference.
+</Callout>
+
+## Your task
+
+```python
+from qiskit import QuantumCircuit
+
+EDGES = [(0, 1), (1, 2), (2, 3), (3, 0)]
+
+def build() -> QuantumCircuit:
+    qc = QuantumCircuit(4)
+    qc.h(range(4))
+    # mark every assignment in which no edge joins two equal colours
+    # then reflect about the uniform superposition
+    return qc
+```
+
+Derive the proper colourings from `EDGES` rather than hard-coding them, because
+the hidden tests are graded on the statevector and a derivation that happens to
+produce the right two strings is the only version that would survive a change of
+graph. Return the circuit with no measurements.
+
+The public tests check that both proper colourings carry amplitude $11/16$ to
+$10^{-6}$ and that the circuit uses four qubits. The hidden tests tighten the
+amplitude tolerance to $10^{-9}$, sample 8192 shots against
+$\{0101: 121/256,\; 1010: 121/256\}$ with everything else at $1/256$, and cap the
+circuit at eighty gates. Two iterations with two masked oracles each come to 70
+gates; three iterations come to 103 and are rejected.
+
+<Check question="You mark the solutions by iterating over edges: for each edge, negate every assignment that satisfies it. Two iterations later the histogram is uniform. What went wrong?">
+Marking per satisfied edge negates an assignment once for each edge it satisfies,
+so the sign is $(-1)^{\#\text{satisfied}}$, not the indicator of "all satisfied".
+An assignment satisfying two of the four edges comes out with $+1$ and is
+therefore unmarked, while a proper colouring satisfies all four and also comes out
+with $+1$. The oracle you built marks the assignments with an *odd* number of
+satisfied edges, which for this graph is the empty set, so the iterate is the
+identity and the histogram never moves. The fix is the one from T2.M1.L3: compute
+the conjunction first, then apply a single phase.
+</Check>
+
+<Solution>
+Enumerate the sixteen assignments, keep the proper ones, and emit one masked
+three-controlled $Z$ per element.
+
+```python
+from qiskit import QuantumCircuit
+
+EDGES = [(0, 1), (1, 2), (2, 3), (3, 0)]
+
+def proper() -> list[str]:
+    out = []
+    for k in range(16):
+        bits = format(k, "04b")
+        if all(bits[a] != bits[b] for a, b in EDGES):
+            out.append(bits)
+    return out
+
+def mark(qc: QuantumCircuit, bits: str) -> None:
+    for q, b in enumerate(bits):
+        if b == "0":
+            qc.x(q)
+    qc.h(3); qc.mcx([0, 1, 2], 3); qc.h(3)
+    for q, b in enumerate(bits):
+        if b == "0":
+            qc.x(q)
+
+def diffuser(qc: QuantumCircuit) -> None:
+    qc.h(range(4)); qc.x(range(4))
+    qc.h(3); qc.mcx([0, 1, 2], 3); qc.h(3)
+    qc.x(range(4)); qc.h(range(4))
+
+def build() -> QuantumCircuit:
+    qc = QuantumCircuit(4)
+    qc.h(range(4))
+    for _ in range(2):
+        for bits in proper():
+            mark(qc, bits)
+        diffuser(qc)
+    return qc
+```
+
+The classical enumeration inside `proper` is $O(2^n)$, which is the point of the
+callout above: this lab demonstrates the amplification, not a speedup. Note that
+`mcx` with three controls is decomposed by Qiskit into a sequence whose two-qubit
+gate count is well above the single line it looks like, which is why the gate
+budget is eighty and not eight.
+</Solution>
+
+## Where this comes from
+
+- [Microsoft Quantum Katas](https://github.com/microsoft/QuantumKatas), whose
+  graph-colouring kata builds the edge-by-edge predicate oracle in full.
+- [Quantum Algorithm Zoo](https://quantumalgorithmzoo.org/), for the placement of
+  constraint satisfaction under the quadratic-speedup branch of the taxonomy.

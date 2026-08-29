@@ -1,0 +1,802 @@
+questions:
+  - id: iq-169
+    title: Design the job submission API and lifecycle for a cloud QPU
+    kind: system-design
+    prompt: |
+      You are the first backend engineer on a cloud quantum service. One
+      superconducting device of about 127 qubits sits behind a public HTTPS
+      API. A typical job is 4096 shots of a circuit that takes roughly 200
+      microseconds per shot, so under a second of device time, but the median
+      queue wait today is 90 seconds and the p99 is an hour. Your clients are
+      Python SDK users on hotel wifi and CI runners that retry aggressively on
+      any timeout. Design the submission API and the job lifecycle. I want the
+      state machine, how submission stays idempotent under retries, how results
+      are delivered, and exactly what the client is shown while the job sits in
+      the queue. Assume 200 submissions per minute at peak, one device, and no
+      ability to preempt a running job.
+    difficulty: easy
+    pattern: Cloud QPU service design
+    topics: [job-lifecycle, idempotency, async-api, result-delivery]
+    companies: [IBM, AWS Braket, IonQ, Rigetti]
+    modelAnswer: |
+      The decision that matters is that submission is a durable write and
+      execution is asynchronous. POST returns 202 with a job id in under 50 ms
+      and never waits on the device. Everything else in the design follows from
+      that one choice.
+
+      The arithmetic forces it. Device time per job is 4096 x 200 microseconds
+      = 0.82 seconds, but the median queue wait is 90 seconds and the p99 is
+      3600 seconds. A synchronous API would hold a TCP connection open for an
+      hour at the tail, through load balancers that idle out at 60 seconds and
+      client stacks that time out at 30. The request rate itself is trivial:
+      200 per minute is 3.3 rps, which one small pod serves. The queue is the
+      product, not the request path.
+
+      The state machine has seven states and four terminal ones.
+
+          SUBMITTED --> VALIDATED --> QUEUED --> SCHEDULED --> RUNNING
+              |             |            |           |           |
+              +--> REJECTED +            +--> CANCELLED          +--> COMPLETED
+                                                                 +--> FAILED
+
+      SUBMITTED is the durable write, before any parsing. VALIDATED means the
+      circuit parsed, fits the device width, and passed entitlement and quota
+      checks. QUEUED means it is in a tenant queue with a fair-share position.
+      SCHEDULED means a backend and a calibration snapshot id are bound to it
+      and it will run next. RUNNING means pulses are loaded. Only three
+      transitions are client-visible as work, and the client polls or streams
+      rather than guessing.
+
+      Idempotency. Every mutating call accepts a client-generated
+      Idempotency-Key header. The gateway stores (key, tenant_id, sha256 of
+      canonical request body) -> job_id in Redis for 24 hours with a Postgres
+      row as the durable record, written in the same transaction as the job
+      row. Replay with the same key and the same body hash returns 200 and the
+      original job id. Replay with the same key and a different body hash
+      returns 409, because that is a client bug and silently creating a second
+      job costs the customer real money. Without this, a CI runner that retries
+      on a 504 that actually succeeded runs the job twice and is billed twice,
+      which is the single most common support ticket on services like this.
+
+      Result delivery has three channels and one storage rule. Poll with
+      GET /jobs/{id}, which returns the state plus a Retry-After hint derived
+      from the current queue estimate, and an ETag so a polling loop costs a
+      304. Stream state transitions over a websocket or server-sent events
+      channel scoped to the tenant. Push via an optional webhook with an HMAC
+      signature, at-least-once, with the job id as the dedupe key. The storage
+      rule is a size threshold: 4096 shots on 127 qubits packed is 4096 x 16
+      bytes = 64 kB and is returned inline as JSON, while a 10-million-shot job
+      is 160 MB and is returned as a presigned object-storage URL valid for one
+      hour. Never stream 160 MB through the API tier.
+
+      What the client sees while queued. Position within its own fair-share
+      class, not a global queue position. A global position is actively
+      misleading under fair share, because a job sitting behind 300 jobs of
+      another tenant may still start next. Show: class position, an estimated
+      start time with an explicit confidence band, the assigned backend once
+      SCHEDULED, and the calibration snapshot id. The estimate comes from the
+      scheduler's own simulation of the next hour, refreshed every 15 seconds,
+      and it is labelled an estimate, because a single unplanned fridge event
+      invalidates it.
+
+      Cancellation is honoured up to RUNNING. Once waveforms are loaded into
+      the sequencer, cancel is best effort and the job is billed for whatever
+      shots were delivered.
+
+      The trade-off. Async everywhere costs the interactive feel, and a user
+      running a two-qubit circuit in a notebook waits 90 seconds for 0.8
+      seconds of work. If the assumptions changed, a dedicated device with a
+      sub-second queue, I would add a synchronous fast lane with a hard 2
+      second budget and a 10 percent capacity reservation, and fall back to 202
+      the instant the budget is at risk.
+    followUps:
+      - How would you expose queue position without leaking the submission rate of other tenants?
+      - A client sends the same Idempotency-Key from two processes at the same instant. What happens?
+      - What changes in the state machine when the backend is a trapped-ion device with a multi-hour job?
+    commonMistakes:
+      - Making submission synchronous because the device time is under a second, which ignores a p99 queue wait of an hour and breaks at every 60 second load balancer idle timeout.
+      - Treating the job id returned by the server as the idempotency token, which does not help because the retry happens before the client ever sees the id.
+      - Returning multi-hundred-megabyte shot data inline through the API tier instead of a presigned object-storage URL.
+    references:
+      - label: IBM Quantum primitives guide
+        url: https://docs.quantum.ibm.com/guides/primitives
+      - label: AWS Braket documentation
+        url: https://docs.aws.amazon.com/braket/
+
+  - id: iq-170
+    title: Design a fair share scheduler for one non-preemptible QPU
+    kind: system-design
+    prompt: |
+      One superconducting QPU, twenty paying tenants, and no way to preempt a
+      running job once the waveforms are loaded. Job sizes range from 100 shots
+      to 10 million shots, which is 20 milliseconds to 33 minutes of device
+      time at 200 microseconds per shot. Two tenants have contracts promising
+      reserved blocks. One tenant runs an automated parameter sweep that
+      submits 5000 jobs in a burst at 02:00 every night. Design the scheduler.
+      I want the queueing discipline, the priority classes, how reservations
+      interact with the ordinary queue, and a defensible bound on how long a
+      newly arrived job waits. Tell me specifically how you stop the sweep
+      tenant from starving everybody else, and what you give up to get that.
+    difficulty: medium
+    pattern: Cloud QPU service design
+    topics: [scheduling, fair-share, starvation, reservations, queueing]
+    companies: [IBM, Rigetti, Microsoft Azure Quantum, Q-CTRL]
+    modelAnswer: |
+      The decision that matters is to bound job length rather than to build
+      preemption. A QPU cannot be checkpointed mid-execution, but a shot loop
+      can be chopped at a shot boundary, so I cap uninterrupted occupancy at 60
+      device-seconds and split anything larger into chunks that requeue. That
+      single constraint turns an unsolvable preemption problem into ordinary
+      deficit round robin.
+
+      Start with the budget. A day is 86400 seconds. Three calibration windows
+      of 30 minutes remove 5400, leaving 81000 schedulable seconds. Job setup,
+      meaning waveform compilation upload and sequencer load, costs 0.5 to 5
+      seconds per job, so a 0.82 second job can be more than half overhead.
+      That is the second design constraint: batch consecutive jobs from the
+      same tenant that share a waveform set, and amortise the load.
+
+      Queueing discipline. One FIFO per tenant, and deficit round robin across
+      tenants with a quantum of 60 device-seconds and per-tenant weights from
+      the contract. Each round a tenant's deficit counter gains its weighted
+      quantum; a job runs only if the deficit covers its estimated device time,
+      otherwise the tenant waits a round and accumulates. Estimated device time
+      comes from shots x measured per-shot time from the transpiled circuit,
+      and the estimate is checked against the actual afterwards so a tenant
+      cannot understate.
+
+      The bound this buys is the whole point. With N active tenants and a
+      quantum Q, a newly arrived job at the head of its tenant queue waits at
+      most (N-1) x Q plus the residual of the running job. With N = 20 and
+      Q = 60 s that is 19 x 60 + 60 = 1200 seconds, twenty minutes worst case.
+      That number is publishable. Without the 60 second cap, one 33 minute job
+      in front of you makes the bound 33 minutes plus the round, and the bound
+      is set by your worst customer rather than by your design.
+
+      Priority classes, three of them.
+
+          class        reserved share   max job    admission
+          interactive  10 percent       5 s        <= 4096 shots
+          standard     65 percent       60 s       default
+          bulk         backfill only    60 s       runs in idle windows
+
+      Interactive exists so an SDK user in a notebook is not stuck behind a
+      sweep. Its 10 percent reservation is enforced as a token bucket refilled
+      at 0.1 device-seconds per second; unused interactive capacity spills to
+      standard rather than being wasted.
+
+      Reservations. A contractual block is a calendar entry that the scheduler
+      treats as a non-preemptible job occupying the device. Rules that make
+      them survivable: total reserved time is capped at 25 percent of any day,
+      a reservation must be booked 24 hours ahead so the queue can drain into
+      it, admission before a reservation refuses any job that cannot finish in
+      the remaining window minus a 60 second guard, and an idle reservation is
+      released back to the general queue after 5 minutes of no submissions
+      from its owner. Without that release rule you sell 25 percent of a very
+      expensive machine to somebody who forgets to use it.
+
+      Now the sweep tenant. Three mechanisms, all needed.
+      First, a per-tenant in-flight cap: at most one job of a tenant is
+      RUNNING and at most 2 are SCHEDULED, so 5000 queued jobs occupy exactly
+      one slot in the round robin, not 5000.
+      Second, deficit round robin already gives them one quantum per round
+      regardless of queue depth, so 5000 jobs stretch across 5000 rounds
+      rather than monopolising a night.
+      Third, aging on the other side: a job's effective class is promoted one
+      step after it has waited 4 times its class's target, so bulk work still
+      completes rather than being deferred forever when the device is busy.
+
+      Overload behaviour. If aggregate queued device time exceeds 8 hours,
+      reject new bulk submissions with 429 and a Retry-After, and tell the
+      truth in the error body about the current backlog. Silently accepting
+      work you cannot run for two days is worse than refusing it.
+
+      The trade-off. Deficit round robin with a 60 second quantum costs
+      utilisation, because chunking a 10 million shot job into 33 pieces pays
+      the 0.5 to 5 second setup 33 times, which is up to 165 seconds of
+      overhead on 2000 seconds of work, roughly 8 percent. I accept that to
+      get a 20 minute worst-case bound. If setup overhead dropped to 50
+      milliseconds, which is plausible with a resident waveform cache in the
+      control rack, I would drop the quantum to 5 seconds and cut the
+      worst-case wait by a factor of twelve.
+    followUps:
+      - How do you detect and penalise a tenant whose estimated device time is consistently below the actual?
+      - A reserved block starts in 90 seconds and the queue head is a 45 second job. Do you run it, and why?
+      - What would change if the device could be preempted at a syndrome-round boundary?
+    commonMistakes:
+      - Reaching for preemption on hardware that cannot be checkpointed, instead of bounding job length so preemption is unnecessary.
+      - Using plain weighted round robin over jobs rather than over tenants, which lets a tenant with 5000 queued jobs take 5000 turns per round.
+      - Selling reservations without an idle-release rule, so a quarter of the device is contractually blocked and physically idle.
+    references:
+      - label: Slurm workload manager documentation
+        url: https://slurm.schedmd.com/documentation.html
+      - label: AWS Braket documentation
+        url: https://docs.aws.amazon.com/braket/
+
+  - id: iq-171
+    title: Route jobs across a heterogeneous QPU fleet by calibration
+    kind: system-design
+    prompt: |
+      Your fleet is eight devices: five superconducting processors between 27
+      and 156 qubits with two-qubit error rates between 4e-3 and 9e-3 that
+      change after every calibration, two trapped-ion machines with all-to-all
+      connectivity, 2e-3 two-qubit error and 300 microsecond gates, and one
+      neutral-atom machine. A user submits a circuit and asks for a backend,
+      not a specific device. Design the router. Tell me how you score a
+      candidate backend, when you make the decision relative to submit time and
+      schedule time, how often you re-rank, and precisely what you promise the
+      user in the API contract. Assume a full calibration every 8 hours per
+      device and cheap drift probes hourly. Assume 200 submissions per minute.
+    difficulty: medium
+    pattern: Cloud QPU service design
+    topics: [backend-routing, calibration, fidelity-estimation, transpilation]
+    companies: [IBM, IonQ, Quantinuum, QuEra]
+    modelAnswer: |
+      The decision that matters is that you cannot rank backends without
+      compiling for each of them, so the router is a compile-and-score service
+      with an aggressive cache, not a lookup table. Connectivity is what makes
+      this true: the same circuit is 180 two-qubit gates on an all-to-all ion
+      trap and 520 after SWAP insertion on a heavy-hex lattice, and no
+      per-device scalar can capture that.
+
+      Scoring. For each candidate backend, transpile, then compute an estimated
+      success probability as the product over the compiled circuit of the
+      per-operation fidelities from the current calibration snapshot,
+      multiplied by a decoherence factor.
+
+          P_est = prod(1 - e2q_i) x prod(1 - e1q_j) x prod(F_readout_k)
+                  x exp(-T_circuit / T_eff)
+
+      Worked example on a 180 two-qubit gate logical circuit.
+      Device A, heavy-hex, routing inflates to 300 gates at 4e-3 average:
+      (1 - 4e-3)^300 = exp(-1.20) = 0.30.
+      Device B, same topology but a worse week at 9e-3 and 300 gates:
+      exp(-2.70) = 0.067, a factor of 4.5 worse for the same circuit.
+      Device C, ion trap, no routing so 180 gates at 2e-3:
+      exp(-0.36) = 0.70, more than twice device A. But 180 gates at 300
+      microseconds is 54 milliseconds per shot, so 4096 shots is 221 seconds of
+      device time against 0.82 seconds on device A, roughly 270 times the
+      occupancy. That is the real trade and the router must see both numbers.
+
+      So the objective is not fidelity alone. Score on a weighted combination
+      the user chooses via a policy field: `optimize=fidelity`,
+      `optimize=time_to_result`, or `optimize=cost`. Time to result adds the
+      scheduler's own estimated queue wait for that backend; cost adds
+      estimated device-seconds times the backend price multiplier. Defaulting
+      to fidelity alone routes everybody onto the ion traps and produces a
+      six-hour queue there while superconducting devices idle.
+
+      When the decision is made. At schedule time, not at submit time. A job
+      may sit queued for an hour; a calibration snapshot has an 8 hour life and
+      the hourly drift probes can invalidate a ranking inside that. Compiling
+      at submit for a backend chosen at schedule wastes the compile, so the
+      pipeline is: at submit, compile for the top 2 candidates by a cheap
+      static score and cache the artefacts keyed by
+      sha256(circuit_ir, backend_id, basis_gates, coupling_map_version,
+      optimisation_level); at schedule, re-score the cached candidates against
+      the live snapshot and pick. Cache hit rate on real traffic is high
+      because parameter sweeps resubmit the same shape thousands of times.
+
+      Re-ranking cadence. The per-backend fidelity table is rebuilt on every
+      new calibration snapshot, which is every 8 hours per device, and patched
+      hourly from drift probes. Queue-wait estimates refresh every 15 seconds.
+      A ranking is always bound to a snapshot id and that id is written into
+      the job record before RUNNING, so every result carries the exact
+      calibration it ran under.
+
+      What you promise. Not a fidelity, ever. The contract promises: the device
+      class and minimum qubit count you asked for; that the recorded
+      calibration snapshot is the one in force during execution; that the
+      transpiled circuit and the physical qubit mapping are returned with the
+      result; and that a `backend=` pin, if supplied, is honoured or the job
+      fails rather than silently routing elsewhere. P_est is returned as an
+      advisory estimate with its calibration age in minutes attached, because
+      an estimate from a 7 hour old snapshot deserves less trust than one from
+      a 10 minute old snapshot.
+
+      The trade-off I accept. Automatic routing raises mean result quality and
+      destroys run-to-run reproducibility: the same script on Monday and Friday
+      lands on different hardware with different qubit maps, and a scientist
+      comparing the two is comparing devices, not parameters. The mitigation is
+      a job tag: any job carrying a `series_id` is pinned to the backend and,
+      where possible, the qubit subset used by the first job in that series,
+      and the router is bypassed. If my users were mostly running one-shot
+      exploratory work rather than series, I would default routing on for
+      everything and skip the pin.
+    followUps:
+      - Your fidelity estimate systematically overpredicts on deep circuits. What is missing from the product-of-fidelities model?
+      - How do you stop every job routing to whichever device happens to have the freshest calibration?
+      - The user pins a backend that is offline for eight hours. What do you do with the job?
+    commonMistakes:
+      - Ranking backends on published device-average error rates without transpiling, which ignores SWAP inflation that can double or triple the two-qubit gate count.
+      - Choosing the backend at submit time and letting the decision go stale through an hour of queue wait.
+      - Promising a fidelity number in the API contract instead of a calibration-dated estimate, which turns every noisy result into a support escalation.
+    references:
+      - label: IBM Quantum transpilation guide
+        url: https://docs.quantum.ibm.com/guides/transpile
+      - label: IonQ documentation
+        url: https://docs.ionq.com/
+
+  - id: iq-172
+    title: Meter and bill quantum processor time without disputes
+    kind: system-design
+    prompt: |
+      You are launching paid access to a QPU fleet and finance needs a billing
+      model. Jobs range from 100 shots to 10 million shots, circuits range from
+      10 to 5000 two-qubit gates, and per-shot time varies from 20
+      microseconds to 50 milliseconds depending on device and depth. Some jobs
+      fail after delivering 300000 of a requested million shots because the
+      device tripped a calibration guard. Decide what unit you sell, defend it
+      with arithmetic, and design the metering pipeline that produces the
+      invoice. Tell me exactly what happens to the bill when a job fails after
+      partial execution, and what artefacts you keep so that a customer arguing
+      about a five-figure invoice six months from now can be answered in an
+      hour rather than a week.
+    difficulty: medium
+    pattern: Cloud QPU service design
+    topics: [metering, billing, usage-records, partial-failure, audit]
+    companies: [AWS Braket, IonQ, IBM, Microsoft Azure Quantum]
+    modelAnswer: |
+      Sell exclusive device occupancy measured in device-seconds by the control
+      system clock, with a per-job minimum and a published per-backend rate.
+      Not shots, and not wall-clock time.
+
+      Why not shots. A shot is not a comparable unit across circuits: 4096
+      shots of a 10 gate circuit is 4096 x 20 microseconds = 0.08 seconds of
+      device time, while 4096 shots of a 5000 gate circuit at 50 milliseconds
+      per shot is 205 seconds, 2500 times the occupancy for the same shot
+      count. Pricing per shot means the deep-circuit customer is subsidised by
+      the shallow-circuit customer and your capacity model does not close.
+
+      Why not wall-clock. Queue wait is your operational problem. Billing it
+      gives you an incentive to be slow, which is exactly the wrong incentive
+      to encode in a price list.
+
+      What the number looks like, derived so it can be challenged. Take a
+      device at 10 million dollars of capital over a 5 year life, so 2 million
+      per year, plus 1 million per year of cryogenics, electronics refresh and
+      staff: 3 million per year. Schedulable time is 81000 seconds per day
+      after three 30 minute calibration windows, so 29.6 million seconds per
+      year. At 50 percent sold, that is 14.8 million billable device-seconds,
+      giving a floor cost of 0.20 dollars per device-second. Price at three
+      times cost and you are near 0.60 dollars per device-second. Treat that as
+      an order-of-magnitude figure: it moves with utilisation more than with
+      anything else, and at 20 percent sold the floor cost is 0.50 dollars per
+      second, so utilisation is the whole business.
+
+      The billed quantity per job:
+
+          billed_seconds = max(minimum, setup_seconds + sum over batches of
+                               (shots_in_batch x measured_per_shot_seconds))
+
+      with minimum = 1.0 second so that 100-shot jobs pay for their setup, and
+      setup_seconds metered from the sequencer load start. The measured
+      per-shot time comes from the control system, not from an estimate.
+
+      Metering pipeline. The control system is the only source of truth for
+      time. It emits a usage event at job start and at every shot-batch
+      boundary of 1000 shots, each carrying job_id, backend_id,
+      calibration_snapshot_id, monotonic shot counter, and start and stop
+      timestamps from the rack clock, which is NTP or PTP disciplined. Events
+      go to an append-only log, are consumed exactly once by keying on
+      (job_id, batch_index), and are aggregated into an immutable usage record
+      per job. The usage record is signed and exposed to the customer through
+      the same API as the result. The billing ledger is append-only: a credit
+      is a new row, never an update. A nightly reconciliation replays the usage
+      log against the ledger and alerts on any tenant whose totals differ by
+      more than 0.1 percent.
+
+      Partial execution. Batch at 1000 shots so partial delivery is always at a
+      known boundary, and classify the failure cause before you decide.
+
+          cause                              result state      billed
+          device fault, fridge or control     FAILED_DEVICE     zero
+          calibration guard tripped           FAILED_DEVICE     zero
+          scheduler killed for maintenance    FAILED_PLATFORM   zero
+          user circuit invalid at load        FAILED_USER       setup only
+          user exceeded declared duration     FAILED_USER       delivered
+          user cancelled mid-run              CANCELLED         delivered
+
+      In every FAILED case the partial shots are still returned, marked
+      partial, with the delivered shot count. Returning data you did not charge
+      for costs nothing and removes the customer's motive to argue. The rule
+      that goes in the contract is one sentence: you are billed for shots
+      delivered under a valid calibration, and never for our faults.
+
+      Dispute artefacts, kept for the contractual retention of three years:
+      the signed usage record; the job manifest hash covering the submitted
+      circuit; the transpiled circuit and physical qubit map; the calibration
+      snapshot id and its parameter values; the control rack event log for the
+      job window; and the ledger rows with their reconciliation batch id.
+      Together these answer "what ran, when, on what, for how long, and what
+      did we charge" from one job id, which is the difference between an hour
+      and a week.
+
+      Free-tier and quota enforcement rides the same pipeline: a debit is
+      written in the same transaction as the job enqueue, so a job can never
+      run uncharged, and a tenant over quota is refused at admission rather
+      than after the device time is spent.
+
+      The trade-off. Device-seconds is opaque to a new user who cannot predict
+      what their circuit costs until they run it, which suppresses adoption.
+      I pay for that with a dry-run endpoint that transpiles and returns
+      estimated device-seconds within about 20 percent, free of charge, plus a
+      hard per-job spend ceiling the client can set. If my customers were all
+      running one identical shallow circuit shape, per-shot pricing would be
+      simpler and just as fair, and I would use it.
+    followUps:
+      - A customer claims your rack clock drifted and overbilled them by 3 percent. How do you settle that?
+      - How would you price a 30 minute exclusive reservation against the same device-second rate?
+      - What stops a tenant from splitting one job into a thousand tiny jobs to game the per-job minimum?
+    commonMistakes:
+      - Pricing per shot, which charges the same for a 10 gate circuit and a 5000 gate circuit that occupies the device 2500 times as long.
+      - Billing from the scheduler's estimated duration rather than the control system's measured timestamps, which guarantees a dispute you cannot win.
+      - Mutating a balance row instead of appending to a ledger, so a disputed invoice cannot be reconstructed six months later.
+    references:
+      - label: AWS Braket documentation
+        url: https://docs.aws.amazon.com/braket/
+      - label: PostgreSQL documentation
+        url: https://www.postgresql.org/docs/
+
+  - id: iq-173
+    title: Hold a queue SLO through calibration windows and outages
+    kind: system-design
+    prompt: |
+      A single QPU must go offline for 30 minutes of calibration every 8 hours,
+      on a fixed schedule. On top of that, assume two unplanned outages per
+      month with a mean repair time of 4 hours, usually a helium plant or
+      control electronics fault. Sales wants to publish an SLO. Marketing has
+      drafted "99.9 percent availability" and you have ten minutes to talk them
+      out of it. Design the queue and the SLO together: what you actually
+      promise, how the scheduler behaves around a planned window, what happens
+      to jobs that are running when the fridge trips, and what utilisation you
+      must leave on the table to hold the promise. Give me the queueing
+      arithmetic, not an assertion.
+    difficulty: hard
+    pattern: Cloud QPU service design
+    topics: [slo, maintenance-windows, queueing-theory, outages, backfill]
+    companies: [IBM, Rigetti, Quantinuum, Alice & Bob]
+    modelAnswer: |
+      The decision that matters is that maintenance is a first-class,
+      non-preemptible reservation inside the same queue as customer work, and
+      the published SLO is on queue wait for a bounded job class, not on device
+      availability. Availability is arithmetically unsellable on one device.
+
+      Kill the 99.9 percent number first. Planned calibration is 30 minutes
+      every 8 hours, which is 1800 / 28800 = 6.25 percent of the clock, so
+      scheduled availability is at most 93.75 percent. Unplanned outages add
+      2 x 4 = 8 hours per month against 720 hours, another 1.1 percent, giving
+      about 92.7 percent. To reach 99.9 percent on a single device you would
+      need total downtime under 43 minutes per month, and you are spending 45
+      hours per month on calibration alone. The honest published number is a
+      wait-time SLO measured over scheduled-available time, plus a separate
+      published maintenance calendar.
+
+      The SLO I would sign:
+
+          p95 queue wait <= 30 minutes for standard-class jobs of at most 60
+          device-seconds, measured monthly over scheduled-available time,
+          excluding announced maintenance windows and declared incidents.
+
+      Now the arithmetic that says whether you can hold it. Treat the device as
+      an M/G/1 queue. Mean wait is
+
+          W = (rho / (1 - rho)) x E[S] x (1 + c^2) / 2
+
+      With a 60 second cap, mean service E[S] is around 30 seconds and the
+      coefficient of variation c is about 1, an order-of-magnitude
+      characterisation given the spread from 0.02 to 60 seconds. Then:
+
+          rho = 0.80  ->  W = 4.0 x 30 = 120 s
+          rho = 0.90  ->  W = 9.0 x 30 = 270 s
+          rho = 0.95  ->  W = 19  x 30 = 570 s
+          rho = 0.97  ->  W = 32  x 30 = 970 s
+
+      p95 runs roughly three times the mean for this kind of queue, so at
+      rho = 0.90 the p95 is around 13 minutes and the SLO holds with room; at
+      rho = 0.97 it is around 48 minutes and the SLO fails. The conclusion is
+      blunt: you cannot sell 97 percent of the device and promise a short
+      queue. Target rho around 0.85 on the standard class and hold the rest.
+
+      Behaviour around a planned window. Admission control gates on remaining
+      window: with T seconds until calibration starts, only schedule a job
+      whose estimated device time is at most T minus a 60 second guard. With a
+      60 device-second cap the worst waste is 120 seconds per window, which is
+      0.4 percent of the duty, and backfill fills most of it by pulling short
+      interactive jobs from the queue. Publish the calendar through the API and
+      emit a warning event on the status stream 15 minutes before each window
+      so SDKs can hold their submissions rather than piling into a wall.
+
+      Behaviour on an unplanned trip. Jobs in RUNNING go to FAILED_DEVICE, are
+      not billed, and their partial shots are returned. If the tenant set
+      `auto_resubmit`, the job is re-enqueued at the head of its own tenant
+      queue with the original idempotency key preserved, so a retry from the
+      client collapses onto the same job rather than creating a second. Queued
+      jobs stay queued and the client sees the state stream flip to
+      `device_unavailable` with an incident id, not a silent stall, because a
+      stalled progress bar generates more tickets than an outage does. If the
+      estimated repair exceeds 2 hours, offer requeue onto another device in
+      the fleet as an explicit client choice, since it changes the hardware the
+      results come from.
+
+      Error budget and burn rate. 5 percent of standard-class jobs may exceed
+      30 minutes of wait. At 200 submissions per minute that is roughly 288000
+      jobs a month, so a budget of about 14400 slow jobs. Alert on burn rate,
+      not on raw queue depth: a page at 14 times the budget burn over an hour,
+      a ticket at 3 times over six hours. The operational lever when the budget
+      is burning is admission, and it is graded: stop admitting bulk, then cap
+      max shots per job, then shed the largest tenant's excess to the next day.
+
+      Recovering the utilisation you gave up. Holding rho at 0.85 wastes 15
+      percent of a very expensive asset, so sell that slack as a preemptible
+      backfill tier at roughly 30 percent of the standard rate: it runs only in
+      windows the scheduler already knows are free, it is killed without
+      compensation when a standard job arrives, and it is excluded from the
+      wait SLO entirely. Backfill work is exactly the nightly parameter sweep
+      that does not care when it finishes.
+
+      The trade-off. The SLO covers only jobs at most 60 device-seconds in the
+      standard class, which is a narrower promise than customers first want,
+      and the answer to "what about my 30 minute job" is a reservation, priced
+      separately. If I had three identical devices behind one queue instead of
+      one, the same rho would give a much shorter tail because the pooled
+      queue smooths bursts, and I could both raise the target utilisation and
+      widen the class the SLO covers.
+    followUps:
+      - Calibration finishes 12 minutes early. How does the scheduler use that time without breaking the published calendar?
+      - How do you keep the wait SLO honest when one tenant's reservation consumes 25 percent of the day?
+      - What is the right thing to tell a customer whose job was running when the fridge tripped, in the API response body?
+    commonMistakes:
+      - Publishing an availability SLO on a device that spends 6.25 percent of every day in scheduled calibration, which is a promise arithmetic already broke.
+      - Running the device at 95 percent or higher utilisation and expecting short queues, when M/G/1 gives a mean wait of 19 times the service time at that load.
+      - Billing or silently retrying jobs that died in a device fault, which converts an infrastructure incident into a billing dispute.
+    references:
+      - label: Prometheus documentation
+        url: https://prometheus.io/docs/
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+
+  - id: iq-174
+    title: Store and serve quantum results at fleet scale
+    kind: system-design
+    prompt: |
+      Across the fleet you accept 200 jobs per minute. Most are 4096 shots on
+      devices of 27 to 156 qubits, but a few per day request 10 million shots,
+      and a growing fraction use mid-circuit measurement and dynamic circuits
+      where the order of outcomes matters. Design result storage and delivery.
+      Decide whether the durable record is shot-level or aggregated counts and
+      defend it with bytes. Give me the retention tiers, the cost per device
+      per year, the query paths you support, and the exact set of artefacts a
+      scientist needs six months later to reproduce and cite a result. Assume
+      object storage at about 0.023 dollars per gigabyte-month and a legal
+      retention obligation of three years.
+    difficulty: hard
+    pattern: Cloud QPU service design
+    topics: [result-storage, retention, provenance, compression, data-tiering]
+    companies: [IBM, AWS Braket, Quantinuum, Xanadu]
+    modelAnswer: |
+      The decision that matters is that the durable record is the packed
+      shot-level bit matrix plus an immutable provenance manifest. Counts are a
+      derived view. You can always compute counts from shots and you can never
+      go the other way, and dynamic circuits make counts lossy by construction
+      because the order and the mid-circuit outcomes carry the physics.
+
+      The bytes decide it, and they cut both ways. A shot on an n-qubit device
+      packs into ceil(n/8) bytes, so 16 bytes at 127 qubits. Then:
+
+          job shape                 shot-level      counts dictionary
+          4096 shots, 127 qubits    64 kB           4096 x 20 B = 82 kB
+          10 M shots, 127 qubits    160 MB          ~10 M distinct keys
+          1 M shots, 10 qubits      2 MB            1024 x 6 B = 6 kB
+
+      On a wide device almost every outcome is distinct, so the counts
+      dictionary is larger than the raw shots. Counts only win when shots
+      greatly exceed the number of reachable outcomes, which is the narrow
+      register case. So the rule is: always store shots; additionally
+      materialise counts when n <= 20 or when the measured register is narrow
+      after post-selection, because that is where the 300x read-path win lives.
+
+      Compression. Store shots column-major, one bitplane per measured qubit,
+      then zstd at level 3. Real devices produce strongly biased columns, a
+      qubit stuck at zero costs essentially nothing, and correlated columns
+      compress further. Expect 2x to 5x on structured workloads and close to
+      1x on random-circuit sampling, which is an order-of-magnitude
+      expectation, not a guarantee. Columnar also gives you the query that
+      users actually ask, which is the marginal on a subset of qubits, without
+      reading the whole object.
+
+      Volume and cost per device per year. 200 jobs per minute across the fleet
+      at 64 kB is 12.8 MB per minute, 18 GB per day, 6.7 TB per year for the
+      whole fleet of eight devices, so under a terabyte per device. Add a dozen
+      10-million-shot jobs a day at 160 MB, roughly 2 GB per day, 0.7 TB per
+      year. Call it 8 TB per year for the fleet. At 0.023 dollars per
+      gigabyte-month that is 8000 x 0.023 = 184 dollars per month, about 2200
+      dollars per year. Against a device that costs millions, storage is
+      noise. Do not delete results to save money. Delete them to bound
+      liability and to keep the hot index small.
+
+      Tiers, driven by access pattern rather than cost.
+
+          tier    age          store                     access
+          hot     0 to 30 d    SSD-backed blob + index   API, presigned URL
+          warm    30 d to 13m  object storage, Parquet   columnar query engine
+          cold    13m to 3 y   object storage, archive   restore within hours
+          gone    > 3 y        deleted, manifest kept    provenance only
+
+      Ninety percent of reads land within 48 hours of the job; the tail is a
+      paper being written. Keep the manifest forever even after the shots go,
+      because a citation that resolves to "this ran on device X under snapshot
+      Y and was deleted on this date" is far better than a 404.
+
+      The provenance manifest, which is the actual product six months later:
+
+          - submitted circuit as OpenQASM 3 text, plus its sha256
+          - transpiled circuit actually executed, plus the physical qubit map
+          - backend id, control software version, firmware version
+          - calibration snapshot id and the full parameter set it contained
+          - randomised-compiling seeds and any twirling instances used
+          - shot count requested, delivered, and the batch boundary timestamps
+          - readout mitigation matrix if applied, and raw versus mitigated
+          - measurement basis, register layout, and the bit ordering used
+
+      Without the transpiled circuit and the calibration snapshot, counts are
+      uninterpretable: the same source circuit on the same device a week apart
+      lands on different physical qubits with different error rates, and a
+      scientist comparing them without the map is comparing noise. The manifest
+      is content-addressed and immutable, and the job record points at it, so
+      thousands of sweep jobs share one circuit blob by hash.
+
+      Delivery. Under 1 MB inline, above that a presigned URL with a one hour
+      expiry, range requests so a client can pull one bitplane, and a Parquet
+      download so nobody has to parse a 160 MB JSON body.
+
+      Deletion under a tenant request. Reference counting on the shared blobs
+      is not enough, because a shared circuit blob may be referenced by another
+      tenant's job. Encrypt every tenant's shot data with a per-tenant key and
+      crypto-shred by destroying the key, which makes deletion O(1) and
+      provable. Manifests keep only hashes and device metadata, so they survive
+      the shred without carrying customer content.
+
+      The trade-off. Shot-level plus full provenance is roughly three times the
+      bytes of counts-only, and it forces you to keep calibration snapshots
+      indefinitely, though those are tiny, on the order of 10 MB per device per
+      year. You also give up cheap "delete everything about this circuit",
+      which crypto-shredding buys back at the cost of key management. If the
+      workload were entirely narrow-register variational jobs with no dynamic
+      circuits, counts-only with a shot-level opt-in would be the right default
+      and would cut storage by more than half.
+    followUps:
+      - A user asks for the marginal distribution over 5 of 127 measured qubits. Which storage layout makes that cheap and why?
+      - How do you version the manifest schema without breaking a citation written two years ago?
+      - What do you return when a job is in the cold tier and the user calls the results endpoint?
+    commonMistakes:
+      - Storing only aggregated counts, which is lossy for dynamic circuits and mid-circuit measurement and is actually larger than shot-level data on wide registers.
+      - Deleting result data to save storage cost, when the whole fleet's storage bill is a few thousand dollars a year against a multi-million dollar device.
+      - Returning counts without the transpiled circuit, the physical qubit map and the calibration snapshot id, which makes the numbers unreproducible six months later.
+    references:
+      - label: OpenQASM specification
+        url: https://openqasm.com/
+      - label: AWS Braket documentation
+        url: https://docs.aws.amazon.com/braket/
+
+  - id: iq-175
+    title: Split control plane and data plane across three countries
+    kind: system-design
+    prompt: |
+      Your QPU service runs devices in three sites: Frankfurt, Chicago and
+      Tokyo. EU customers are contractually forbidden from having circuit
+      source or result data leave the EU. Japanese government customers have
+      the same constraint for Japan. Round-trip latency Frankfurt to Tokyo is
+      of order 230 milliseconds and the link is not always up. Each site is a
+      physical lab whose network security team will not allow inbound
+      connections. Design the control plane and data plane split. Tell me
+      exactly what crosses a site boundary and what does not, how a site
+      behaves when the global control plane is unreachable, and what happens to
+      a job when the device in its pinned region goes down for six hours.
+    difficulty: hard
+    pattern: Cloud QPU service design
+    topics: [control-plane, data-residency, multi-region, partition-tolerance]
+    companies: [IBM, Microsoft Azure Quantum, Pasqal, Quantinuum]
+    modelAnswer: |
+      The decision that matters is that the control plane is global and holds
+      only metadata, the data plane is per-site and stateful, and every job is
+      region-pinned at creation with an immutable pin. Accept that pin and
+      most of the hard questions answer themselves, including failover.
+
+      Why the pin has to be immutable. The obligation is on the circuit and
+      the results, not on the job id. An advisory pin plus a scheduler that
+      optimises utilisation eventually moves an EU job to Chicago at 03:00 and
+      nobody notices until the audit. Make it a column with a check
+      constraint, set at insert, asserted on every data-plane write.
+
+      Latency forces the same conclusion independently. Frankfurt to Tokyo is
+      of order 230 milliseconds round trip, Frankfurt to Chicago of order 100.
+      A five second partition must not idle a multi-million dollar machine, so
+      nothing on the execution path may cross a boundary.
+
+      What crosses the boundary, per job, a few hundred bytes:
+
+          job_id, tenant_id, region tag, job class and priority
+          state transitions with timestamps
+          device_id, device class, qubit count
+          metering aggregates, queue depth and estimated wait per device
+          calibration health as a scalar score plus an opaque snapshot id
+          billing events and quota debits
+
+      What never crosses:
+
+          circuit source and transpiled circuit
+          shot data and counts
+          user pulse programs, waveform blobs, per-qubit calibration values
+          any log line that can carry circuit content, which means
+            structured logging with a field allowlist, not a denylist
+
+      Calibration parameters are the contested item. They are device data, so
+      a lawyer usually lets them cross. I still export only the health score
+      and the snapshot id, because routing needs only the score and a snapshot
+      naming allocated qubit subsets is weakly identifying.
+
+      Connectivity direction. The site agent dials out and the control plane
+      never dials in: one long-lived outbound gRPC stream per site, work
+      assignment down, state events up. That satisfies the lab network team,
+      and is the same shape an on-premises device needs.
+
+          Global control plane (metadata only, multi-region active-active)
+             |  outbound gRPC stream, initiated by the site
+             |
+          +--+---------------+-------------------+
+          |                  |                   |
+          Frankfurt DP       Chicago DP          Tokyo DP
+          queue, scheduler   queue, scheduler    queue, scheduler
+          circuit store      circuit store       circuit store
+          result store       result store        result store
+          control racks      control racks       control racks
+
+      Identity and entitlement. Tenant directory, entitlements and quota
+      ceilings are global, replicated read-only to each site on a 24 hour
+      lease, and local admission decides from the cache. With the global plane
+      unreachable a site drains its queue, accepts submissions from tenants
+      whose lease is live and whose cached credit ceiling holds, and refuses
+      new tenants and quota increases. Overspend is refused rather than
+      allowed: an unbilled run is easier to explain than a run you cannot stop.
+
+      Reconciliation after a partition. Every state and metering event is
+      idempotent, keyed by (job_id, state, sequence), buffered on local disk
+      and replayed at-least-once on reconnect, so a replay cannot double-bill.
+      Bound the buffer: 200 jobs per minute at about 400 bytes of metadata each
+      is 200 x 60 x 24 x 400 bytes over a day, about 115 MB, which fits on a
+      local disk trivially. That check is what makes the design safe rather
+      than hopeful.
+
+      Region failure, six hours. The pin is immutable, so you do not reroute.
+      Queued jobs stay queued and the client sees `region_unavailable` with an
+      incident id and an estimated restoration time. Running jobs go to
+      FAILED_DEVICE, unbilled, partial shots returned. A second device inside
+      the same jurisdiction can absorb the work freely, since that is inside
+      the boundary, which is the argument for two devices per region rather
+      than three regions of one.
+
+      The escape hatch. A tenant may opt a project in to cross-region
+      execution with a versioned signed consent recorded in the manifest, which
+      also records the region that executed. Default off, per project, and the
+      API refuses the flag server side for tenants whose contract forbids it.
+
+      The trade-off. Pinning means no fleet-wide load balancing, so Tokyo can
+      sit at 30 percent utilisation while Frankfurt queues at 95, and
+      utilisation is the entire margin in this business. I accept it because
+      the alternative failure is a residency breach that ends the contract and
+      the certification. If the tenant base were single jurisdiction, I would
+      run one global queue and take the utilisation back.
+    followUps:
+      - Which parts of the calibration snapshot would you let cross a residency boundary, and how would you defend that to an auditor?
+      - The global control plane is partitioned for 30 hours, past the entitlement lease. What does the site do?
+      - How do you run a global leaderboard of device health without shipping per-qubit data out of a region?
+    commonMistakes:
+      - Making the region pin advisory, so a utilisation-optimising scheduler eventually moves an EU job abroad and nobody notices until the audit.
+      - Putting a synchronous cross-region call in the execution path, which lets a 230 millisecond link with occasional partitions idle the device.
+      - Failing a region over to another country's device to preserve availability, which trades a six hour outage for a contractual breach.
+    references:
+      - label: gRPC documentation
+        url: https://grpc.io/docs/
+      - label: Kubernetes documentation
+        url: https://kubernetes.io/docs/

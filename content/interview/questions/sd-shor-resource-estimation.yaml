@@ -1,0 +1,795 @@
+questions:
+  - id: iq-222
+    title: Estimate the logical resources to factor RSA-2048
+    kind: system-design
+    prompt: |
+      Give me the logical resource estimate for running Shor's algorithm against
+      a 2048-bit RSA modulus. I want the number of logical qubits, the Toffoli or
+      T count, and a clear statement of where the cost actually sits inside the
+      algorithm. Work at the logical level only: assume perfect logical qubits
+      and a Clifford plus T gate set, and do not talk about code distance yet.
+      Derive the counts from the structure of modular exponentiation rather than
+      quoting a headline figure, then compare your derivation with the published
+      figure and explain any gap. Tell me what fraction of the cost the quantum
+      Fourier transform contributes.
+    difficulty: easy
+    pattern: Shor resource estimation
+    topics: [shor, logical-qubits, toffoli-count, modular-exponentiation, resource-estimation]
+    companies: [Microsoft Azure Quantum, IBM, PsiQuantum, Quantinuum]
+    modelAnswer: |
+      The decision that matters for this estimate is recognising that Shor's
+      algorithm is an arithmetic circuit with a small Fourier transform bolted on
+      the end. Essentially all of the cost is modular exponentiation, and the QFT
+      is a rounding error. Everything else follows from counting adders.
+
+      Logical qubits. You need the exponent register, the working register holding
+      the modular arithmetic, and ancillas for the adders. The published
+      construction of Gidney and Ekera uses
+
+          3n + 0.002 * n * log2(n) logical qubits
+
+      For n = 2048 that is 3 x 2048 + 0.002 x 2048 x 11 = 6144 + 45 = about 6,200
+      logical qubits. The 3n term is the honest content: three registers of the
+      modulus size. Textbook Shor with a full 2n-bit exponent register would want
+      more like 5n; the reduction comes from the Ekera-Hastad variant, which needs
+      a shorter exponent, and from a coset representation of modular arithmetic
+      that avoids keeping a separate modulus register.
+
+      Toffoli count, derived from the structure.
+
+          modular exponentiation = a sequence of controlled modular multiplications
+          each modular multiplication = a sequence of controlled modular additions
+          each n-bit addition = about n Toffolis
+
+      Naively, with a 2n-bit exponent you perform 2n = 4096 controlled modular
+      multiplications, each of which is about 2n = 4096 controlled modular
+      additions, each about n = 2048 Toffolis. That product is
+
+          4096 x 4096 x 2048 = 3.4e10 Toffolis
+
+      about 3e10, or roughly 4 n^3. That is the naive number and it is the one you
+      should be able to produce from first principles at a whiteboard.
+
+      The published construction gets to
+
+          0.3 * n^3 + 0.0005 * n^3 * log2(n)
+          = 0.3 x 8.59e9 + 0.0005 x 8.59e9 x 11
+          = 2.58e9 + 4.7e7
+          = about 2.7e9 Toffolis
+
+      So about 2.7 billion Toffolis, roughly 13 times better than the naive count.
+      The gap comes from three specific tricks: windowed arithmetic, which
+      precomputes small lookup tables so several exponent bits and several
+      multiplier bits are consumed per addition; the coset representation of
+      modular integers, which turns modular reduction into ordinary addition most
+      of the time; and a Toffoli-count-optimal adder. None of these is a constant
+      factor you can hand-wave: each is worth a factor of a few, and together they
+      are the difference between 3e10 and 3e9.
+
+      In T gates: a Toffoli costs 4 T with the standard construction, or 2 T with
+      measurement and feedforward using a catalyst state, so 2.7e9 Toffolis is
+      between 5.4e9 and 1.1e10 T gates. Quote Toffolis, not T gates, because the
+      factories in a real machine produce CCZ states directly.
+
+      What the QFT contributes. The final Fourier transform acts on the exponent
+      register, of length about n, and costs of order n^2 controlled rotations in
+      the exact form, that is about 4e6 operations, and far fewer if you use the
+      approximate QFT or the semiclassical one-qubit form with measurement and
+      feedforward, which is what a real implementation does. Against 2.7e9
+      Toffolis the QFT is about 0.1 percent of the circuit and after
+      approximation it is negligible. If a candidate spends their answer on the
+      QFT they have optimised the wrong thing by three orders of magnitude.
+
+      The trade-off in this construction: it trades qubits for Toffolis. Windowed
+      arithmetic needs lookup tables held in ancilla space, and the coset trick
+      needs padding bits, so 6,200 logical qubits is larger than the minimum
+      possible register count. A qubit-minimal implementation exists and costs
+      considerably more Toffolis. Since the physical cost of a machine is roughly
+      qubits times time, and time is proportional to Toffolis, you optimise the
+      product and not either factor, which is exactly what the next question is
+      about.
+    followUps:
+      - How does the estimate change for a 1024-bit modulus, and is the scaling really cubic in practice?
+      - Where does the classical post-processing sit, and can it fail in a way that forces you to rerun the quantum circuit?
+      - Why do we quote Toffoli count rather than total gate count for an error-corrected machine?
+    commonMistakes:
+      - Quoting a T count without saying whether a Toffoli was costed at 4 T or at 2 T with measurement and feedforward, which is a factor of two on the headline number.
+      - Treating the QFT as a significant cost. It is about 0.1 percent of the circuit; modular exponentiation is essentially the whole thing.
+      - Using the textbook 5n logical qubit count and the naive 4 n^3 Toffoli count together as if they were the state of the art, which overstates the circuit by an order of magnitude.
+    references:
+      - label: Gidney and Ekera, How to factor 2048 bit RSA integers in 8 hours
+        url: https://arxiv.org/abs/1905.09749
+      - label: Shor, Polynomial-time algorithms for prime factorization
+        url: https://arxiv.org/abs/quant-ph/9508027
+
+  - id: iq-223
+    title: Turn the RSA-2048 logical estimate into physical qubits and hours
+    kind: system-design
+    prompt: |
+      You have the logical estimate for RSA-2048: about 6,200 logical qubits and
+      about 2.7e9 Toffoli gates. Now turn it into a machine. Physical two-qubit
+      error is 1e-3, the surface code threshold is about 1 percent under a
+      circuit-level depolarising model, a syndrome round takes about 1
+      microsecond, and a rotated patch of distance d costs 2*d^2 - 1 physical
+      qubits. Derive the code distance from an error budget rather than assuming
+      one, multiply out the data block, add magic state factories, and give me the
+      total physical qubit count and the wall-clock time. You should land near the
+      published figures of about 20 million physical qubits and about 8 hours; if
+      you do not, tell me which step diverged.
+    difficulty: medium
+    pattern: Shor resource estimation
+    topics: [shor, code-distance, magic-state-distillation, physical-qubits, runtime]
+    companies: [Google Quantum AI, PsiQuantum, Microsoft Azure Quantum, IBM]
+    modelAnswer: |
+      The decision that matters is to derive the distance from a total error
+      budget expressed in logical-qubit-rounds, because that is the quantity the
+      code actually has to protect, and it is the step where most estimates go
+      wrong by a factor of two in distance and a factor of four in hardware.
+
+      Step 1, the runtime in code cycles. Toffolis run sequentially at the pace of
+      the reaction loop: consume a magic state, measure, decode, apply the
+      conditioned correction. Take about 10 code cycles per Toffoli, which is what
+      a well-designed layout with enough factories achieves.
+
+          2.7e9 Toffolis x 10 cycles = 2.7e10 code cycles
+          2.7e10 cycles x 1 microsecond = 2.7e4 seconds = 7.5 hours
+
+      That is the 8 hour figure, and note where it came from: not from gate speed,
+      but from the number of Toffolis times the reaction loop.
+
+      Step 2, the error budget, in logical-qubit-rounds.
+
+          6,200 logical qubits x 2.7e10 rounds = 1.7e14 logical-qubit-rounds
+
+      Allow the whole computation a failure probability of about 0.5, since
+      factoring is verifiable classically: you multiply the factors back and check,
+      and a failed run costs you a rerun, not a wrong answer. Then the permitted
+      error per logical qubit per round is
+
+          0.5 / 1.7e14 = about 3e-15
+
+      Step 3, solve for d. With p_L = 0.1 * (p / p_th)^((d+1)/2) and p / p_th =
+      1e-3 / 1e-2 = 0.1:
+
+          0.1 x 0.1^((d+1)/2) <= 3e-15
+          0.1^((d+1)/2)       <= 3e-14
+          (d+1)/2             >= 13.5
+          d                   >= 26.0, so d = 27
+
+      Distance 27. This is the step to show slowly in an interview, because it is
+      where the answer is made.
+
+      Step 4, the data block.
+
+          patch cost   2 x 27^2 - 1 = 2 x 729 - 1 = 1457 physical qubits
+          data         6,200 x 1457 = 9.0e6 physical qubits
+          routing      about 2 tiles per logical qubit -> 1.8e7
+
+      So about 18 million physical qubits for the computational block.
+
+      Step 5, the factories. Every Toffoli consumes a CCZ magic state, and the
+      state has to be distilled because the code cannot produce it fault
+      tolerantly. Distillation is a two-level protocol, and the factory footprint
+      is of order 1e5 to 2e5 physical qubits each. You need enough factories to
+      keep the reaction loop fed: at 10 cycles per Toffoli you consume a state
+      every 10 microseconds, and a factory produces one every few hundred
+      microseconds, so of order tens of factories running in parallel. Tens of
+      factories at 1e5 to 2e5 qubits is 2e6 to 4e6 physical qubits, roughly 10 to
+      20 percent of the machine.
+
+          data plus routing     1.8e7
+          factories             about 2e6
+          total                 about 2.0e7 physical qubits
+
+      Twenty million physical qubits and about 8 hours, at one significant figure,
+      which is the published anchor. State plainly that later work has moved this
+      around by a factor of a few in both directions, and that anyone quoting it
+      to three significant figures is not reading the paper.
+
+      Where a derivation like this typically diverges: assuming 1 code cycle per
+      Toffoli instead of about 10, which makes the runtime 45 minutes and pushes
+      the distance down; using d^2 instead of 2*d^2 - 1 per patch, which halves
+      the machine; and forgetting routing space, which is the other factor of two.
+      Any of the three lands you at 5 million qubits and a confident wrong answer.
+
+      The trade-off accepted in this design: a 50 percent chance the run fails and
+      must be repeated, in exchange for distance 27 instead of the distance 31 or
+      33 that a 1 percent failure target would need. That is right for factoring
+      precisely because the answer is checkable in milliseconds on a laptop. For
+      an algorithm whose output cannot be verified classically, you cannot spend
+      the budget this way, and the distance and therefore the machine grow.
+    followUps:
+      - How would you allocate the error budget differently between the data block, the routing, and the distillation factories?
+      - What happens to the runtime if the number of factories is halved, and where is the crossover between qubit count and time?
+      - Why is a 50 percent failure probability acceptable here but not for a quantum chemistry calculation?
+    commonMistakes:
+      - Assuming one code cycle per Toffoli, which understates the runtime by an order of magnitude and consequently underestimates the required code distance.
+      - Costing a patch at d^2 rather than 2*d^2 - 1 physical qubits, and then omitting routing tiles, which together undercount the machine by about a factor of four.
+      - Quoting 20 million and 8 hours as fixed constants rather than as one-significant-figure results of a specific set of assumptions that later work has moved by a factor of a few.
+    references:
+      - label: Gidney and Ekera, How to factor 2048 bit RSA integers in 8 hours
+        url: https://arxiv.org/abs/1905.09749
+      - label: "Fowler et al, Surface codes: towards practical large-scale quantum computation"
+        url: https://arxiv.org/abs/1208.0928
+
+  - id: iq-224
+    title: Run a sensitivity analysis on the RSA-2048 estimate
+    kind: system-design
+    prompt: |
+      Start from the standard RSA-2048 estimate: about 6,200 logical qubits, about
+      2.7e9 Toffolis, physical error 1e-3, a 1 microsecond cycle, distance 27,
+      about 20 million physical qubits and about 8 hours. Now move two knobs
+      independently. First, the physical error rate improves to 1e-4. Second, the
+      cycle time improves to 100 nanoseconds. For each, tell me what the estimate
+      becomes and, more importantly, which quantities do not move and why. One of
+      the two changes hits a floor that has nothing to do with the qubits. Find
+      it, quantify it, and tell me which knob you would fund if you could only
+      fund one.
+    difficulty: medium
+    pattern: Shor resource estimation
+    topics: [sensitivity-analysis, physical-error-rate, cycle-time, reaction-limit, code-distance]
+    companies: [Google Quantum AI, IBM, Quantinuum, PsiQuantum]
+    modelAnswer: |
+      The decision that matters, once you run both knobs, is that error rate buys
+      you qubits and cycle time buys you almost nothing, because a faster cycle
+      runs straight into the classical reaction loop. Fund the error rate.
+
+      Knob one: p from 1e-3 to 1e-4. The error budget is unchanged: about 3e-15
+      per logical qubit per round, from 6,200 logical qubits times 2.7e10 rounds
+      and a 0.5 failure allowance. What changes is the base of the exponential,
+      p / p_th, from 0.1 to 0.01:
+
+          0.1 x 0.01^((d+1)/2) <= 3e-15
+          0.01^((d+1)/2)       <= 3e-14
+          (d+1)/2              >= 6.8
+          d                    >= 12.5, so d = 13
+
+      Distance falls from 27 to 13. Then:
+
+          patch cost   2 x 13^2 - 1 = 337 physical qubits, down from 1457
+          data         6,200 x 337 = 2.1e6
+          routing 2x   4.2e6
+          factories    now much cheaper too, of order 5e5
+          total        about 4.7e6, call it 5 million physical qubits
+
+      So a 10x improvement in physical error rate cuts the machine by about 4x,
+      from 20 million to 5 million. Runtime is unchanged at about 8 hours, because
+      the number of Toffolis and the cycles per Toffoli did not move. That is the
+      first quantity that does not move, and it surprises people: better qubits
+      make a smaller machine, not a faster one.
+
+      Knob two: cycle time from 1 microsecond to 100 nanoseconds. Naively the
+      runtime falls 10x, from 7.5 hours to 45 minutes, and the distance is
+      unchanged because the number of rounds is unchanged. But there is a floor.
+      Every Toffoli requires a magic state to be consumed, measured, decoded and a
+      correction applied before the next dependent Toffoli can start. That
+      reaction loop is a classical latency: readout of 300 nanoseconds to a few
+      microseconds, cable delay, decode, and pulse dispatch. Call the whole loop
+      1 to 10 microseconds; it does not shrink when the syndrome cycle shrinks,
+      because it is dominated by readout and decoding, not by the code.
+
+          2.7e9 Toffolis x 1 microsecond reaction  = 2.7e3 seconds = 45 minutes
+          2.7e9 Toffolis x 10 microseconds         = 2.7e4 seconds = 7.5 hours
+
+      So at a 10 microsecond reaction loop, making the cycle ten times faster
+      changes the runtime by essentially nothing: you were already
+      reaction-limited and did not know it. At a 1 microsecond reaction loop you
+      get the 45 minutes, and then you are limited by the decoder rather than the
+      hardware. That is the floor the question is asking for, and it is quantified
+      by the Toffoli count times the reaction latency.
+
+      Summary table, all figures at one significant figure.
+
+          scenario                     d    physical qubits   runtime
+          --------------------------   --   ---------------   -----------
+          baseline, 1e-3, 1 us         27   2e7               8 hours
+          p = 1e-4, 1 us               13   5e6               8 hours
+          p = 1e-3, 100 ns cycle       27   2e7               45 min to 8 h,
+                                                              set by reaction
+          both                         13   5e6               45 min to 8 h
+
+      Which knob to fund. The error rate, without hesitation. It cuts capital cost
+      by 4x, and capital cost is what decides whether the machine gets built at
+      all; a machine that takes 8 hours instead of 45 minutes still breaks RSA.
+      The second-order argument points the same way: at 1e-4 you could instead
+      keep distance 27 and spend the surplus on a much larger error budget, which
+      lets you run algorithms with no classical verifier, which is where the
+      economic value actually is.
+
+      The trade-off in that recommendation: I am assuming the reaction loop stays
+      in the 1 to 10 microsecond range, which is an assumption about classical
+      decoding hardware, not about qubits. If someone demonstrates a sub-microsecond
+      end-to-end reaction loop at scale, cycle time becomes worth funding again,
+      because then the 10x really does arrive and an 8 hour attack becomes a 45
+      minute one, which changes the operational picture for anyone relying on key
+      rotation as a mitigation.
+    followUps:
+      - At what reaction latency does cycle time start to matter again, and what would have to be true of the decoder?
+      - How does the answer change if the Toffolis can be parallelised rather than run sequentially?
+      - If you could improve the error rate on only half the qubits, where would you put the good ones?
+    commonMistakes:
+      - Claiming a 10x better error rate makes the computation faster. It shrinks the code distance and therefore the machine; the number of rounds is unchanged.
+      - Scaling the runtime linearly with cycle time without checking the reaction loop, which is a classical latency that does not shrink with the code cycle.
+      - Rescaling the qubit count by the ratio of distances rather than the ratio of 2*d^2 - 1, which is quadratic and is the whole size of the effect.
+    references:
+      - label: Gidney and Ekera, How to factor 2048 bit RSA integers in 8 hours
+        url: https://arxiv.org/abs/1905.09749
+      - label: PyMatching, fast minimum-weight perfect matching decoder
+        url: https://github.com/oscarhiggott/PyMatching
+
+  - id: iq-225
+    title: Rank RSA, elliptic curve and AES against a quantum attacker
+    kind: system-design
+    prompt: |
+      A bank asks you in what order to migrate its cryptography. Its estate uses
+      RSA-2048 for key transport and some signatures, elliptic curve P-256 for
+      TLS key agreement and most signatures, and AES-256 for data at rest and for
+      the card network's symmetric channels. Compare the quantum cost of attacking
+      each: logical qubits, Toffoli or T count, and the implied wall clock on the
+      20-million-qubit, 1 microsecond machine from the standard estimate. Then
+      give the migration order and defend it. Grover on AES is part of the answer
+      and I want the arithmetic, not the slogan that it halves the key length.
+    difficulty: medium
+    pattern: Shor resource estimation
+    topics: [rsa, elliptic-curve, grover, aes, migration-planning]
+    companies: [IBM, Microsoft Azure Quantum, Terra Quantum, AWS Braket]
+    modelAnswer: |
+      The decision the bank needs is an ordering, and the ordering is: elliptic
+      curve first, RSA immediately after, symmetric encryption essentially never.
+      The reason is not that ECC is weaker in some abstract sense. It is that ECC
+      falls to a machine with about a third as many logical qubits, and it is
+      carrying the bank's key agreement, which is exactly the thing exposed to
+      harvest-now-decrypt-later.
+
+      The three attacks, side by side.
+
+          target       logical qubits   Toffoli count   on the 2e7 qubit,
+                                                        1 microsecond machine
+          ----------   --------------   -------------   ---------------------
+          RSA-2048     about 6,200      about 2.7e9     about 8 hours
+          P-256 ECDLP  about 2,300      about 1.3e11    weeks
+          AES-256      a few thousand   about 2^128
+                       plus the AES     Grover
+                       oracle           iterations      never
+
+      RSA-2048 is the anchor: about 6,200 logical qubits and about 2.7e9 Toffolis,
+      which on the standard machine is about 8 hours.
+
+      Elliptic curve P-256. The published estimate is about 2,300 logical qubits
+      and of order 1.3e11 Toffolis. Note the shape of that: three times fewer
+      qubits, but about fifty times more Toffolis. The reason is that ECDLP over a
+      256-bit field needs many point additions, each of which is a chain of modular
+      multiplications and one modular inversion, and the inversions are expensive.
+      At the reaction-limited pace of about 10 microseconds per Toffoli:
+
+          1.3e11 x 10 microseconds = 1.3e6 seconds = about 15 days
+
+      So P-256 falls on a smaller machine but takes about two weeks rather than a
+      shift. For a defender, the qubit count is the number that matters, because
+      the smaller machine arrives first. Fifteen days of runtime is not a defence
+      against an attacker who has waited a decade for the machine.
+
+      AES-256 under Grover, with the arithmetic. Grover needs about (pi/4) x
+      sqrt(2^256) = about 2^127 iterations of an oracle that evaluates AES-256.
+      Each oracle call is a reversible AES circuit, of order 1e4 to 1e5 T gates.
+      Even granting an absurdly generous 1 nanosecond per iteration:
+
+          2^127 x 1e-9 seconds = 1.7e38 x 1e-9 = 1.7e29 seconds
+
+      The age of the universe is about 4e17 seconds. So this is eleven orders of
+      magnitude beyond the age of the universe with a fantasy gate speed, and the
+      real figure with fault-tolerant T gates is far worse. Grover also
+      parallelises badly: running it on k machines gives only a sqrt(k) speedup,
+      so throwing a thousand quantum computers at it buys a factor of 32.
+      AES-256 is not a migration item. AES-128 is a different conversation, with
+      about 2^63 effective work, which is uncomfortable but still not a break, and
+      the standard advice is to move to 256-bit keys where you have not already.
+
+      The migration order and why.
+
+      1. Key agreement in TLS and any long-lived confidential channel. Deploy
+         hybrid key establishment now, a classical exchange composed with a
+         lattice KEM, so a recorded session needs both to be broken. This is
+         first because it is the only category with retroactive exposure: traffic
+         captured today is decrypted the day the machine exists.
+      2. Key transport with RSA, wherever it protects data with a long
+         confidentiality lifetime. Same retroactive argument.
+      3. Signatures, both RSA and ECDSA. Signatures have no harvest-now exposure:
+         forging a signature after the fact does not help an attacker who needed
+         it during the session. But root and intermediate certificate authorities,
+         code signing, and anything embedded in hardware take five to ten years to
+         roll, so start the inventory and the agility work now even though the
+         deadline is later.
+      4. Symmetric. Confirm AES-256 everywhere, retire any AES-128 on long-lived
+         data, and stop.
+
+      The trade-off in this recommendation: hybrid key establishment costs
+      bandwidth and adds a second implementation to every handshake, roughly a
+      kilobyte or so of extra key material per connection and a new class of
+      interoperability bug, and it is deployed against a threat with an uncertain
+      date. I accept that because the alternative is unrecoverable: you cannot
+      retroactively protect a session someone already recorded. I would order it
+      differently for an organisation whose confidentiality lifetimes are all
+      short, a few months say, but whose signing infrastructure is embedded in
+      hardware with a fifteen-year field life. There, signatures come first,
+      because the migration time, not the exposure, is what binds.
+    followUps:
+      - Which of these estimates is most likely to move by an order of magnitude in the next five years, and in which direction?
+      - How would you handle a protocol where you cannot change both endpoints, such as a payment terminal fleet?
+      - What does the fifteen-day runtime for P-256 mean operationally for an attacker who must keep a machine stable that long?
+    commonMistakes:
+      - Concluding that elliptic curve is safer because it needs more Toffolis. It needs about a third of the logical qubits, so the machine that breaks it exists first.
+      - Repeating that Grover halves the key length without doing the arithmetic. About 2^127 iterations at 1 nanosecond each is 1.7e29 seconds, and Grover parallelises only as sqrt of the number of machines.
+      - Migrating signatures before key establishment. Signatures have no harvest-now-decrypt-later exposure, so they are urgent for a different reason and on a different clock.
+    references:
+      - label: NIST post-quantum cryptography project
+        url: https://csrc.nist.gov/projects/post-quantum-cryptography
+      - label: Grover, A fast quantum mechanical algorithm for database search
+        url: https://arxiv.org/abs/quant-ph/9605043
+
+  - id: iq-226
+    title: Design a quantum resource estimation service
+    kind: system-design
+    prompt: |
+      Design a service that takes an algorithm description and returns a physical
+      resource estimate: qubits, runtime, and a confidence range. Users are
+      cryptographers, chemists and product managers, so the same service must
+      answer "when does RSA-2048 fall" and "what would this catalyst calculation
+      cost". Give me the pipeline stages, which knobs you expose and which you fix,
+      how you version the model so a number quoted in a board deck last quarter can
+      be reproduced, and how you stop the service from producing confidently wrong
+      numbers. Assume roughly 10,000 estimates a day and that some of them end up
+      in regulatory filings.
+    difficulty: hard
+    pattern: Shor resource estimation
+    topics: [resource-estimation, service-design, model-versioning, uncertainty, api-design]
+    companies: [Microsoft Azure Quantum, Classiq, Multiverse Computing, AWS Braket]
+    modelAnswer: |
+      The decision that matters is that the service returns a range with an
+      explicit assumption set attached, never a single number, and that the
+      assumption set is a first-class versioned object that can be replayed. A
+      resource estimator whose output is one integer will be quoted out of
+      context within a week, and once it lands in a filing you cannot take it
+      back.
+
+      The pipeline, five stages, each with a typed artefact between them.
+
+          1. algorithm spec       ->  logical circuit description
+             A parameterised template: Shor with modulus size n, QPE on a
+             Hamiltonian with a given norm and term count, Grover with an oracle
+             cost model. Never require a concrete circuit, since at 2.7e9
+             Toffolis nobody will hand you gates.
+
+          2. logical counting     ->  logical resource record
+             Qubit count, Toffoli or T count, T depth, measurement count,
+             produced by a cost model per algorithm family, with the arithmetic
+             library as a parameter (naive adder, windowed, coset).
+
+          3. error budget         ->  per-component allowances
+             Split a total failure probability across storage, routing,
+             distillation and readout, visibly, in the output.
+
+          4. code and layout      ->  distance, tiles, factories
+             Solve for d from the budget, cost patches at 2*d^2 - 1, apply a
+             layout model for routing, size factories for the consumption rate.
+
+          5. physical estimate    ->  qubits, runtime, range
+             Multiply out, apply the reaction-limit floor, emit low and high.
+
+      Knobs exposed, deliberately few, because every knob is a way to produce the
+      answer somebody wanted:
+
+          physical two-qubit error rate       default 1e-3
+          syndrome cycle time                 default 1 microsecond
+          reaction latency                    default 10 microseconds
+          total failure probability           default 0.5 for verifiable
+                                              outputs, 0.01 otherwise
+          code family                         default rotated surface code
+          arithmetic library                  default windowed
+          connectivity assumption             default 2D nearest neighbour
+
+      Knobs fixed, and fixed loudly: the threshold model, the (d+1)/2 exponent,
+      the patch formula 2*d^2 - 1, and the distillation protocol family. A user
+      who wants those changed is asking for a different model version, not a
+      different parameter, and that distinction is what keeps the service honest.
+
+      Versioning. Every estimate returns a model_version, a constants_version and
+      the full assumption set, content-addressed. Store request and response
+      forever: 10,000 a day at a few kilobytes each is about 15 GB a year, which
+      is nothing. Old model versions stay executable, so a number quoted in a
+      board deck last quarter is reproduced by replaying its stored request
+      against its pinned version, never by rerunning today's model. When a
+      constant changes, publish a diff for every estimate that used it.
+
+      Keeping the estimates honest, which is the real product requirement.
+
+      1. Golden tests. RSA-2048 at the default assumptions must come out at about
+         2e7 physical qubits and about 8 hours; if a model change moves that, CI
+         fails and a human signs off. This one test catches more errors than any
+         amount of code review.
+      2. Two significant figures, maximum, in every output, and the word "about"
+         in the rendered text. The underlying model does not support more, and
+         formatting is where false precision enters.
+      3. Ranges, always. Produce low, central and high over a declared uncertainty
+         set, for example error rate 3e-4 to 3e-3 and reaction latency 1 to 30
+         microseconds. The spread is typically a factor of 5 to 20 in qubits, and
+         that spread is the honest answer.
+      4. Every constant carries a citation in the model definition, and the API
+         returns them. A constant with no citation cannot be merged.
+      5. Cross-check against an independent implementation for the flagship cases,
+         and alert when the two diverge by more than the stated tolerance.
+      6. An explicit "this model does not apply" response. If a user asks for an
+         algorithm family with no cost model, the service returns a refusal, not
+         an extrapolation. That refusal is a feature and should be advertised.
+
+      Serving. 10,000 estimates a day is 0.12 per second and each costs
+      milliseconds, so this is not a scaling problem. Build a small stateless
+      service over a durable store and spend the engineering on the model
+      registry and the audit trail instead.
+
+      The trade-off I accepted: exposing only seven knobs will frustrate expert
+      users who want to model their own architecture, and they will go and write
+      their own spreadsheet, which is worse for everyone. I mitigate that by
+      making model versions pluggable for internal users while keeping the public
+      API narrow. I would widen the public knob set only if I could also make
+      every returned figure carry its assumption set into whatever document it
+      lands in, which is a problem of presentation, not of computation, and it is
+      the one I would actually fund next.
+    followUps:
+      - How would you present a factor-of-ten range to a product manager who needs a single date for a roadmap?
+      - What is your process the day a paper halves the cost of magic state distillation?
+      - How would you detect that users are systematically tuning knobs to reach a predetermined answer?
+    commonMistakes:
+      - Returning a single number instead of a range with its assumption set, which guarantees the figure is quoted without its assumptions within a week.
+      - Letting the model constants be user-settable parameters, so two estimates are incomparable and no audit can reconstruct what was assumed.
+      - Extrapolating a cost model to an algorithm family it was not built for, rather than refusing. A confident wrong estimate in a filing is worse than no estimate.
+    references:
+      - label: Azure Quantum documentation
+        url: https://learn.microsoft.com/en-us/azure/quantum/
+      - label: Quantum Algorithm Zoo
+        url: https://quantumalgorithmzoo.org/
+
+  - id: iq-227
+    title: Build a harvest-now-decrypt-later model for one organisation
+    kind: system-design
+    prompt: |
+      A retail bank asks you whether it is exposed to harvest-now-decrypt-later,
+      and what to do about it. Its data has a mix of lifetimes: card data retained
+      seven years for regulation, mortgage records that stay sensitive for
+      twenty-five, and session traffic that matters for days. It estimates seven
+      years to migrate cryptography across its mainframe, hardware security
+      modules, payment networks, TLS terminators and a fleet of card terminals.
+      Build the risk model. Use the Mosca inequality explicitly, put numbers on
+      each term including your uncertainty about the machine, and then tell me
+      what you would actually recommend on Monday morning. Do not hide behind the
+      uncertainty in the arrival date.
+    difficulty: hard
+    pattern: Shor resource estimation
+    topics: [harvest-now-decrypt-later, mosca-inequality, migration-planning, risk-model, pqc]
+    companies: [IBM, Terra Quantum, Microsoft Azure Quantum, Multiverse Computing]
+    modelAnswer: |
+      The decision is that the bank is exposed today, the inequality is violated
+      by a wide margin on one specific data class, and the Monday action is
+      hybrid key establishment on external TLS plus a cryptographic inventory.
+      The uncertainty about the arrival date does not change that, and that is the
+      point of doing the arithmetic.
+
+      The Mosca inequality. Let x be the number of years the data must stay
+      confidential, y the number of years to migrate, and z the number of years
+      until a cryptographically relevant quantum computer exists. You have a
+      problem if
+
+          x + y > z
+
+      because data encrypted today with a lifetime of x years is still sensitive
+      when the machine arrives, and you needed y of those years to fix it.
+
+      The bank's terms, by data class, in 2026.
+
+          data class          x (years)   y (years)   x + y   exposed if z <
+          -----------------   ---------   ---------   -----   --------------
+          session traffic     0.01        7           7.0     2033
+          card data           7           7           14      2040
+          mortgage records    25          7           32      2058
+
+      Now z. Be explicit that this is a belief, not a measurement. RSA-2048 needs
+      about 20 million physical qubits at a 1e-3 error rate and the largest
+      devices today are of order 1e3 qubits, so four orders of magnitude separate
+      the two. Expert elicitations place a meaningful probability, commonly 10 to
+      30 percent, on a relevant machine by the mid 2030s, rising towards a coin
+      flip by the 2040s. Nobody should quote a point estimate for z, so use a
+      distribution and read the inequality against it:
+
+          z < 2033   perhaps 5 to 10 percent    session traffic at risk
+          z < 2040   perhaps 20 to 35 percent   card data at risk
+          z < 2058   more likely than not       mortgage records at risk
+
+      So the mortgage class fails the inequality against the central case, not
+      against a tail. That is the finding. A 25-year confidentiality lifetime plus
+      a 7-year migration means you are underwriting a bet on 2058 with today's
+      elliptic curve key agreement, and 2058 is beyond where almost anyone is
+      willing to say the machine does not exist.
+
+      Note which term you can actually move. You cannot move z, and you cannot
+      move x for mortgage records, since it is set by law and by the nature of the
+      data. You can only move y. Every year cut from the migration is a year of
+      exposure removed, and that reframes the whole programme: this is a schedule
+      problem, not a cryptography problem.
+
+      The exposure that already exists. Any traffic recorded today under an
+      elliptic curve or RSA key exchange is decryptable the day the machine
+      arrives. Recording is cheap: bulk capture of TLS at a network boundary costs
+      storage, and storage is the cheapest thing in the estate. So assume it is
+      happening for any traffic that crosses a network an adversary can touch, and
+      note that this applies retroactively to traffic already sent, which no
+      migration can fix. That is the sentence to put in front of the board.
+
+      What I would recommend on Monday, in order.
+
+      1. Hybrid key establishment on every externally facing TLS endpoint, a
+         classical exchange composed with a lattice KEM so a recorded session
+         needs both broken. Deployable now in mainstream stacks, backwards
+         compatible through negotiation, and it stops the bleeding on new
+         traffic. Cost: about a kilobyte per handshake and a test matrix.
+      2. Cryptographic inventory. You cannot migrate what you cannot find. Every
+         certificate, every key, every algorithm, every hardware module, every
+         embedded terminal, with owner and rotation mechanism. Expect this to take
+         six to twelve months and to be the single most useful artefact produced.
+         It is also what shrinks y, and y is the only term you control.
+      3. Crypto agility as an engineering requirement. Algorithm choice behind an
+         interface, keys rotatable without a release, protocol versions
+         negotiable. Without it every future migration costs another seven years.
+      4. Prioritise by x, not by convenience. Mortgage and long-lived customer
+         records first, card data next, session traffic last, which is the reverse
+         of the order in which the systems are easy to change.
+      5. Signatures on a separate, slower track. There is no harvest-now exposure
+         for a signature, but the certificate authority hierarchy and the terminal
+         fleet have five to fifteen year field lives, so start the inventory now
+         and plan the rollover, without pulling it ahead of key establishment.
+      6. Report the model, not the conclusion. Give the board the table above with
+         the probabilities shown as ranges, so the decision is made against the
+         uncertainty rather than against a date somebody made up.
+
+      The trade-off I accepted: hybrid key establishment costs bandwidth, a second
+      implementation in the handshake path, and a real risk of interoperability
+      bugs with older clients, all against a threat with an uncertain date. I take
+      it because the exposure is retroactive and therefore uniquely unrecoverable:
+      every other risk on the bank's register can be mitigated after the fact, and
+      this one cannot. I would sequence it differently for an organisation whose
+      confidentiality lifetimes are all short and whose signing infrastructure is
+      embedded in hardware, where migration time on signatures is what binds.
+    followUps:
+      - How would you actually measure y rather than accept the seven-year figure the bank gave you?
+      - What would you tell a regulator who asks for a single date by which the bank will be quantum safe?
+      - Which parts of the estate cannot be migrated at all, and what compensating control do you propose there?
+    commonMistakes:
+      - Treating the arrival date as the only uncertain term and concluding that nothing can be decided. Migration time is the only term you control, and it is measurable today.
+      - Ignoring that the exposure is retroactive. Traffic already recorded cannot be protected by any future migration, which is what makes key establishment urgent.
+      - Migrating the easiest systems first. Priority follows the confidentiality lifetime of the data, which usually points at the hardest systems in the estate.
+    references:
+      - label: NIST post-quantum cryptography project
+        url: https://csrc.nist.gov/projects/post-quantum-cryptography
+      - label: ETSI quantum key distribution
+        url: https://www.etsi.org/technologies/quantum-key-distribution
+
+  - id: iq-228
+    title: Say where the standard Shor estimate is most likely wrong
+    kind: system-design
+    prompt: |
+      The standard estimate says about 20 million physical qubits and about 8
+      hours for RSA-2048. Attack it. Tell me the four or five assumptions most
+      likely to be wrong, which direction each one moves the answer, and roughly
+      by how much. Include distillation, the arithmetic circuits, the choice of
+      code, and the decoder. Then do the harder part: you have ten minutes with a
+      chief information security officer who wants a single date. Tell me exactly
+      what you say, how you convey a factor-of-ten uncertainty without either
+      alarming them or letting them conclude that nothing needs doing, and what
+      decision you ask them to make.
+    difficulty: hard
+    pattern: Shor resource estimation
+    topics: [uncertainty, magic-state-distillation, qldpc, decoder-assumptions, executive-communication]
+    companies: [Google Quantum AI, IBM, PsiQuantum, Q-CTRL]
+    modelAnswer: |
+      The decision that matters when you attack this estimate: almost every
+      identified error points the same way, downward, because the estimate is a
+      construction and constructions get better. The exceptions, and there are
+      two, are the ones worth most of your attention.
+
+      The five assumptions, with direction and rough magnitude.
+
+      1. Magic state distillation, direction down, factor of a few to ten.
+         Distillation is 10 to 20 percent of the machine, and its cost model has
+         been improved repeatedly: newer approaches that cultivate states in place
+         rather than distilling through multi-level protocols report
+         order-of-magnitude reductions in factory footprint. This is the most
+         reliably improving line item in the whole estimate.
+
+      2. The arithmetic, direction down, factor of a few. The 2.7e9 Toffoli count
+         already reflects windowed arithmetic and a coset representation and is
+         about 13 times better than the naive 3.4e10, and there is no reason to
+         think that sequence has stopped. Every factor of two in Toffolis is a
+         factor of two in runtime and a small reduction in distance.
+
+      3. The code, direction down, potentially a factor of five to ten. The
+         estimate assumes the rotated surface code at 2*d^2 - 1 per logical qubit.
+         A bivariate bicycle qLDPC code encodes 12 logical qubits in 288 physical
+         qubits at distance 12, about 24 physical per logical against 337 for a
+         surface code at distance 13. Counting the ancilla machinery needed to
+         compute rather than store, the real advantage is smaller and contested,
+         but a factor of five is plausible if connectivity and decoders arrive.
+
+      4. The decoder, direction up, and this is the one people skip. The estimate
+         assumes real-time decoding at 1 MHz with a reaction loop of about 10
+         microseconds, and nothing at this scale has been demonstrated. The
+         bandwidth alone is brutal: 2e7 physical qubits means of order 1e7 measure
+         qubits each emitting a bit every microsecond, of order 1e13 bits per
+         second that must be reduced where it is produced. At a 100 microsecond
+         reaction loop the runtime goes from 8 hours to 75 hours, and if the
+         decoder cannot sustain the rate the backlog grows without bound.
+
+      5. The error rate, direction up, factor of two to four in qubits. The
+         estimate assumes 1e-3 uniformly, but 1e-3 is the best reported two-qubit
+         number on selected pairs, and a device average across 2e7 qubits with
+         fabrication spread, drift and leakage will be worse. Correlated events,
+         cosmic rays and crosstalk bursts, sit outside the depolarising model the
+         threshold is quoted under. Push the rate to 3e-3 and the distance rises,
+         and the qubit count rises with its square.
+
+      Net: three downward pressures of a factor of a few each, two upward pressures
+      of a factor of a few each. That is why the honest answer is a range, why
+      serious people quote 20 million as one significant figure, and why the
+      estimate has moved by a factor of a few in both directions since publication.
+
+      Now the ten minutes with the security officer. Here is what I say.
+
+      "You want a date. I cannot give you one, and anyone who does is selling
+      something. What I can give you is a decision that is correct under every
+      version of the date.
+
+      Here is the state of it. The best public estimate for breaking RSA-2048 is
+      about 20 million physical qubits running for about 8 hours. Today's largest
+      machines are around a thousand qubits. That is four orders of magnitude, and
+      nobody crosses four orders of magnitude on a schedule you can hold them to.
+
+      The estimate is uncertain by roughly a factor of ten in both directions, and
+      I can tell you which assumptions carry that uncertainty. Better ways of
+      making the special states the algorithm consumes, better arithmetic, and
+      better error-correcting codes push the number down, and all three have
+      improved steadily. The classical electronics that must keep up with error
+      correction, and the real error rate across twenty million qubits rather than
+      a good pair, push it up, and neither has been demonstrated at scale.
+
+      Here is why the date does not change your decision. Anything encrypted today
+      that must stay confidential into the 2040s is already exposed, because
+      recording traffic now and decrypting later costs an adversary only storage,
+      and your migration takes years whatever the date is. The two numbers that
+      matter are yours: how long your data must stay secret, and how long you need.
+
+      What I want from you today is one decision, not a programme: approve hybrid
+      key establishment on external TLS, and fund a cryptographic inventory. The
+      first stops new traffic being harvested and is deployable in mainstream
+      stacks now. The second tells you how long your migration actually takes,
+      which is the only number in this whole conversation you control. Ask me
+      again in twelve months and I will have a narrower range and you will have a
+      shorter migration."
+
+      The trade-off I accepted in that briefing: I gave up the crispness of a date
+      and accepted the risk of sounding evasive, in exchange for a recommendation
+      that is robust across the full range and cannot be invalidated by the next
+      paper. I would speak differently to a technical audience, leading with the
+      five assumptions and letting them form their own distribution, and
+      differently again to a regulator, who needs a commitment to a process and a
+      review cadence rather than either a date or a range.
+    followUps:
+      - Which of the five assumptions would you fund an experiment to test first, and what would the experiment be?
+      - How would you word a public statement so it survives both a breakthrough and a decade of no progress?
+      - What early indicator would tell you the estimate has genuinely moved, as opposed to a paper improving one line item?
+    commonMistakes:
+      - Listing only the assumptions that make the estimate smaller. The decoder and the real device-average error rate both push it up, and ignoring them makes the uncertainty look one-sided.
+      - Presenting the factor-of-ten uncertainty as a reason to wait. The recommended action is the same across the whole range, which is the point of doing the analysis.
+      - Giving an executive a date. A date invites a plan keyed to that date, and the plan breaks the moment the date moves, which it will.
+    references:
+      - label: Gidney and Ekera, How to factor 2048 bit RSA integers in 8 hours
+        url: https://arxiv.org/abs/1905.09749
+      - label: NIST post-quantum cryptography project
+        url: https://csrc.nist.gov/projects/post-quantum-cryptography

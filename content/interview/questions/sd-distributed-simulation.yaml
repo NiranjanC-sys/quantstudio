@@ -1,0 +1,810 @@
+questions:
+  - id: iq-202
+    title: Size a distributed statevector simulator for 34 and 40 qubits
+    kind: system-design
+    prompt: |
+      We are building the heavy simulation tier for a quantum development
+      platform and product wants a slider that goes to 40 qubits. Size it
+      before we buy anything. Tell me the memory a statevector costs per
+      qubit at complex128 and at complex64, where the single-node wall sits,
+      and how many nodes a 34-qubit run and a 40-qubit run each need. Our
+      standard node is 512 GiB of DRAM with about 400 GB/s of memory
+      bandwidth and one 200 Gb/s InfiniBand port. Then tell me what the
+      bottleneck actually is once the state is resident, because the CFO is
+      going to ask whether buying more FLOPs helps. No GPUs in the first
+      cut, though I want to know what changes when we add them.
+    difficulty: easy
+    pattern: Distributed statevector simulation
+    topics: [statevector, memory-sizing, memory-bandwidth, capacity-planning, precision]
+    companies: [IBM, Google Quantum AI, AWS Braket, Xanadu]
+    modelAnswer: |
+      Start from the only equation in the problem. A statevector of n qubits
+      is 2^n complex amplitudes. At complex128 that is 16 bytes each, at
+      complex64 it is 8. Everything else follows.
+
+          n     complex128    complex64
+          ----  ------------  -----------
+          30    16 GiB        8 GiB
+          32    64 GiB        32 GiB
+          34    256 GiB       128 GiB
+          36    1 TiB         512 GiB
+          40    16 TiB        8 TiB
+
+      Every qubit doubles the bill. That single fact sets the shape of the
+      whole tier: this is not something you scale by adding a little more
+      memory, it is something where each extra qubit costs as much hardware
+      as everything below it put together. So the tier needs a hard
+      admission limit, checked before allocation and never during it.
+
+      Where the single-node wall sits. Of 512 GiB, the operating system, the
+      runtime and the gate work buffers take a real bite, so budget about
+      400 GiB for the state itself. At complex128 that holds 34 qubits
+      (256 GiB) comfortably and 35 qubits (512 GiB) not at all. At complex64
+      it holds 35 qubits (256 GiB) and not 36. So the wall is 34 qubits in
+      double precision, 35 in single, on this node.
+
+      Node counts. Rank counts must be a power of two, because the standard
+      distributed layout puts the top qubits into the rank index, so a
+      non-power-of-two rank count breaks the bit mapping.
+
+        34 qubits, complex128: 256 GiB, one node.
+        40 qubits, complex128: 16 TiB / 400 GiB = 41 nodes, round up to 64.
+                               Each node then holds 256 GiB of state and has
+                               256 GiB left for exchange buffers, which you
+                               will need on every gate that touches a qubit
+                               living in the rank index.
+        40 qubits, complex64:  8 TiB over 32 nodes, again 256 GiB per node.
+
+      Now the question the CFO asked. Once the state is resident this is a
+      memory bandwidth problem, not a FLOP problem, and you can show it in
+      two lines. A single-qubit gate on qubit q pairs each amplitude with
+      the one whose index differs in bit q and applies a 2x2 complex matrix.
+      Per pair, the traffic is two amplitudes read and two written: 64 bytes
+      at complex128. The arithmetic is 4 complex multiplies and 2 complex
+      adds, which is 4*6 + 2*2 = 28 real flops. Arithmetic intensity is
+      28/64 = 0.44 flops per byte. This node balances at roughly 1 Tflop/s
+      over 400 GB/s, that is about 2.5 flops per byte, and a modern GPU
+      balances nearer 10 to 20. We sit four to forty times below the balance
+      point, so the cores are stalled on DRAM and extra FLOPs buy nothing.
+
+      Put a wall clock on it. One gate over 256 GiB of local state moves
+      about 550 GB of traffic, read plus write, and at 400 GB/s that is
+      1.4 seconds. A 500-gate circuit at 40 qubits is 700 seconds of pure
+      memory traffic before a single byte crosses the network. Doubling
+      FLOPs changes that number not at all. Doubling bandwidth halves it,
+      which is the entire argument for the GPU second cut: an 80 GiB HBM
+      device sustains of order 3 TB/s, roughly eight times a socket, so cost
+      per applied gate falls by close to that factor even though capacity
+      per device is small and you need more devices to hold the same state.
+
+      The trade-off I am accepting. I would ship complex64 as the default
+      and put complex128 behind a flag, which halves every number above and
+      buys one extra qubit for free. Single precision carries about seven
+      decimal digits; a sampled result at 1e4 shots has a statistical error
+      near 1e-2, so the precision loss is several orders of magnitude below
+      the noise the customer already tolerates. Accumulated rounding over a
+      deep circuit grows roughly as the square root of the gate count in the
+      random-walk case, so 1e6 gates still leaves about 1e-4. I would decide
+      the other way for a phase-estimation workload, where the answer lives
+      in the low bits of a phase and single precision genuinely destroys it,
+      and for any customer who is buying exact amplitudes rather than
+      samples.
+    followUps:
+      - How does this sizing change if a node carries eight 80 GiB GPUs instead of 512 GiB of DRAM?
+      - At what qubit count does the network rather than DRAM set the runtime, and what measurement would you run to show it?
+      - How would you enforce the memory limit so that an oversized request is rejected before allocation rather than during it?
+    commonMistakes:
+      - Sizing the cluster on the raw state size alone and forgetting exchange and work buffers, which lands a 40-qubit job on 41 nodes and then fails on the first gate that needs a receive buffer.
+      - Quoting a FLOP rating for the tier. A single-qubit gate has an arithmetic intensity near 0.44 flops per byte, four times or more below the machine balance point, so added FLOPs change no wall clock.
+      - Choosing a rank count that is not a power of two, which breaks the qubit-to-rank bit mapping and forces an index remap on every single gate.
+    references:
+      - label: NVIDIA cuQuantum documentation
+        url: https://docs.nvidia.com/cuda/cuquantum/
+      - label: Qiskit Aer simulator documentation
+        url: https://qiskit.github.io/qiskit-aer/
+
+  - id: iq-203
+    title: Map qubits to ranks for a 40-qubit distributed run
+    kind: system-design
+    prompt: |
+      We settled on 64 nodes for a 40-qubit statevector, one MPI rank per
+      node, 256 GiB of state per rank. Now design the layout. Define the
+      split between local qubits and global qubits and say exactly which
+      amplitudes each rank owns. Tell me why a gate on a global qubit costs
+      a network exchange and a gate on a local qubit does not, and put a
+      number on the difference. Then tell me how you choose which qubits go
+      global, given that we get the whole circuit ahead of time and are
+      allowed to permute the qubit labels. Assume 200 Gb/s per node and
+      400 GB/s of memory bandwidth. I want the rule, the cost model, and
+      what you do when the rule does not help.
+    difficulty: medium
+    pattern: Distributed statevector simulation
+    topics: [qubit-mapping, mpi-ranks, data-layout, communication-cost, scheduling]
+    companies: [IBM, Microsoft Azure Quantum, Multiverse Computing, Rigetti]
+    modelAnswer: |
+      The decision that matters is that the rank index is not metadata, it
+      is the top bits of the amplitude index. Once you commit to that, every
+      other question in the design has an arithmetic answer.
+
+      With 64 ranks, k = log2(64) = 6 qubits live in the rank index and the
+      remaining 34 live in the local offset. Write a global amplitude index
+      i as 40 bits split into (g, l), where g is the top 6 bits and l is the
+      low 34. Rank r owns exactly those amplitudes with g = r, stored
+      contiguously at offset l.
+
+          global index i  =  [ g6 g5 g4 g3 g2 g1 | l33 ......... l0 ]
+                              \___ rank id ____/   \__ local offset _/
+                                 6 global qubits      34 local qubits
+
+          rank 0 holds l = 0 .. 2^34-1 with g = 000000   (256 GiB)
+          rank 1 holds l = 0 .. 2^34-1 with g = 000001   (256 GiB)
+          ...
+
+      A gate on a local qubit t < 34 pairs amplitude l with l XOR 2^t, and
+      both live on the same rank. It is a strided pass over local DRAM: 550
+      GB of traffic at 400 GB/s, about 1.4 seconds, no packets.
+
+      A gate on a global qubit t >= 34 pairs amplitude (g, l) with
+      (g XOR 2^(t-34), l). The partner has the same local offset and a
+      different rank, and the partner rank is r XOR 2^(t-34). That is worth
+      stating explicitly because it is the fact the whole communication
+      design rests on: this is a pairwise exchange between 32 disjoint rank
+      pairs, not an all-to-all. Calling MPI_Alltoall here would be a bug
+      that costs bandwidth for nothing.
+
+      The cost of that exchange, done properly, is half the local buffer
+      moved in each direction: 128 GiB out and 128 GiB in per rank. 128 GiB
+      is 137 GB, and 200 Gb/s is 25 GB/s of line rate, so at full duplex and
+      full rate it is 5.5 seconds. Against 1.4 seconds for a local gate that
+      is a factor of four, and at a realistic 70 to 80 percent of line rate
+      it is closer to seven seconds and a factor of five.
+
+      So the rule for choosing global qubits writes itself: put the qubits
+      that appear in the fewest gates into the six global slots. Count gate
+      incidence per qubit over the whole circuit, sort descending, assign
+      the 34 busiest to local slots and the six quietest to the rank index.
+      This is greedy. The exact problem, minimising total exchanges over a
+      circuit where remaps are allowed, is a graph partitioning problem and
+      is NP-hard, so greedy plus a short local search over swaps is what
+      ships, and it typically gets within a few percent of what an hour of
+      search finds.
+
+      Now what the rule buys, with numbers. Take 500 two-qubit gates drawn
+      uniformly over 40 qubits, the worst case for any static ordering. The
+      probability that a gate touches at least one global qubit is
+      1 - (34/40)*(33/39) = 0.28, so 140 gates cost 7 seconds each, which is
+      980 seconds of network against 504 seconds of local work: about 25
+      minutes, three quarters of it waiting on the fabric. Real circuits are
+      not uniform. A chemistry ansatz or a lattice simulation has a skewed
+      incidence distribution, and pushing the six quietest qubits global
+      routinely takes the global fraction under 10 percent, which is where
+      the run stops being network bound.
+
+      When the rule does not help, remap dynamically. If a circuit region
+      must repeatedly touch a global qubit g, spend one exchange to swap g
+      into a local slot, evicting an idle local qubit into the rank index,
+      then run the whole region locally. One exchange amortised over many
+      gates. The break-even is sharp: doing m gates on a global qubit costs
+      7m seconds; swapping once and doing them locally costs 7 + 1.4m. Those
+      are equal at m = 1.25, so any window containing two or more gates on
+      the same global qubit should be remapped. Schedule the circuit into
+      such windows before the run, not during it.
+
+      One more layer that is free money. This layout assumes one rank per
+      node, so all six global bits are network. Run two ranks per node and
+      one of those bits becomes an intra-node copy at 400 GB/s instead of
+      25 GB/s, sixteen times cheaper. Assign the busiest of the six global
+      qubits to that bit. Extend the same idea to eight GPUs per node
+      connected by an on-board fabric and the top three global bits become
+      cheap, leaving only three genuinely expensive ones.
+
+      The trade-off. This design assumes the circuit is known offline and
+      that qubit usage is skewed. On a genuinely uniform random circuit no
+      static ordering helps at all and you fall back to dynamic swaps,
+      paying one exchange per window and accepting a network-bound run. It
+      also assumes a power-of-two rank count and homogeneous nodes; a
+      heterogeneous cluster where one node has less memory forces a
+      non-uniform split and the clean bit mapping is gone. I would give up
+      the static ordering entirely, and remap on every window, if profiling
+      showed the global-gate fraction above about 25 percent even after
+      sorting, because at that point the ordering is not earning its
+      complexity.
+    followUps:
+      - You have eight GPUs per node. How does the qubit ordering change when the top three global bits are an on-board fabric and the rest are InfiniBand?
+      - What do you do with a two-qubit gate whose two qubits are both global?
+      - Why is the partner rank for a gate on global qubit t always r XOR 2^(t-k), and what does that buy over a general all-to-all?
+    commonMistakes:
+      - Assigning the busiest qubits to global slots because they appeared first in the circuit, which turns a 10 percent global-gate fraction into 40 percent and roughly triples the wall clock.
+      - Describing the exchange as an all-to-all. It is a pairwise exchange between rank r and rank r XOR mask, and using a collective built for all-to-all traffic wastes most of the fabric.
+      - Ignoring the node-internal hierarchy, so a global qubit that could have been a 400 GB/s intra-node copy is pushed over a 25 GB/s link instead.
+    references:
+      - label: Open MPI documentation
+        url: https://www.open-mpi.org/doc/
+      - label: NVIDIA cuQuantum documentation
+        url: https://docs.nvidia.com/cuda/cuquantum/
+
+  - id: iq-204
+    title: Design the exchange for a gate on a global qubit
+    kind: system-design
+    prompt: |
+      Same machine: 40 qubits, 64 ranks, 256 GiB of state per rank, one
+      200 Gb/s port per node, a fat tree with full bisection, 400 GB/s of
+      memory bandwidth per node. A gate lands on a global qubit. Design the
+      communication for it. I want to know exactly what bytes move, in what
+      message sizes, how you overlap the transfer with the arithmetic, what
+      fraction of link bandwidth you expect to actually get and why, and the
+      resulting time for one such gate. Then tell me how much the overlap
+      buys you, because I want to know whether to spend engineering effort
+      there or somewhere else.
+    difficulty: medium
+    pattern: Distributed statevector simulation
+    topics: [collective-communication, rdma, pipelining, bandwidth, message-sizing]
+    companies: [IBM, AWS Braket, Classiq, Google Quantum AI]
+    modelAnswer: |
+      The decision is to formulate the operation as a qubit swap rather than
+      as a remote gate application. You exchange exactly half the local
+      buffer, once, in each direction, and then the gate is local. Everything
+      else is four times more expensive.
+
+      The naive version first, so the factor is visible. Rank r sends its
+      whole 256 GiB buffer to partner p = r XOR mask, p applies the gate to
+      both halves, p sends back the half belonging to r. That is 512 GiB
+      moved per rank, 22 seconds at line rate, and p is idle while r is
+      computing.
+
+      The swap version. Pick an unused local qubit s. Rank r owns the
+      amplitudes with global bit 0; partner p owns those with global bit 1.
+      Rank r keeps the half of its buffer with local bit s = 0 and sends the
+      half with s = 1; p keeps the half with s = 1 and sends the half with
+      s = 0. After the exchange, rank r holds every amplitude with s = 0 for
+      both values of the old global bit, so the global qubit has become
+      local qubit s and the gate is a plain strided DRAM pass. Each rank
+      sends 128 GiB and receives 128 GiB, and because InfiniBand is full
+      duplex those happen concurrently.
+
+          rank r                              rank p = r XOR mask
+          +----------------+                  +----------------+
+          | s=0  128 GiB   |  keep            | s=0  128 GiB   |  send  --+
+          | s=1  128 GiB   |  send --+        | s=1  128 GiB   |  keep    |
+          +----------------+         |        +----------------+          |
+                   ^-----------------|-----------------------------------+
+                   +-----------------+  (concurrent, full duplex)
+
+      Message sizes. RDMA reaches asymptotic bandwidth somewhere above about
+      1 MiB, so anything from 4 MiB up is fine on bandwidth grounds; the
+      reason to pick a size is pipeline granularity, not throughput. Use
+      64 MiB chunks: 128 GiB is 2048 of them, which is fine enough to
+      pipeline, and at a few microseconds of per-message overhead the total
+      overhead is 2048 * 5 microseconds = 10 ms out of a multi-second
+      transfer, under 0.2 percent. Going to 1 MiB chunks gives 131,072
+      messages and 0.7 seconds of pure overhead, which is 10 percent thrown
+      away for no benefit.
+
+      Overlap. Post every receive before any send, then pipeline:
+
+          post MPI_Irecv for all chunks
+          for i in 0 .. nchunks-1:
+              MPI_Isend(chunk i)
+              if i > 0: wait for recv(i-1); apply gate to chunk i-1
+          wait for the tail
+
+      Bandwidth you should expect. 200 Gb/s is 25 GB/s of line rate. Between
+      a fixed pair with large RDMA messages, 85 to 92 percent is normal, so
+      about 22 GB/s. With all 32 pairs active and sharing uplinks in the
+      tree, expect 70 to 80 percent even on a full-bisection fabric, so plan
+      at 0.75, that is 18.75 GB/s. This is a fabric-dependent figure and you
+      should measure it with a pairwise bandwidth sweep before promising
+      anything: on a tapered dragonfly the same exchange can fall to 40
+      percent, and then the fix is to number ranks so that XOR partners land
+      inside the same group.
+
+      The time for one global gate, then: 137 GB at 18.75 GB/s is 7.3
+      seconds. At line rate it would be 5.5. Compare a local gate at 1.4
+      seconds.
+
+      Now the question you actually asked. The local arithmetic on 128 GiB
+      is 275 GB of traffic at 400 GB/s, which is 0.69 seconds. That is 9
+      percent of the 7.3 second exchange. So perfect overlap buys you 9
+      percent, and no amount of further tuning buys more, because the
+      network is 20 times slower than DRAM on this node. Implement the
+      pipeline because it is fifty lines and it is free, then stop. The
+      engineering effort belongs in reducing the number of exchanges: gate
+      fusion, circuit reordering and a better qubit-to-rank assignment each
+      move the number of exchanges by factors of two to ten, and overlap
+      moves the cost of one exchange by nine percent.
+
+      The trade-off. The swap formulation needs a spare local qubit s that
+      no gate in the current window touches, which is easy at 34 local
+      qubits and impossible if the circuit genuinely uses all of them in
+      every layer; in that case you fall back to a half-buffer exchange with
+      an explicit index permutation, which costs the same bytes but a more
+      expensive local pass. The pipeline also needs only two 64 MiB buffers,
+      which is nothing, whereas the naive whole-buffer exchange needs
+      256 GiB of receive space and would cost you a qubit of capacity. And
+      the 0.75 bandwidth planning figure is the number I would most want
+      measured before I signed up to a delivery date, because if the real
+      fabric gives 0.4 every runtime estimate in this design doubles.
+    followUps:
+      - Your XOR partners straddle a tapered link and you measure 40 percent of line rate. What do you change, and what does it cost?
+      - How would you verify that the pipelined implementation produces bitwise the same state as an unpipelined reference, and should you expect bitwise equality at all?
+      - Two ranks share a node. How does the exchange change for the global bit that distinguishes them?
+    commonMistakes:
+      - Exchanging the whole local buffer instead of half of it, which moves four times the bytes and needs a receive buffer as large as the state.
+      - Chunking down to 1 MiB messages in the belief that smaller messages pipeline better, which adds over 100,000 message overheads and loses about 10 percent of the transfer.
+      - Investing in overlap tuning when the arithmetic is only 9 percent of the exchange, instead of cutting the number of exchanges, which is where the factors of two to ten live.
+    references:
+      - label: Open MPI documentation
+        url: https://www.open-mpi.org/doc/
+      - label: Google qsim simulator
+        url: https://quantumai.google/qsim
+
+  - id: iq-205
+    title: Pick a gate fusion level and a reordering policy
+    kind: system-design
+    prompt: |
+      Our 40-qubit distributed simulator applies one gate at a time, so
+      every gate is a full pass over 256 GiB per rank. The workload is a
+      2000-gate circuit, mostly single-qubit rotations with nearest
+      neighbour CZ gates on a line. Design gate fusion for this. Tell me how
+      many qubits go into a fused block and derive the number rather than
+      quoting a library default, tell me the cost model you used, and tell
+      me where fusion stops paying and why. Then use the same cost model to
+      decide when to reorder the circuit to cut network exchanges. Node is
+      400 GB/s of memory bandwidth, roughly 1 Tflop/s, 1 to 2 MiB of L2 per
+      core, one 200 Gb/s port.
+    difficulty: medium
+    pattern: Distributed statevector simulation
+    topics: [gate-fusion, arithmetic-intensity, cache-blocking, circuit-scheduling, cost-model]
+    companies: [Google Quantum AI, IBM, Classiq, Q-CTRL]
+    modelAnswer: |
+      The decision is to fuse to four-qubit blocks on this CPU node and five
+      or six on a GPU, and the reason to derive it rather than copy a
+      default is that the right answer is set by the machine balance, which
+      differs between the two by almost an order of magnitude.
+
+      The cost model. Applying a k-qubit fused gate to the whole local state
+      costs one read and one write of that state, 2 * 256 GiB = 550 GB,
+      completely independent of k. The arithmetic per amplitude is one row
+      of a 2^k by 2^k matrix against a 2^k vector: 2^k complex
+      multiply-accumulates, which is 8 * 2^k real flops, paid against 32
+      bytes of traffic per amplitude. So
+
+          arithmetic intensity = 8 * 2^k / 32 = 2^k / 4  flops per byte.
+
+      Set that equal to the machine balance B and you get 2^k = 4B.
+
+          CPU node: B = 1 Tflop/s / 400 GB/s   = 2.5   ->  2^k = 10, k = 3.3
+          GPU:      B = 60 Tflop/s / 3 TB/s    = 20    ->  2^k = 80, k = 6.3
+
+      So k = 4 is the first level at which the CPU node stops being purely
+      bandwidth bound, and going past it starts costing arithmetic that you
+      were previously getting for free. On a GPU the same argument lands at
+      6. Those are the numbers, and they match what the mature simulators
+      default to, which is a good sign but not the reason.
+
+      A second and independent constraint agrees. The fused matrix has 4^k
+      complex128 entries, so 4 KiB at k = 4, 16 KiB at k = 5, 64 KiB at
+      k = 6, 256 KiB at k = 7 and 1 MiB at k = 8. It must stay resident in
+      L2 while you stream the state past it, and L2 is 1 to 2 MiB per core
+      shared with everything else, so k = 8 is a hard wall regardless of the
+      FLOP argument. Two independent arguments landing in the same region is
+      the sign that the number is real.
+
+      What fusion buys here. 2000 unfused gates at 1.4 seconds each is 2800
+      seconds. On a nearest-neighbour line circuit a four-qubit window
+      typically absorbs six to ten primitive gates, call it eight, so you
+      get about 250 passes and 350 seconds. An eight times cut, and every
+      bit of it comes from touching memory eight times less often. Nothing
+      about the arithmetic changed.
+
+      Where fusion stops paying, in order of which bites first:
+
+        1. The balance point above, at k = 4 on CPU and 6 on GPU.
+        2. A block cannot span a measurement, a mid-circuit reset, or a
+           classically conditioned gate, because the fuser cannot know the
+           branch. These cut the circuit into fusion regions.
+        3. A block must stay inside the 34 local qubits. The moment a
+           candidate block would pull in a global qubit you either exchange
+           first or split the block, so the fuser has to be told the current
+           qubit-to-rank map. Fusion and mapping are one problem, not two.
+        4. Register pressure. A k = 6 kernel that spills can be slower than
+           k = 4 that does not. Measure both, do not assume the model.
+
+      Now reorder with the same model. A global-qubit exchange costs about
+      7.3 seconds; a local fused pass costs 1.4. Gates that commute can be
+      moved, so collect all gates touching a given global qubit into as few
+      contiguous windows as possible. For a window with m gates on that
+      qubit, running them globally costs 7.3m; swapping the qubit local once
+      and running them locally costs 7.3 + 1.4m. Those are equal at
+      m = 1.25, so any window holding two or more gates on the same global
+      qubit should be remapped. With fusion the case is stronger still,
+      because those m gates may collapse into fewer than m passes, which
+      pushes the break-even below two.
+
+      The ordering to run, then: schedule the circuit into windows, choose
+      the qubit-to-rank map per window, fuse within each window to k = 4
+      subject to the local qubit set, and emit one exchange per window
+      rather than one per gate.
+
+      The trade-off, and it is a real one. Fusion changes the order of
+      floating point operations, so a fused run does not reproduce an
+      unfused run bit for bit. Any regression test that compares states with
+      exact equality will fail, and the correct test is a fidelity or a
+      maximum absolute amplitude difference with a tolerance around 1e-10 in
+      double precision. You are trading exact reproducibility against a
+      factor of eight, and it is worth it, but the test suite has to be
+      written knowing that. I would fuse less aggressively, or not at all,
+      on a circuit dominated by measurements and mid-circuit conditionals,
+      where the fuser cannot form blocks anyway and all you get is the
+      complexity, and I would revisit k upward the moment the tier moves to
+      GPUs, where the balance point is six rather than four.
+    followUps:
+      - Your fused k=6 kernel is slower than k=4 on the same circuit. What are the two most likely causes and how do you tell them apart?
+      - How does the fuser decide which gates commute, and what does it need from the circuit representation to do that safely?
+      - How would you test a fused simulator against an unfused reference given that bitwise equality is not expected?
+    commonMistakes:
+      - Quoting a library default fusion level without the balance-point derivation, which gives the wrong answer by two levels when the tier moves from CPU to GPU.
+      - Letting a fused block include a global qubit, which turns one cheap local pass into an exchange and undoes the benefit of fusing at all.
+      - Asserting bitwise equality between fused and unfused runs in the regression suite, which fails on the first fused build and gets the fusion switched off.
+    references:
+      - label: Google qsim simulator
+        url: https://quantumai.google/qsim
+      - label: Qiskit Aer source repository
+        url: https://github.com/Qiskit/qiskit-aer
+
+  - id: iq-206
+    title: Choose statevector, tensor network or stabilizer per circuit
+    kind: system-design
+    prompt: |
+      Three customers, three circuits, one cluster of 512 nodes at 512 GiB
+      and 200 Gb/s each. Circuit A: 42 qubits, depth 300, dense two-qubit
+      gates over arbitrary pairs, and they want a million sampled
+      bitstrings. Circuit B: 600 qubits on a 25 by 24 grid, depth 20,
+      nearest-neighbour gates only, and they want one expectation value of a
+      four-qubit local observable. Circuit C: 5000 qubits, two million
+      Clifford gates plus 60 T gates, and they want a hundred thousand
+      sampled bitstrings. For each one pick full statevector, tensor network
+      contraction, or stabilizer simulation, and defend the choice with
+      numbers. Tell me where each method dies. Tell me what the dispatcher
+      does when it cannot tell.
+    difficulty: hard
+    pattern: Distributed statevector simulation
+    topics: [tensor-networks, stabilizer-simulation, treewidth, simulation-strategy, dispatch]
+    companies: [Xanadu, Google Quantum AI, Multiverse Computing, Terra Quantum]
+    modelAnswer: |
+      The decision is to build three engines and a dispatcher that estimates
+      cost and refuses rather than attempts. One engine cannot serve these
+      three circuits, and the failure mode of guessing wrong is a week of
+      cluster time burned on a contraction that was never going to finish.
+
+      Circuit A: full statevector. At complex64, 42 qubits is 2^42 * 8 =
+      32 TiB, which over 128 nodes is 256 GiB each, seven global qubits and
+      35 local. Depth 300 at 21 gates per layer is about 6300 gates, and
+      with dense random pairs the chance a gate touches a global qubit is
+      1 - (35/42)*(34/41) = 0.31, so about 1950 exchanges at 7.3 seconds is
+      14,200 seconds, with the 4350 local gates fused eight to one adding
+      760. About four hours on 128 nodes, dominated by the network, which is
+      the honest shape of a dense deep circuit.
+      Sampling is then nearly free: with the state resident you draw a
+      bitstring by walking the qubits and computing marginals, so a million
+      samples costs a handful of passes over the state, seconds, not hours.
+      Why not the others: tensor network contraction is exponential in the
+      treewidth of the contraction graph, and depth 300 with arbitrary pairs
+      drives the treewidth to essentially the full 42, so contraction costs
+      more than 2^42 and you have gained nothing. Stabilizer is out on the
+      first non-Clifford gate.
+
+      Circuit B: tensor network, and full statevector is not expensive here,
+      it is impossible. 2^600 amplitudes is not a number you buy hardware
+      for. The reason a tensor network works is that its cost is exponential
+      in the treewidth of the contraction graph, not in the qubit count, and
+      a depth-20 nearest-neighbour circuit on a 25 by 24 grid has a
+      contraction order whose peak intermediate tensor is of order 2^30 to
+      2^40 entries, which is 16 GiB to 16 TiB and a run of minutes to hours.
+      I want to be precise about how soft that number is: it is an
+      order-of-magnitude estimate and the only way to firm it up is to run a
+      contraction-order optimiser, a few minutes of hypergraph partitioning,
+      before promising a runtime. The gap between a good and a bad
+      contraction order on the same circuit is routinely ten orders of
+      magnitude, so the search is not a detail, it is the algorithm. Note
+      also that the light cone does not save you here: at depth 20 on a grid
+      the backward light cone of a local observable has radius about 20
+      sites and already covers the device. What makes it tractable is the
+      shallow depth and the planar connectivity, not locality of the
+      observable. And note what you are buying: one expectation value.
+      Tensor networks pay per amplitude or per observable, so if this
+      customer came back asking for a million samples the choice would flip
+      and there might be no good answer at all.
+
+      Circuit C: stabilizer, with a stabilizer-rank extension for the T
+      gates. Gottesman and Knill give a tableau update in O(n^2) per Clifford
+      gate; at n = 5000 that is 2.5e7 bit operations, or about 4e5 word
+      operations with 64-bit packing. Two million gates is of order 8e11
+      word operations, so a few minutes on one core with a good
+      implementation, and modern stabilizer simulators do considerably
+      better than that by batching shots into SIMD lanes. The 60 T gates are
+      the interesting part. A circuit with t T gates decomposes into a sum
+      of stabilizer states whose count scales roughly as 2^(0.23 t) for the
+      best known decompositions; at t = 60 that is about 1.4e4 terms, each a
+      Clifford simulation, and the terms are independent, so 512 nodes at 64
+      cores run them 32,768 ways and finish in under a minute. The exponent
+      0.23 is an active research number that has moved, so treat it as
+      approximate. The wall is sharp: t = 100 is 8e6 terms and a serious
+      cluster job, t = 150 is 2.4e10 terms and impossible. The customer
+      should be told where that cliff is before they add gates.
+
+          circuit   method            memory        wall clock    dies when
+          -------   ---------------   -----------   -----------   ------------
+          A         statevector       32 TiB        ~4 h /128 n   n > 45
+          B         tensor network    16 GiB-16 TiB minutes-hours treewidth > 45
+          C         stabilizer+rank   megabytes     < 1 min       t > 100
+
+      The dispatcher. It must estimate before it runs. Count non-Clifford
+      gates first, because that is a cheap exact test and it routes C
+      immediately. Then compute 2^n * bytes and compare against cluster
+      capacity, which routes A or rejects it. Then run the contraction-order
+      search with a time budget and read off the peak intermediate size; if
+      that exceeds the memory you have, refuse with the estimate rather than
+      starting. A dispatcher that optimistically launches a 2^45 contraction
+      has converted a fast no into a slow no plus a large bill.
+
+      One cross-check that costs almost nothing: take a 20-qubit
+      Clifford-plus-five-T circuit all three engines can handle, run it on
+      all three, and require agreement to 1e-10. Three engines means three
+      sets of index-order bugs, and this is the test that finds them.
+
+      The trade-off. Three engines is three code paths, three sets of bugs,
+      and a dispatcher that has to classify correctly. The alternative is a
+      single statevector engine that simply refuses two of these three
+      customers. I take the three engines, because B and C are the circuits
+      that are actually interesting and a statevector-only platform is a
+      platform capped at 45 qubits forever. I would collapse back to one
+      engine if the observed workload were overwhelmingly circuits like A,
+      because then the other two paths are carrying maintenance cost for a
+      few percent of jobs.
+    followUps:
+      - Customer B comes back and asks for a million samples rather than one expectation value. What changes and what do you tell them?
+      - How would you build the cost estimator for a tensor network contraction, and what is its own runtime budget?
+      - Circuit C grows to 200 T gates. What options are left, and do any of them actually work?
+    commonMistakes:
+      - Quoting a tensor network runtime without running a contraction-order search first, when the same circuit can differ by ten orders of magnitude between a good and a bad order.
+      - Claiming a stabilizer simulator handles a few non-Clifford gates for free. The cost grows roughly as 2^(0.23 t), which is fine at 60 T gates and impossible at 150.
+      - Building a dispatcher that attempts a job and lets it die on out-of-memory instead of estimating the peak tensor and refusing with a number.
+    references:
+      - label: Stim, a fast stabilizer circuit simulator
+        url: https://github.com/quantumlib/Stim
+      - label: Google qsim simulator
+        url: https://quantumai.google/qsim
+
+  - id: iq-207
+    title: Checkpoint a twelve-hour simulation on 512 nodes
+    kind: system-design
+    prompt: |
+      A 42-qubit statevector at complex64, 32 TiB, spread over 512 nodes at
+      64 GiB each. Estimated runtime twelve hours, scheduler kills the job
+      at twenty-four. The parallel file system gives us about 200 GB/s
+      aggregate. Assume a per-node mean time between failures of five years.
+      Design checkpointing and restart. Tell me exactly what you write, how
+      often, what it costs in wall clock and in memory, and whether the
+      arithmetic actually says checkpointing beats just rerunning the job.
+      If there is a way to restructure the workload so the whole question
+      goes away, I want to hear that too.
+    difficulty: hard
+    pattern: Distributed statevector simulation
+    topics: [checkpointing, fault-tolerance, mtbf, parallel-io, job-scheduling]
+    companies: [IBM, Google Quantum AI, PsiQuantum, Quantinuum]
+    modelAnswer: |
+      The decision is a two-level scheme: write a copy of each rank's state
+      into the memory of a partner node in a different rack every 25
+      minutes, and write a full checkpoint to the parallel file system every
+      three hours. The in-memory tier covers the failure that actually
+      happens, which is one node dying, at about two percent of the cost of
+      a file system write; the file system tier covers the correlated
+      failures the in-memory tier cannot survive. Both intervals come out of
+      the Young and Daly formula rather than out of a preference for round
+      numbers.
+
+      What you write. Per rank: the local amplitude array (64 GiB), the gate
+      index as a single integer program counter, the current
+      qubit-to-rank permutation, the RNG seed and stream position if the run
+      samples, and a checksum. That is all. Do not write the circuit, which
+      is kilobytes and already in the job script. Do not write derived
+      observables, which you recompute in seconds. Do not write the fused
+      gate cache, which rebuilds in under a second. Anything you can
+      recompute cheaply is not state, and treating it as state is how a
+      checkpoint that should be 32 TiB becomes 50 TiB.
+
+      What it costs.
+
+          file system checkpoint: 32 TiB = 35 TB at 200 GB/s = 176 s
+          partner-memory copy:    64 GiB = 68.7 GB per node at 18.75 GB/s
+                                  (75 percent of a 200 Gb/s link) = 3.7 s
+
+      Fifty times cheaper, and it costs 64 GiB of RAM per node, which is
+      12.5 percent of a 512 GiB node. That memory is the real price and it
+      should be stated as such: if you were sizing at the edge of capacity
+      it costs you a qubit.
+
+      How often. Young and Daly give an optimal interval of sqrt(2 * C * M),
+      where C is the checkpoint cost and M the system mean time between
+      failures. A per-node MTBF of five years is 43,800 hours; across 512
+      nodes M = 43,800 / 512 = 85.5 hours. Then
+
+          file system:  C = 176 s = 0.049 h  ->  sqrt(2*0.049*85.5) = 2.9 h
+          partner copy: C = 3.7 s = 0.001 h  ->  sqrt(2*0.001*85.5) = 0.41 h
+
+      which is where the three-hour and 25-minute numbers came from.
+
+      Now the question you actually asked: does it beat rerunning? The
+      probability of at least one node failing during twelve hours is
+      1 - exp(-12/85.5) = 13 percent. With no checkpointing at all, a
+      failure means restarting from zero, and the expected extra wall clock
+      is roughly 0.13 times the average work lost, which with a restart is
+      of order 0.9 hours, about 7.5 percent of the run. With the two-level
+      scheme the certain overhead is 24 partner copies at 3.7 s plus 4 file
+      system writes at 176 s, which is 89 + 704 = 793 seconds, 1.8 percent,
+      plus an expected recovery cost of 0.13 times about 14 minutes of lost
+      work, another 0.25 percent. So about 2 percent against about 7.5.
+
+      Checkpointing wins by roughly a factor of three, which is real but not
+      overwhelming, and the honest answer is that at 512 nodes and twelve
+      hours you are near the boundary where this is a judgement call rather
+      than an obvious win. It becomes obvious quickly: at 4096 nodes M drops
+      to 10.7 hours, the failure probability over twelve hours rises to 67
+      percent, and rerunning is plainly indefensible. Run the same
+      arithmetic for whatever configuration you are actually buying rather
+      than importing a habit.
+
+      Implementation details that decide whether it works at all. Write to a
+      temporary name and rename on completion, so a checkpoint interrupted
+      by the very failure you are guarding against does not become the
+      checkpoint you restore from. Keep two generations for the same reason.
+      Use one file per rank or an MPI-IO collective write, never 512 ranks
+      appending to a single POSIX file. Partner assignment must cross rack
+      boundaries, because a rack power event that takes a node and its
+      partner together defeats the whole in-memory tier. And restart must
+      verify the checksums and the program counter before resuming, because
+      a silently truncated checkpoint produces a plausible wrong answer.
+
+      The restructuring that makes the question disappear. If the workload
+      is not one enormous state but a sampling job, say 40,000 independent
+      noise trajectories, do not checkpoint anything. Make each trajectory a
+      task, let the scheduler retry the ones whose node died, and lose at
+      most one trajectory of work. That is the strongest move available
+      here: changing the decomposition removes the failure-recovery problem
+      entirely rather than engineering around it, and it should be the first
+      thing you check before designing any of the above.
+
+      The trade-off. The 64 GiB partner copy is real memory that is not
+      simulating anything, and at the top of the capacity envelope it is one
+      qubit. The scheme also assumes failures are independent and
+      single-node; if this cluster's real failure history is dominated by
+      whole-rack power or fabric events, the in-memory tier buys much less
+      than the model says and the right response is to drop it and shorten
+      the file system interval. I would want the cluster's actual failure
+      log before committing, because the entire design hangs on that MTBF
+      figure and five years per node is an assumption, not a measurement.
+    followUps:
+      - Your cluster's real failure log shows correlated rack-level events rather than independent node failures. What in this design changes?
+      - How would you verify a restart is correct, given that you cannot compare against a run that never failed?
+      - The scheduler offers preemptible nodes at a third of the price with a two-hour eviction notice. Does that change the interval, and does it change the decomposition?
+    commonMistakes:
+      - Checkpointing derived state such as observables and the fused gate cache alongside the amplitudes, which inflates a 32 TiB write by half for data that rebuilds in seconds.
+      - Picking a checkpoint interval by intuition rather than from sqrt(2*C*M), which typically checkpoints far too often and spends more on writes than the failures would have cost.
+      - Overwriting the single checkpoint in place, so a crash during the write destroys the only recovery point and the job restarts from zero anyway.
+    references:
+      - label: Slurm workload manager documentation
+        url: https://slurm.schedmd.com/documentation.html
+      - label: Open MPI documentation
+        url: https://www.open-mpi.org/doc/
+
+  - id: iq-208
+    title: Choose density matrix or trajectories for noisy simulation
+    kind: system-design
+    prompt: |
+      A customer wants a noisy simulation of a 26-qubit circuit, 400 gates,
+      with depolarising noise at 1e-3 per two-qubit gate plus amplitude
+      damping. They want the expectation value of Z on one specified qubit
+      to an absolute accuracy of 5e-3. Our cluster is 512 nodes at 512 GiB
+      and 200 Gb/s. A density matrix is exact but doubles the effective
+      qubit count; trajectory methods keep the statevector but buy the
+      answer with samples. Pick one, do the memory arithmetic for both,
+      justify the number of trajectories from the accuracy target, and tell
+      me at what point you would decide the other way.
+    difficulty: hard
+    pattern: Distributed statevector simulation
+    topics: [density-matrix, quantum-trajectories, noise-modelling, sampling-error, embarrassing-parallelism]
+    companies: [IBM, Quantinuum, AWS Braket, Q-CTRL]
+    modelAnswer: |
+      Trajectories, 40,000 of them, one per core, no communication at all.
+      The density matrix is exact and it is ruled out here by one line of
+      arithmetic, not by preference.
+
+      The density matrix arithmetic. A density matrix on n qubits has 4^n
+      entries, so at 16 bytes each it costs exactly what a 2n-qubit
+      statevector costs. That is the sentence to remember: noisy simulation
+      of n qubits prices like pure simulation of 2n. At n = 26 that is a
+      52-qubit statevector, 2^52 * 16 bytes = 64 PiB. Not on this cluster,
+      not on any cluster. Working the same rule backwards gives the useful
+      ceilings: our 34-qubit single-node wall means an exact density matrix
+      fits on one node up to 17 qubits, and the full 64-node 16 TiB
+      configuration reaches 20 qubits. Twenty-six is six qubits past that,
+      which is a factor of 4096 in memory.
+
+      The trajectory arithmetic. Unravel each noise channel into stochastic
+      Kraus jumps, so every run is a pure statevector that occasionally gets
+      hit by a jump operator, and average the results. One trajectory at 26
+      qubits is 2^26 * 16 = 1 GiB. It fits in one core's share of a node, it
+      needs no network at all, and 400 gates fused eight to one is 50 passes
+      over 1 GiB, which at the roughly 20 GB/s a core gets when sixteen
+      share a socket is about 5.4 seconds per trajectory. Forty thousand
+      trajectories across 512 nodes at 64 cores is 32,768 ways of
+      parallelism, so about 1.3 rounds, call it ten seconds of wall clock
+      plus scheduling. Even on four nodes it is 156 rounds, about fourteen
+      minutes. Trajectories turn a 64 PiB problem into a fourteen-minute
+      problem on four nodes, and the reason is that they replace an exact
+      object with an embarrassingly parallel ensemble.
+
+      Justifying 40,000. The estimator is the mean over M trajectories of
+      the per-trajectory expectation of Z. Z has eigenvalues plus and minus
+      one, so the variance of a single sample is at most 1 and equals
+      1 - <Z>^2. The standard error is sqrt((1 - <Z>^2)/M), bounded by
+      1/sqrt(M), so for 5e-3 you need M >= 1/(5e-3)^2 = 40,000. Two
+      refinements matter in practice. First, because you hold the
+      trajectory's statevector, read the expectation analytically per
+      trajectory rather than sampling shots inside it; sampling adds a
+      second variance term on top of the trajectory variance for no reason.
+      Second, 1 - <Z>^2 is usually well below 1: if <Z> is near 0.9 the
+      variance is 0.19 and M = 7,600 suffices. So measure the sample
+      variance on the first 500 trajectories and re-plan the budget rather
+      than fixing M in advance. That single step routinely cuts the run by
+      three to five times.
+
+      Where I would decide the other way. The crossover is set jointly by
+      qubit count and accuracy target, because trajectory cost scales as
+      1/epsilon^2 while density matrix cost does not depend on epsilon at
+      all.
+
+          target      trajectories need     verdict
+          -------     ------------------    -------------------------------
+          1e-2        1e4 runs              trajectories from about 12 q up
+          5e-3        4e4 runs              trajectories from about 15 q up
+          1e-3        1e6 runs              trajectories from about 17 q up
+          1e-4        1e8 runs              density matrix wherever it fits
+
+      At 1e-4 the trajectory count is 2500 times this job and puts you into
+      hours on the full cluster, while a density matrix that fits gives 1e-4
+      for free with no error bar to defend. Below 17 qubits the density
+      matrix is a single-node job, exact, and hands you every observable and
+      the entanglement spectrum at once rather than one number with a
+      confidence interval. Two other cases flip the decision as well: if the
+      noise is Pauli and the circuit is Clifford, use neither and run a
+      stabilizer sampler, which gives a million shots in seconds; and if the
+      circuit is one-dimensional and shallow, a matrix product density
+      operator keeps the bond dimension small and gives exactness at
+      polynomial cost.
+
+      The trade-off I am accepting. A trajectory answer is a statistical
+      answer. Every plot carries an error bar of 5e-3, and a customer trying
+      to distinguish two designs that differ by 3e-3 cannot do it with this
+      run and must be told so before they see the numbers, not after. The
+      density matrix has no error bar and a 4^n bill. I am buying six orders
+      of magnitude of memory with a confidence interval, which is the right
+      trade at 26 qubits and the wrong one at 14. I would also revisit if
+      the customer's real question turned out to be about the full noisy
+      state rather than one expectation value, because trajectories give you
+      an ensemble and reconstructing the density matrix from it costs the
+      memory you were trying to avoid.
+    followUps:
+      - The customer now wants the full 26-qubit noisy density matrix rather than one expectation value. What do you tell them and what do you offer instead?
+      - How do you validate the trajectory unravelling against an exact density matrix, and on what size instance?
+      - How would you report the result so a reader cannot mistake a 5e-3 error bar for a converged number?
+    commonMistakes:
+      - Forgetting that a density matrix on n qubits costs the same memory as a statevector on 2n, and sizing a 26-qubit noisy job as if it were a 26-qubit pure one.
+      - Fixing the trajectory count in advance from the worst-case variance of 1, when measuring the sample variance on the first few hundred runs often cuts the budget by three to five times.
+      - Sampling shots inside each trajectory as well as averaging over trajectories, which adds a second independent variance term and quietly inflates the required run count.
+    references:
+      - label: Qiskit Aer simulator documentation
+        url: https://qiskit.github.io/qiskit-aer/
+      - label: Preskill, Quantum computing in the NISQ era and beyond
+        url: https://arxiv.org/abs/1801.00862

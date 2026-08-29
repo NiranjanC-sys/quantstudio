@@ -1,0 +1,715 @@
+questions:
+  - id: iq-209
+    title: Lay out the real-time feedback budget on a transmon device
+    kind: system-design
+    prompt: |
+      Give me the latency budget for one round of measurement-conditioned
+      feedback on a superconducting device, from the moment the readout pulse
+      starts to the moment a conditional pulse is playing on the qubit. Break
+      it into the readout pulse and its integration, the analogue and fridge
+      chain, the ADC and digital demodulation, state discrimination, the
+      classical decision and its routing, and the conditional pulse issue. Put
+      a number on each. Then tell me what fits inside T2 on a good transmon,
+      how many feedback rounds you can afford, and why a cloud round trip is
+      not merely slow but the wrong order of magnitude. Quote coherence as a
+      range, not a point, because it varies qubit to qubit and week to week.
+    difficulty: easy
+    pattern: Mid-circuit measurement and feedback
+    topics: [feedback-latency, readout, coherence, control-electronics, mid-circuit-measurement]
+    companies: [IBM, Google Quantum AI, Rigetti, Q-CTRL]
+    modelAnswer: |
+      The budget closes at roughly 1 to 2 microseconds per feedback round on a
+      well-built rack, against a T2 of 100 to 400 microseconds on a good
+      transmon. That ratio, about one percent of coherence per round, is the
+      whole answer, and it is why this has to happen in the rack.
+
+          stage                            typical    aggressive
+          ---------------------------------------------------------
+          readout pulse and integration    1000 ns     300 ns
+          fridge lines and analogue chain   150 ns     100 ns
+          ADC, down-conversion, integrate   150 ns      50 ns
+          state discrimination               50 ns      20 ns
+          decision and routing              300 ns      50 ns
+          conditional pulse issue            50 ns      20 ns
+          ---------------------------------------------------------
+          total                            1700 ns     540 ns
+
+      Where those come from. Readout on transmons runs from about 300 ns to a
+      few microseconds; the integration window is the dominant knob and it
+      trades directly against discrimination fidelity, which I come back to.
+      The fridge chain is signal propagation plus group delay: coax carries at
+      roughly 5 ns per metre, so a 10 m down-and-up path is about 100 ns
+      round trip, and the parametric amplifier and HEMT chain add tens of ns.
+      Demodulation and boxcar integration on the FPGA are a handful of clock
+      cycles at a few hundred MHz, so tens of ns. Discrimination against a
+      threshold on the rotated quadrature is one multiply-accumulate and a
+      compare.
+
+      The routing term is the one that varies most and it is the one that
+      catches people. If the ADC, the discriminator and the sequencer driving
+      the conditional pulse are all on the same board, routing is tens of ns.
+      If the decision has to cross a backplane or an inter-board optical link
+      to reach a different qubit's sequencer, add 100 ns to a microsecond. So
+      a conditional reset on the same qubit is cheap and a feedforward onto a
+      distant qubit is not, and the difference is board topology, not physics.
+
+      What fits.
+
+          conditional reset, one round        1.7 us     0.5% of a 350 us T2
+          repeat-until-success, mean 2 tries  3.4 us     1.0%
+          repeat-until-success, capped at 6   10 us      3%
+          30 feedback rounds                  51 us      15%
+
+      So a few tens of rounds is affordable and a few hundred is not. As a
+      rule of thumb, budget the feedback rounds to consume no more than about
+      10 percent of T2, which lands at roughly 20 rounds on a 350 microsecond
+      qubit and roughly 6 rounds on a 100 microsecond one. Quote both, because
+      the same chip has qubits at both ends of that range.
+
+      Why a cloud round trip is not a candidate. A cloud API call is tens to
+      hundreds of milliseconds at best. Take 100 ms: that is 100,000
+      microseconds against a T2 of 350 microseconds, so the qubit has fully
+      dephased roughly 300 times over before the decision comes back. This is
+      not a factor of two or ten. It is four to six orders of magnitude, which
+      is why "just call back to the host" is not a design that can be tuned
+      into working. The decision must be made by hardware inside the rack.
+
+      The trade-off I am accepting: shortening the readout integration window
+      from 1000 ns to 300 ns buys 700 ns of the budget and costs
+      discrimination fidelity, because signal-to-noise grows with integration
+      time. Typical assignment error is in the 1e-2 range and gets worse as
+      you shorten the window. That is a good trade for a conditional reset,
+      where a misassignment costs one wasted reset attempt that the next round
+      fixes, and a bad trade inside a syndrome-extraction cycle, where a
+      misassigned bit becomes a decoder input error that the code has to
+      correct. Same budget, opposite decision, depending on what a wrong bit
+      costs downstream.
+    followUps:
+      - How does the budget change when the conditional pulse has to land on a qubit whose sequencer is on a different board?
+      - You need to halve the readout integration window. What do you measure to decide whether the fidelity cost is acceptable?
+      - How many feedback rounds can you afford on a qubit whose T2 is at the bottom of the range rather than the top?
+    commonMistakes:
+      - Treating a cloud or host round trip as a slow version of an FPGA decision. It is four to six orders of magnitude out, so it is a different design, not a tuning problem.
+      - Quoting T2 as a single number for the device when it varies qubit to qubit and week to week, which hides that the worst qubit affords a third of the feedback rounds of the best.
+      - Ignoring the routing term, so a design that works for conditional reset on one board silently misses its budget when the feedforward crosses to another board.
+    references:
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+      - label: Preskill, Quantum computing in the NISQ era and beyond
+        url: https://arxiv.org/abs/1801.00862
+
+  - id: iq-210
+    title: Architect a control rack for conditional reset and repeat-until-success
+    kind: system-design
+    prompt: |
+      Design the control-rack architecture that executes two primitives: an
+      active conditional reset, and a repeat-until-success gate whose per-
+      attempt success probability is one half. Tell me where the state
+      discriminator lives and why, the FPGA data path from ADC samples to a
+      classical bit, and the instruction set the sequencer needs to express
+      the control flow. I want the timing to be deterministic: two shots of
+      the same program must produce the same schedule regardless of which
+      branch is taken, or you must tell me why not. Bound the worst case for
+      the repeat-until-success loop. Assume T2 in the 100 to 400 microsecond
+      range and a same-board feedback latency of about 1.5 microseconds.
+    difficulty: medium
+    pattern: Mid-circuit measurement and feedback
+    topics: [control-electronics, fpga, sequencer, repeat-until-success, mid-circuit-measurement]
+    companies: [IBM, Rigetti, Quantinuum, Q-CTRL]
+    modelAnswer: |
+      The decision that matters: the discriminator lives in the FPGA fabric on
+      the same board as the ADC, and the branch is a sequencer instruction. No
+      part of the loop touches a host CPU, an operating system or a network.
+      Everything else follows from that.
+
+      Data path, ADC samples to a played pulse:
+
+          qubit -> readout resonator -> parametric amp -> HEMT
+             -> RF down-convert -> ADC at 1 to 2 GS/s
+             -> digital down-conversion against an NCO
+             -> boxcar integrate over window W -> one (I, Q) pair
+             -> rotate and threshold -> 1 bit
+             -> classical register file on the board
+             -> sequencer branch -> waveform memory -> DAC -> pulse
+
+      The discriminator. A two-state decision is a rotation and a threshold on
+      one quadrature: one multiply-accumulate and one compare, a few FPGA
+      clock cycles, tens of ns. A two-component Gaussian mixture is a handful
+      of MACs and still fits. A three-state discriminator that separates |0>,
+      |1> and |2> needs two thresholds or a small lookup table and is worth
+      the extra tens of ns, because leakage into |2> is invisible to a
+      two-state classifier and survives many cycles. Keep the model small on
+      purpose: the parameters are calibration data pushed into registers by
+      the calibration pipeline, so retuning the discriminator is a register
+      write, not a bitstream rebuild.
+
+      Instruction set. The sequencer needs, at minimum:
+
+          measure q -> creg[i]        with a declared, fixed latency
+          branch_if creg[i] == v, L   single cycle, no long pipeline flush
+          jump L, and add/sub/cmp on integer registers for counters
+          repeat n { ... }            n a compile-time constant
+          while creg[i] != v { ... }  with a mandatory max-trip-count
+          delay[t] q                  deterministic idle
+          set_frame / shift_frame q   virtual-Z, zero time
+          sync, and broadcast creg[i] -> board with a declared latency
+
+      Two things in that list are load-bearing. Every instruction has a
+      declared latency, so the compiler can do a worst-case timing analysis
+      exactly as a hard real-time system does. And `while` cannot exist
+      without a maximum trip count, because a sequencer has finite instruction
+      memory and a circuit has a finite coherence budget.
+
+      Conditional reset. Measure, and if the result is 1, play a pi pulse.
+      Cost is one feedback round, about 1.5 microseconds. Verify it: measure
+      again and repeat up to a cap, because a single conditional pi pulse
+      leaves residual excited-state population at the readout assignment
+      error, in the 1e-2 range. Two rounds reaches roughly 1e-4 if the errors
+      are independent, which they are not entirely, so measure it. Compare
+      passive reset, which waits five T1, so 1.25 ms at T1 of 250
+      microseconds: active reset at 3 microseconds is about 400 times faster,
+      and on a 4096-shot circuit that is 12 ms against 5 s per circuit.
+
+      Repeat-until-success at p = 0.5. Mean attempts is 2. The tail is
+      geometric: P(more than n attempts) = 2^-n, so P(more than 6) = 1.6
+      percent and P(more than 10) = 0.1 percent. Each attempt is one feedback
+      round plus the gate, call it 2 microseconds. Set the cap at 6:
+
+          expected cost      2 x 2 us  = 4 us       1.1% of a 350 us T2
+          worst case         6 x 2 us  = 12 us      3.4% of T2
+          failure rate       1.6% of shots reach the cap and are flagged
+
+      Flag rather than silently continue. A shot that hit the cap must set a
+      status bit that comes back with the results, so the user can discard or
+      account for it. Silently proceeding turns a bounded loop into an
+      unlabelled error channel.
+
+      Determinism. If the taken and untaken branches differ in duration, every
+      other qubit idles for a shot-dependent time and accumulates phase. So
+      the compiler pads both branches with `delay`, and pads the RUS body so
+      every attempt occupies the same slot. The schedule is then fixed length
+      at the worst case, costing the gap between mean and worst case, 12
+      microseconds instead of 4. The alternative, a variable-length schedule,
+      makes the timing calibration outcome-dependent. I take the fixed
+      schedule and pay the 8 microseconds.
+
+      Waveform memory. Both branches must be resident before the shot starts,
+      because you cannot stream from the host inside a microsecond budget. A
+      200 ns pulse at 1 GS/s with 16-bit I and Q is 800 bytes, so a thousand
+      distinct conditional pulses is 800 KB and fits. Thousands do not, and
+      that limit belongs in the compiler as a hard check, not a runtime error.
+
+      The trade-off. Putting the classifier in the fabric caps its complexity:
+      a model that would cut assignment error but costs an extra 500 ns of
+      latency is rejected here, even if it would be an easy win offline. That
+      is the right call when the bit feeds a conditional reset, where a wrong
+      bit costs one extra attempt. It is the wrong call if the bit feeds a
+      decoder whose logical error rate is dominated by readout error, and in
+      that case I would spend qubits on a longer readout rather than latency
+      on a bigger classifier.
+    followUps:
+      - How do you verify that a conditional reset actually reached the ground state rather than trusting one conditional pulse?
+      - What breaks if you allow a variable-length schedule instead of padding both branches to equal duration?
+      - Your repeat-until-success cap fires on 1.6 percent of shots. How does that appear in the results, and what must the user do with it?
+    commonMistakes:
+      - Allowing an unbounded while loop in the sequencer, which cannot be scheduled, cannot be bounded against T2, and can exhaust instruction memory.
+      - Leaving branch durations unequal, so spectator qubits idle for an outcome-dependent time and accumulate phase that no calibration accounts for.
+      - Treating one conditional pi pulse as a completed reset, which leaves residual excited-state population at the readout assignment error, in the 1e-2 range.
+    references:
+      - label: OpenQASM specification
+        url: https://openqasm.com/
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+
+  - id: iq-211
+    title: Contain measurement-induced dephasing and readout crosstalk
+    kind: system-design
+    prompt: |
+      You are adding mid-circuit measurement to a device where readout
+      resonators are frequency-multiplexed onto shared feedlines, eight qubits
+      per line. Measuring one qubit disturbs its neighbours: residual photons
+      dephase spectators, the assignment errors of simultaneously measured
+      qubits are correlated, and readout can leave a qubit in |2>. Design the
+      mitigation. I want the physical mechanisms named with timescales, the
+      calibration you must run, what the compiler and scheduler have to know
+      to avoid making it worse, and the cost of your mitigation in circuit
+      time. Then tell me when you would allow the overlap anyway. Readout is
+      about 1 microsecond and T2 is in the 100 to 400 microsecond range.
+    difficulty: medium
+    pattern: Mid-circuit measurement and feedback
+    topics: [measurement-induced-dephasing, readout-crosstalk, leakage, compiler-constraints, mid-circuit-measurement]
+    companies: [IBM, Google Quantum AI, Quantinuum, Infleqtion]
+    modelAnswer: |
+      The decision that matters is that a mid-circuit measurement is not an
+      The decision that matters is that a mid-circuit measurement is not an
+      operation on one qubit. It is an operation on a blast radius: the
+      measured qubit, everything sharing its feedline, and everything coupled
+      to its resonator. Model it as a single-qubit instruction and you will
+      chase phantom two-qubit gate errors for a month.
+
+      Three mechanisms, with timescales.
+
+      1. Residual photons and ring-down. After the readout drive stops,
+         photons leave at the resonator linewidth: a few MHz gives a ring-down
+         of order 100 ns to 1 microsecond, and you want several time constants
+         of it, so budget 0.5 to 2 microseconds of dead time after every
+         measurement, roughly doubling its cost. Residual photons
+         Stark-shift the qubit and its neighbours meanwhile.
+
+      2. Correlated assignment error. Eight resonators on one feedline are
+         read out simultaneously by a multiplexed tone. Single-qubit
+         assignment error is typically in the 1e-2 to 3e-2 range. The
+         correlated component, where a neighbour's state changes your
+         misassignment probability, is smaller, of order 1e-3 to 1e-2, and it
+         is the part that a per-qubit mitigation matrix cannot remove.
+
+      3. Leakage. Readout drive can promote population to |2>. A two-state
+         discriminator reports it as |0> or |1> depending on where it lands in
+         the IQ plane, and the population stays out of the computational
+         subspace for many gate times. This is the mechanism that makes error
+         rates look fine per gate and terrible per circuit.
+
+      Calibration. Characterise readout error on the group actually measured
+      together. For m simultaneously measured qubits the matrix is 2^m by 2^m:
+
+          m    matrix     prep circuits    feasible?
+          -----------------------------------------------
+          4    16 x 16    16               yes, trivial
+          5    32 x 32    32               yes
+          6    64 x 64    64               yes, minutes
+          8    256 x 256  256              borderline
+          12   4096^2     4096             no
+          -----------------------------------------------
+
+      So: full correlated matrices up to about m = 6, and above that a
+      tensored single-qubit model plus explicit nearest-neighbour correlation
+      terms, which captures most of the structure at linear cost. Re-run it
+      whenever the calibration set changes: the discriminator thresholds move.
+
+      What the compiler and scheduler must know:
+
+          - feedline and multiplexing group membership of every qubit
+          - readout duration and ring-down time per qubit
+          - a forbidden window: no phase-sensitive single-qubit gate inside
+            the blast radius during readout plus ring-down
+          - the measured AC Stark phase per spectator per measurement, so it
+            can be absorbed into a virtual-Z frame shift at zero time cost
+          - which qubits are readout-capable mid-circuit at all
+          - a leakage flag, to schedule leakage reduction on a cadence
+
+      Mitigations and their cost in circuit time:
+
+          ring-down dead time        0.5 to 2 us per measurement, about
+                                     0.6 percent of a 350 us T2
+          dynamical decoupling on    XY4 is 4 single-qubit gates at 30 ns,
+          idling spectators          120 ns inside a 2 us window. Cheap, and
+                                     it recovers much of the dephasing
+          virtual-Z frame correction 0 ns, pure bookkeeping, removes the
+                                     deterministic part of the Stark phase
+          three-state discrimination tens of ns, turns invisible leakage into
+                                     a reported event
+          leakage reduction unit     one or two operations on a cadence, of
+                                     order a percent of circuit time
+
+      Note the ordering: the free mitigations, frame correction and dynamical
+      decoupling, come first, and they cost 120 ns against a 2 microsecond
+      window. Only after those do you start paying real circuit time.
+
+      When I allow the overlap anyway. Do the arithmetic per circuit. Waiting
+      out a 2 microsecond ring-down before touching three spectators costs
+      them about 0.6 percent of coherence each. Overlapping costs whatever the
+      induced dephasing actually is, measured by a Ramsey on the spectator
+      conditioned on a neighbour being measured. Under about 0.6 percent,
+      overlap. At 2 percent, wait. It is a measurement, not a principle, and
+      it changes per device and per feedline.
+
+      The trade-off I am accepting: the blast-radius model makes the scheduler
+      conservative, so circuits get longer, and on a coherence-limited circuit
+      that is itself a fidelity cost. I take it because the alternative
+      failure is silent: an overlapping schedule gives a wrong answer with no
+      flag, while a longer one gives a noisier answer the error bars already
+      describe. With non-demolition readout and per-qubit resonators I would
+      shrink the radius to the measured qubit and stop paying for this.
+    followUps:
+      - How would you measure the induced dephasing on a spectator, and what would you compare it against to decide whether overlap is acceptable?
+      - At what group size do you abandon a full correlated confusion matrix, and what replaces it?
+      - How does leakage into the second excited state show up in your data if you only ever use a two-state discriminator?
+    commonMistakes:
+      - Calibrating readout error qubit by qubit and applying a tensored correction, which cannot remove the correlated component that multiplexed readout creates.
+      - Scheduling a single-qubit gate on a spectator inside the resonator ring-down window, so the gate acquires an uncalibrated Stark phase that looks like a coherent gate error.
+      - Using a two-state discriminator and reporting leakage into the second excited state as |0> or |1>, which makes per-gate error look fine while per-circuit error is not.
+    references:
+      - label: Mitiq error mitigation documentation
+        url: https://mitiq.readthedocs.io/
+      - label: IBM Quantum transpiler guide
+        url: https://docs.quantum.ibm.com/guides/transpile
+
+  - id: iq-212
+    title: Design real-time syndrome extraction and decoding for a distance-5 patch
+    kind: system-design
+    prompt: |
+      Design the real-time path for one distance-5 rotated surface code patch
+      on superconducting hardware: syndrome extraction every microsecond,
+      transport of syndrome bits off the control electronics, buffering, and a
+      decoder that keeps up. Give me the qubit count, the bits per round, the
+      aggregate bandwidth for one patch and for a hundred patches, and the
+      throughput the decoder must sustain. Then tell me exactly what happens
+      when the decoder is ten percent slower than real time: what degrades
+      first, what stalls, and what you do about it. Assume a physical error
+      rate near 1e-3 and a threshold of about one percent under a
+      circuit-level depolarising model.
+    difficulty: hard
+    pattern: Mid-circuit measurement and feedback
+    topics: [surface-code, real-time-decoding, backlog, syndrome-extraction, mid-circuit-measurement]
+    companies: [Google Quantum AI, IBM, PsiQuantum, "Alice & Bob"]
+    modelAnswer: |
+      The decision that matters is the decoder architecture: a sliding window
+      of about 3d rounds, committed d rounds at a time, with consecutive
+      windows dispatched to a pool of decoder cores. That is the only shape
+      that gives throughput independent of single-decoder speed, and
+      throughput, not latency, decides whether the machine works at all.
+
+      The numbers first.
+
+          rotated distance-5 patch    2*d^2 - 1 = 49 qubits, 24 measure
+          syndrome round              about 1 microsecond
+          bits per round              24
+          rate, one patch             24 Mbit/s = 3 MB/s
+          rate, 100 patches           2.4 Gbit/s = 300 MB/s
+          decoder throughput needed   1e6 rounds per second per patch
+
+      Sparsity buys a lot. The decoder consumes detector events, the XOR of a
+      stabiliser outcome with its previous round, not raw syndrome bits. At
+      p near 1e-3 the detector event probability is a few times 1e-3 to 1e-2
+      per detector per round, so a 24-detector patch emits of order 0.1 to 1
+      events per round. Sending (detector id, round) pairs of 4 bytes instead
+      of 24 raw bits cuts the wire rate by about an order of magnitude, and
+      the differencing belongs on the readout FPGA, before the link.
+
+      Pipeline:
+
+          patch -> readout FPGA: discriminate 24 bits per round
+             -> XOR with previous round -> sparse detector events
+             -> window buffer, 3d = 15 rounds
+             -> decoder core pool -> Pauli frame update
+
+      Decoder throughput. Minimum-weight perfect matching by sparse blossom is
+      the accuracy benchmark, with reported throughputs of order one
+      microsecond per round per patch on a CPU core: marginal at d = 5 and it
+      does not survive growing d, so treat it as an order of magnitude and a
+      moving target. Union-find is near-linear, pipelines into an FPGA and
+      reaches sub-microsecond per round, at a cost in accuracy. The sliding
+      window makes either usable: with a 15-round window and a 5-round commit
+      region, consecutive windows are independent work, so N cores give close
+      to N times the throughput at about 15 microseconds of latency.
+
+      That is the key structural fact: Clifford operations do not need the
+      decoder's answer, only the Pauli frame, and Pauli corrections commute
+      through Cliffords, so they can be deferred. The decoder's output is
+      needed at non-Clifford points, so the tolerable backlog is set by the
+      T gate rate, not by the round rate.
+
+      Buffering. A backlog of B rounds at 4 bytes per event and about one
+      event per round is 4B bytes, so 100,000 rounds is 400 KB. Memory is not
+      the constraint. Time is.
+
+      Now the ten-percent-slow decoder. At 1.1 microseconds per round against a
+      1 microsecond emission rate the backlog grows by 100 ms per second of
+      running, without bound: there is no negative feedback. What degrades:
+
+      1. Nothing, for a while. Clifford-only stretches run at full speed and
+         the frame simply lags. After 10 seconds you are 1 second behind and
+         nobody watching gate throughput sees a problem.
+      2. The first non-Clifford point stalls. The controller must wait for the
+         decoded frame to know which correction to apply, so it idles the
+         logical qubits.
+      3. Idling is not free. Every microsecond of stall is another syndrome
+         round of errors on every logical qubit, so more work for a decoder
+         already behind. That feedback is why a slightly slow decoder is a
+         hard failure rather than a soft one.
+
+      What you do about it, in the order you should build it:
+
+          back-pressure    tell the scheduler the backlog and delay T
+                           injections while it drains, turning an unbounded
+                           divergence into a throughput hit
+          fallback decoder switch matching to union-find under load. Log it:
+                           the logical error rate changes when this fires
+          parallel windows add cores. The designed answer; the rest are nets
+          hard abort       past a threshold, report a decoding failure. Never
+                           decode a truncated history and call it a result
+
+      What d = 5 actually buys. The logical error rate falls roughly as
+      What d = 5 actually buys. The logical error rate falls roughly as
+      (p/p_th)^((d+1)/2) with a threshold of about one percent under a
+      circuit-level depolarising model. At p = 1e-3, (0.1)^3 = 1e-3 per round
+      per patch, so at 1e6 rounds per second that is a logical error every
+      millisecond, which is not a computer. d = 5 is a decoder testbed: at
+      d = 25 a patch is 1249 qubits and 624 detectors per round.
+
+      The trade-off. The sliding window buys throughput and costs accuracy at
+      window boundaries, where errors straddling a commit boundary are decoded
+      with partial information, plus about 3d rounds of latency. Union-find
+      over matching costs effective distance: if it forces d = 7 where
+      matching reached the same logical error rate at d = 5, that is 97
+      physical qubits instead of 49.
+    followUps:
+      - At distance 25 the syndrome rate per patch is 624 bits per round. What changes in your transport and decoder design, and what stays the same?
+      - How would you decide the commit region size, and what goes wrong if you make it smaller than the code distance?
+      - Your fallback decoder fires under load and changes the logical error rate. How does that appear in the results a user receives?
+    commonMistakes:
+      - Designing for decoder latency instead of throughput, so a pipeline that decodes each window quickly still accumulates an unbounded backlog at 1.1 microseconds per round.
+      - Assuming a stall is a fixed cost, when idling logical qubits generates more syndrome rounds and therefore more decoder work, which is positive feedback.
+      - Shipping raw syndrome bits over the link rather than differenced detector events, paying roughly an order of magnitude in bandwidth for data the decoder does not use.
+    references:
+      - label: Fowler et al, Surface codes towards practical large-scale quantum computation
+        url: https://arxiv.org/abs/1208.0928
+      - label: PyMatching decoder
+        url: https://github.com/oscarhiggott/PyMatching
+
+  - id: iq-213
+    title: Design the API and IR for dynamic circuits
+    kind: system-design
+    prompt: |
+      Users want classical control flow inside their circuits: measure, branch,
+      loop, feed a result forward onto another qubit. The hardware is a
+      sequencer with finite instruction memory, finite resident waveform
+      memory, a declared per-instruction latency, and a coherence budget of a
+      few hundred microseconds. Design the language surface and the
+      intermediate representation. Tell me precisely what you allow, what you
+      reject at compile time and with what diagnostic, and why each rejection
+      is a hardware fact rather than a preference. I especially want to know
+      how you handle an unbounded loop, a classical expression that is too
+      slow, and a feedforward whose target is on another control board.
+    difficulty: hard
+    pattern: Mid-circuit measurement and feedback
+    topics: [ir-design, dynamic-circuits, compiler, api-design, mid-circuit-measurement]
+    companies: [IBM, Quantinuum, Microsoft Azure Quantum, Classiq]
+    modelAnswer: |
+      The decision that matters is that the IR must be statically schedulable.
+      Every accepted program has a known worst-case duration and a fully
+      determined pulse schedule before it is submitted. That single constraint
+      generates the whole allow list and the whole reject list, and it is a
+      hardware fact: the sequencer executes a preloaded program from finite
+      memory, and the timing calibration that makes the gates correct is only
+      valid for a schedule the calibration knew about.
+
+      What I allow, in an OpenQASM 3 shaped surface:
+
+          bit, int[n], bool with declared widths
+          measure q -> c;
+          if (c == 1) { ... } else { ... }
+          for i in [0:N-1] with N a compile-time constant
+          while (cond) with a required @max_iterations annotation
+          integer add, subtract, compare, and bitwise ops on classical
+            registers, each with a declared latency in the target's cost model
+          delay[100ns] q;  and  barrier
+          defcal linking a logical gate to a pulse-level calibration
+          frame operations, shift_phase and set_frame, which cost zero time
+
+      What I reject, each with the hardware reason and a diagnostic that
+      carries the actual number:
+
+          unbounded while, and recursion
+            reason: instruction memory is finite and schedule length must be
+            bounded against T2. Diagnostic: "while at line 31 has no
+            @max_iterations; at 2 us per iteration a bound of 6 uses 3.4
+            percent of the 350 us coherence budget."
+
+          a classical expression whose latency exceeds the inter-instruction
+          budget: a division, a floating-point multiply, a call into Python
+            reason: the classical unit between measure and conditional pulse
+            is a small integer datapath, not a CPU. Diagnostic: "expression at
+            line 44 costs 340 ns; the window between the measure at line 43
+            and the conditional pulse at line 45 is 120 ns."
+
+          conditional bodies whose distinct pulses exceed resident waveform
+          memory
+            reason: you cannot stream waveforms from a host inside a
+            microsecond, so both branches must be resident before the shot
+            starts. Diagnostic with byte counts: a 200 ns pulse at 1 GS/s with
+            16-bit I and Q is 800 bytes, so 1,000 such pulses is 800 KB.
+
+          a feedforward whose target is on another control board when the
+          declared cross-board latency does not fit
+            reason: crossing a backplane or an optical link adds 100 ns to a
+            microsecond. Diagnostic: "the conditional X on qubit 42 needs the
+            classifier bit 380 ns after the measure on qubit 7 ends;
+            cross-board latency here is 620 ns. Move qubit 42 to board 0, or
+            insert a 240 ns delay and accept the coherence cost."
+
+          mid-circuit measurement on a qubit that is not readout-capable, or a
+          conditional pulse inside another qubit's ring-down window
+            reason: the device's blast-radius model, carried as data in the
+            target description.
+
+      Underneath all of this is a worst-case execution time pass, borrowed
+      from hard real-time systems. Annotate every classical operation and
+      cross-board hop with a latency from the target description, walk the
+      control-flow graph, and compute for each conditional pulse the earliest
+      time its input bit is available and the latest time it must be played.
+      A diagnostic that says "unsupported operation" instead of those two
+      numbers is a bug in the compiler, not in the user's program.
+
+      Branch padding. The IR pads both arms of a conditional to equal duration
+      by default, so the schedule is fixed length. That costs the gap between
+      mean and worst case, and the compiler reports it: "padding the RUS loop
+      to its 6-iteration bound costs 8 us of the shot, against a mean of
+      4 us." There is an opt-out for outcome-dependent spectator phase.
+
+      API surface. Users build the IR from Python, and the same restrictions
+      run in a local validator and in a simulator that models the target's
+      latencies. That is the biggest practical payoff: a rejection three
+      seconds into writing beats the same rejection after a 40-minute queue
+      wait. Nothing is checked at submission that could have been checked at
+      build time, and the local target description is a versioned artefact
+      fetched from the device, not a hardcoded guess.
+
+      The trade-off. This IR rejects legitimate programs. A genuinely
+      unbounded repeat-until-success cannot be expressed: the user must choose
+      a cap and write a failure branch. A user who wants a classical Bayesian
+      update between measurements cannot have it in real time. In exchange
+      every accepted program has a static schedule, a known duration and a
+      valid timing calibration, which is what makes results mean anything. If
+      the boards gained streaming waveform memory and a general classical
+      processor inside the feedback budget, the first rejections to relax
+      would be the resident-memory rule and then the expression cost model.
+      The bound on unbounded loops goes last, because coherence is not an
+      engineering limit a better board removes.
+    followUps:
+      - A user insists on an unbounded repeat-until-success. What do you offer them, and what does the failure branch have to contain?
+      - How do you keep the local validator's target description in sync with the device, and what happens when it is stale?
+      - What is the first restriction you would relax if the control boards gained a general-purpose classical core inside the feedback budget?
+    commonMistakes:
+      - Accepting unbounded control flow into the IR and discovering at submission that the program cannot be scheduled or cannot fit in instruction memory.
+      - Emitting an "unsupported operation" diagnostic instead of the two numbers that failed the timing check, which leaves the user with no way to fix the program.
+      - Checking constraints only at submission, so a user waits 40 minutes in a queue to learn something the local validator could have said in three seconds.
+    references:
+      - label: OpenQASM specification
+        url: https://openqasm.com/
+      - label: QIR Alliance
+        url: https://qir-alliance.org/
+
+  - id: iq-214
+    title: Prove that teleported gate injection used feedforward and not post-selection
+    kind: system-design
+    prompt: |
+      Design deterministic gate injection by teleportation: consume a resource
+      state, measure, and apply the correction conditioned on the outcome, in
+      real time. Then design the verification that proves the feedforward
+      actually happened. This is the part I care about, because a
+      post-selected demonstration that discards the outcome-1 shots looks
+      identical in the final histogram and is not a computation. Give me the
+      protocol, the correction and where it must land in the schedule, and
+      then a verification strategy with the statistics worked through: how
+      many shots, how many sigma, what the negative control looks like, and
+      what you would publish so a sceptical reader can check it. T2 is in the
+      100 to 400 microsecond range.
+    difficulty: hard
+    pattern: Mid-circuit measurement and feedback
+    topics: [gate-teleportation, feedforward, verification, post-selection, mid-circuit-measurement]
+    companies: [Quantinuum, IBM, PsiQuantum, Xanadu]
+    modelAnswer: |
+      The decision that matters is that "deterministic" is defined by the
+      correction firing on every shot, so the verification must be built
+      around shot accounting first and physics second. The single most
+      important published number is the ratio of shots used to shots
+      submitted, and it must be 1.
+
+      The protocol. To inject a T gate, prepare the magic state
+      |A> = (|0> + exp(i*pi/4)|1>)/sqrt(2) on an ancilla, apply CNOT from the
+      data qubit to the ancilla, measure the ancilla in the computational
+      basis, and apply an S correction to the data qubit if the outcome is 1.
+      Outcome 0 and outcome 1 each occur with probability one half.
+
+      Why post-selection is not an option, in one line of arithmetic: keeping
+      only the outcome-0 shots yields 1/2 per injection, so a circuit with N
+      T gates yields 2^-N. At N = 20 that is 1e-6, so a 1e6-shot experiment
+      returns one usable shot. At N = 50 it is 1e-15. Post-selection is a
+      characterisation technique, not a computation, and the exponent is the
+      reason.
+
+      Where the correction lands. If everything after the injection commutes
+      appropriately, the correction can be a frame update: a Z-type rotation
+      absorbed into the phase bookkeeping at zero time, applied in software
+      before the final measurement is interpreted. That is free and it is the
+      right answer at the end of a circuit. It stops being available the
+      moment a non-commuting gate follows, for example an H on the data qubit,
+      because then the deferred S no longer commutes past it. In that case the
+      correction must be played as a real pulse inside the feedback budget,
+      about 1.5 microseconds on a same-board rack. At 20 injections that is
+      30 microseconds, roughly 10 percent of a 350 microsecond T2. That is the
+      price of determinism and it should be stated as a line item.
+
+      Verification, in layers, strongest first.
+
+      1. Shot accounting. Publish shots_submitted, shots_returned,
+         shots_analysed, and any discard rule in full. Require
+         shots_analysed / shots_submitted = 1 up to the device's own job-level
+         loss. This is not a physics measurement, it is a reporting
+         discipline, and it is the layer that actually rules out
+         post-selection. Every other test can be passed by a post-selected
+         experiment that does not disclose its selection.
+
+      2. Outcome-conditioned comparison. Split the returned shots by the
+         outcome that drove the correction and characterise each branch
+         separately. If feedforward worked, the two branches agree within
+         statistical error. If the correction was omitted, the outcome-1
+         branch is the correct state with a known extra S applied, which you
+         can predict exactly and test against. At 4096 shots per branch the
+         standard error on a bounded observable is about 1.6e-2, so a fidelity
+         gap of 0.05 is 3 sigma and the 0.25 gap an omitted S produces is over
+         15 sigma. Decisive.
+
+      3. Outcome balance. The measurement outcomes must be 50/50. At 4096
+         shots the binomial standard error on the fraction is
+         sqrt(0.25/4096) = 0.78 percent, so a 3 sigma window is 50 plus or
+         minus 2.3 percentage points. A skew outside that is evidence of a
+         discriminator threshold problem or correlated readout error, and it
+         must be explained before any fidelity claim is made.
+
+      4. Negative control. Run the identical circuit with the correction pulse
+         suppressed and nothing else changed. The output should collapse to
+         the predicted mixture of the correct state and the S-error state, and
+         for a maximally distinguishable pair the fidelity to the target
+         should fall to about 0.5. Observing exactly the predicted degraded
+         value, not merely "worse", is what shows the correction was the
+         operative ingredient rather than a coincidence of the circuit.
+
+      5. Timing evidence. Publish the static schedule with the correction
+         pulse at a fixed offset after the measurement, and where the hardware
+         supports it, a per-shot timestamp of the measure-to-correction
+         interval. A claim about real-time feedforward is a claim about
+         nanoseconds, and it should be checkable in nanoseconds.
+
+      6. Composition. Interleave the injection into a long randomised sequence,
+         so surviving by post-selection would mean selecting on many
+         independent outcomes at once. Report yield against the number of
+         injections: feedforward is flat, post-selection falls as 2^-N.
+         Plotting that for N = 1 to 8 is the most legible evidence you can
+         publish, because 2^-8 = 0.4 percent is unmistakable.
+
+      What I would publish: the shot accounting table, the two conditional
+      branch fidelities with error bars, the outcome balance with its binomial
+      interval, the negative control against its prediction, and the yield
+      versus injection count curve.
+
+      The trade-off. Deterministic injection costs a real-time classical path
+      and about 1.5 microseconds of coherence per injection, capping a circuit
+      at roughly 20 injections before feedback alone eats 10 percent of T2.
+      Post-selection costs nothing and yields exponentially, so for a one-off
+      characterisation of one injection it is legitimate and cheaper, provided
+      it is disclosed. For anything that composes, the exponent decides.
+    followUps:
+      - When can the correction be a frame update at zero cost, and what in the circuit takes that option away?
+      - You see an outcome balance of 54 to 46 at 4096 shots. Is that a problem, and what do you investigate first?
+      - How would you present the yield versus injection count curve so that a reader can immediately distinguish feedforward from post-selection?
+    commonMistakes:
+      - Reporting a fidelity without the shot accounting, which leaves post-selection indistinguishable from feedforward in the published result.
+      - Treating the correction as always absorbable into the Pauli or phase frame, which fails as soon as a non-commuting gate follows the injection.
+      - Claiming determinism from a single-injection demonstration without the yield versus injection count curve, where post-selection falls as 2^-N and feedforward is flat.
+    references:
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+      - label: Fowler et al, Surface codes towards practical large-scale quantum computation
+        url: https://arxiv.org/abs/1208.0928

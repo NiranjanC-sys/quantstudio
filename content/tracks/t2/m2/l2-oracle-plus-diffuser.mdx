@@ -1,0 +1,194 @@
+---
+id: t2.m2.l2
+title: Oracle Plus Diffuser
+type: concept
+track: t2
+module: t2.m2
+level: L2
+minutes: 14
+objectives:
+  - Write the Grover iterate as the product of two reflections, one about the marked subspace and one about the uniform state
+  - "Derive the diffuser 2|s><s| - I as H^n (2|0><0| - I) H^n and give its gate decomposition"
+  - Show that the product of the two reflections is a rotation by 2*theta in the two-dimensional span of the marked and unmarked states
+prerequisites:
+  - t2.m2.l1
+  - t1.m4.l5
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [grover, diffuser]
+---
+
+Inversion about the mean sounds like a trick with averages. It is in fact a
+reflection, the oracle is also a reflection, and two reflections in a plane
+compose into a rotation. Once you see the iterate that way, everything about
+Grover follows from plane geometry: how fast the algorithm converges, when to
+stop, and why running it longer makes it worse.
+
+## Two states span everything that happens
+
+Let $S$ be the set of $M$ marked inputs out of $N$, and define
+
+$$
+\ket{w} = \frac{1}{\sqrt M}\sum_{x \in S}\ket{x},
+\qquad
+\ket{r} = \frac{1}{\sqrt{N-M}}\sum_{x \notin S}\ket{x} .
+$$
+
+These are orthonormal, and the uniform superposition decomposes as
+
+$$
+\ket{s} = \sqrt{\frac{M}{N}}\,\ket{w} + \sqrt{\frac{N-M}{N}}\,\ket{r}
+= \sin\theta\,\ket{w} + \cos\theta\,\ket{r},
+\qquad
+\sin\theta = \sqrt{\frac{M}{N}} .
+$$
+
+Everything the algorithm does stays inside $\mathrm{span}\{\ket{w}, \ket{r}\}$,
+because both operators below preserve it. A search over $2^{50}$ items is
+therefore a problem in two real dimensions.
+
+## Reflection one: the oracle
+
+The marking oracle of T2.M1.L3 is
+$O_f = I - 2\sum_{x \in S}\ketbra{x}{x}$, which in the two-dimensional basis is
+
+$$
+O_f = \begin{pmatrix} -1 & 0 \\ 0 & 1 \end{pmatrix}
+\quad \text{on } (\ket{w}, \ket{r}) .
+$$
+
+That is a reflection about the $\ket{r}$ axis. It costs one query.
+
+## Reflection two: the diffuser
+
+Start from the reflection about $\ket{0^n}$, which negates every basis state
+*except* the all-zeros one:
+
+$$
+R_0 = I - 2\ketbra{0^n}{0^n} .
+$$
+
+Conjugate it by Hadamards. Since $H^{\otimes n}\ket{0^n} = \ket{s}$ and
+$H^{\otimes n}$ is its own inverse,
+
+$$
+H^{\otimes n} R_0 H^{\otimes n}
+= H^{\otimes n} H^{\otimes n} - 2\,H^{\otimes n}\ketbra{0^n}{0^n}H^{\otimes n}
+= I - 2\ketbra{s}{s} .
+$$
+
+The **diffuser** is the negative of that, $D = 2\ketbra{s}{s} - I$, a reflection
+*about* $\ket{s}$ rather than about its orthogonal complement. Acting on a state
+with amplitudes $a_x$, it sends $a_x \mapsto 2\bar a - a_x$ with
+$\bar a = \frac1N \sum_x a_x$, which is the inversion about the mean promised in
+the last lesson.
+
+<Margin label="A global sign nobody pays for">
+The circuit below builds $I - 2\ketbra{s}{s} = -D$, not $D$. Grover is usually
+written with $D$, so a $k$-iteration circuit differs from the textbook operator by
+$(-1)^k$. That is a global phase, invisible to every measurement, and it is why
+the simulated amplitudes here sometimes carry the opposite sign to the formula
+$\sin((2k+1)\theta)$. Check magnitudes, not signs.
+</Margin>
+
+Gate by gate, $R_0$ is a masked multi-controlled $Z$ with the mask flipping *all*
+$n$ bits, so the diffuser is
+
+$$
+H^{\otimes n} \; X^{\otimes n} \; \mathrm{MCZ} \; X^{\otimes n} \; H^{\otimes n} ,
+$$
+
+which is $2n$ Hadamards, $2n$ $X$ gates and one multi-controlled $Z$. It contains
+no oracle call at all, which is exactly why the query count and the gate count of
+Grover tell different stories.
+
+## Two reflections make a rotation
+
+In a real plane, reflecting about a line at angle $\alpha$ and then about a line
+at angle $\beta$ is a rotation by $2(\beta - \alpha)$. Here the first line is the
+$\ket{r}$ axis, at angle 0, and the second is $\ket{s}$, at angle $\theta$. So
+
+$$
+G = D \, O_f = \begin{pmatrix}
+\cos 2\theta & \sin 2\theta \\ -\sin 2\theta & \cos 2\theta
+\end{pmatrix}
+$$
+
+is a rotation by $2\theta$ towards $\ket{w}$. Starting from $\ket{s}$, which sits
+at angle $\theta$ from $\ket{r}$, $k$ iterations land at angle $(2k+1)\theta$:
+
+$$
+G^k \ket{s} = \sin\big((2k+1)\theta\big)\ket{w} + \cos\big((2k+1)\theta\big)\ket{r} .
+$$
+
+Measure and you read a marked item with probability $\sin^2((2k+1)\theta)$. Every
+quantitative claim in this module is that one formula.
+
+## The smallest complete example
+
+Take $N = 4$ with one marked item, so $\sin\theta = 1/2$ and $\theta = \pi/6$. One
+iteration rotates from $\theta = 30$ degrees to $3\theta = 90$ degrees, landing
+exactly on $\ket{w}$. The success probability is $\sin^2(\pi/2) = 1$, with no
+error at all.
+
+<Circuit
+  caption="Grover on two qubits, marked index 11, one iteration. Amplitude -1 on |11>, probability exactly 1. The minus sign is the diffuser's global phase."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "grover-n4-k1",
+    qubits: 2,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "o", gate: "z", targets: [1], controls: [0] },
+      { id: "a0", gate: "h", targets: [0] },
+      { id: "a1", gate: "h", targets: [1] },
+      { id: "b0", gate: "x", targets: [0] },
+      { id: "b1", gate: "x", targets: [1] },
+      { id: "bz", gate: "z", targets: [1], controls: [0] },
+      { id: "c0", gate: "x", targets: [0] },
+      { id: "c1", gate: "x", targets: [1] },
+      { id: "d0", gate: "h", targets: [0] },
+      { id: "d1", gate: "h", targets: [1] }
+    ]
+  }}
+/>
+
+Probability 1 on $\ket{11}$ after one query. Compare the classical worst case of
+three queries and the classical expectation of $2.5$.
+
+<Callout tone="gotcha" title="The diffuser depends on the algorithm, not the problem">
+$D$ contains no information about $f$. It is the same $2n$ Hadamards and one MCZ
+whether you are cracking a hash or colouring a graph. Everything problem-specific
+lives in the oracle, which is why a Grover implementation is judged almost
+entirely on how cheaply it compiles its predicate. When someone reports a Grover
+circuit with a plausible qubit count and an implausible depth, the oracle is
+where the depth went.
+</Callout>
+
+<Check question="What does the iterate do if you mistakenly reflect about $\ket{0^n}$ instead of about $\ket{s}$, that is, if you drop the Hadamard layers from the diffuser?">
+It stops being a rotation in the $\{\ket{w}, \ket{r}\}$ plane, because $R_0$ does
+not preserve that plane: it singles out $\ket{0^n}$, which is generally neither
+marked nor aligned with $\ket{r}$. Concretely, $O_f$ and $R_0$ are both diagonal,
+so they commute and their product is diagonal too. A diagonal operator can never
+change any probability, so the circuit would return the uniform distribution for
+every iteration count. The Hadamard layers are not cosmetic; they are the only
+part of the diffuser that moves amplitude between basis states.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), for the
+  two-reflections derivation in the two-dimensional invariant subspace.
+- [PennyLane Codebook](https://pennylane.ai/codebook), for the explicit
+  $H^{\otimes n} X^{\otimes n} \mathrm{MCZ} X^{\otimes n} H^{\otimes n}$ gate
+  sequence.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 6.1.3, for the rotation-angle picture.

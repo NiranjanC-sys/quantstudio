@@ -1,0 +1,847 @@
+questions:
+  - id: iq-189
+    title: Design a measurement error mitigation service
+    kind: system-design
+    prompt: |
+      Build a shared measurement error mitigation service for a fleet of
+      superconducting devices ranging from 27 to 156 qubits. Readout error per
+      qubit is between 1 and 5 percent depending on the qubit and the week.
+      Design the calibration matrix construction, the storage, and the
+      correction path. Tell me how the cost scales as qubit count grows, give
+      me the numbers for 10, 20 and 50 qubits, and tell me exactly when the
+      inversion stops being usable and what signal tells you that has
+      happened. Users submit thousands of jobs a day and cannot wait for a
+      fresh calibration on each one. Assume you may not change the readout
+      hardware.
+    difficulty: easy
+    pattern: Error mitigation as a service
+    topics: [readout-error, calibration-matrix, tensored-mitigation, conditioning, shot-overhead]
+    companies: [IBM, Q-CTRL, Rigetti, Classiq]
+    modelAnswer: |
+      The decision that matters is that the full assignment matrix is never built
+      above about 12 qubits. The service is tensored by default, with an opt-in
+      correlated correction over small qubit groups, and a matrix-free subspace
+      method for anything wide. Everything below is the justification.
+
+      The full method first, so the cost is concrete. Prepare each of the 2^n
+      computational basis states, measure it, and let column j of A be the observed
+      distribution given input j. Then p_true = A^-1 p_measured.
+
+          n     calibration circuits    matrix entries    storage (float64)
+          10    1,024                   1.0e6             8 MB
+          20    1.05e6                  1.1e12            8.8 TB
+          50    1.1e15                  1.3e30            absurd
+
+      At n = 10 with 1,000 shots per calibration circuit that is 1.0e6 shots, about
+      20 minutes of device time at a 1 kHz repetition rate, and the matrix fits in
+      memory. At n = 20 the calibration alone is 1e9 shots, roughly 12 days of
+      continuous device time, for a matrix that does not fit on the node. The method
+      is dead well before the hardware is.
+
+      Tensored, which is what the service actually runs. Assume readout errors
+      factorise across qubits. Then A = kron over qubits of a 2x2 matrix
+
+          A_q = [[1 - e01_q,  e10_q],
+                 [e01_q,      1 - e10_q]]
+
+      and two calibration circuits suffice: prepare all zeros, prepare all ones.
+      Storage is 4n floats, 1.6 kB at n = 50. The correction never forms the
+      Kronecker product; it applies the per-qubit inverses to the sparse observed
+      distribution, or better, corrects the expectation value of each Pauli term
+      directly, since for a weight-w Z-type observable the correction is a single
+      scalar: divide by the product over the w qubits of (1 - e01_q - e10_q).
+
+      What tensored gives up is correlated readout error. Neighbouring readout
+      resonators cross-talk, and a measured qubit can flip its neighbour. Detect it
+      rather than assume it away: run a small set of random basis-state
+      preparations, of order 200 circuits, and test whether the observed joint
+      distribution factorises. Where a pair or triple fails the test, promote that
+      group to a full 4x4 or 8x8 block and keep the rest tensored. That
+      block-diagonal middle ground costs 4 or 8 calibration circuits per promoted
+      group and captures nearly all of the real correlation.
+
+      When the inversion becomes unusable. This is the number to have ready. For a
+      symmetric per-qubit error p, the 2x2 inverse carries a factor 1/(1 - 2p), so
+      the noise amplification over n qubits is
+
+          gamma(n, p) = (1 / (1 - 2p))^n
+
+      and because variance scales as the square, the shot overhead to recover the
+      unmitigated error bar is gamma^2.
+
+          p = 0.01, n = 50:  gamma = 1.0204^50 =   2.7   -> 7.4x shots
+          p = 0.02, n = 50:  gamma = 1.0417^50 =   7.6   -> 58x shots
+          p = 0.05, n = 50:  gamma = 1.1111^50 = 194     -> 3.8e4x shots
+          p = 0.02, n = 156: gamma = 1.0417^156 = 620    -> 3.8e5x shots
+
+      So at 1 percent readout error the correction is nearly free at 50 qubits; at 5
+      percent it is unaffordable at 50 qubits. The service computes gamma from the
+      current calibration before it runs anything, compares gamma^2 against the
+      user's shot budget, and refuses with a clear message rather than returning a
+      number whose error bar is 200 times wider than the user believes. That refusal
+      is a feature.
+
+      Two more guards. First, constrain the solution: unconstrained inversion
+      produces negative probabilities, so solve the non-negative least squares
+      problem with a simplex constraint instead of applying A^-1. It costs
+      more compute and it removes the class of results where a probability of
+      -0.03 propagates into an expectation value outside the physical range.
+      Second, for wide circuits use the matrix-free subspace approach: build
+      the assignment matrix only over the set of bitstrings actually observed,
+      which for a 10,000-shot job is at most 10,000 distinct strings
+      regardless of n, and solve iteratively. Cost then scales with observed
+      support, not with 2^n.
+
+      Operational shape. Calibration runs on a schedule per device, not per job.
+      Readout drifts on the timescale of an hour or two, so refresh every 30
+      minutes, store each snapshot with a timestamp and a device calibration id, and
+      stamp every mitigated result with the snapshot it used. Cache the per-qubit
+      matrices in Redis keyed by device and calibration id. A job that arrives with
+      a snapshot older than 2 hours gets its error bar widened by a drift term
+      rather than being blocked.
+
+      The trade-off I accepted: tensored mitigation is biased whenever readout
+      errors are correlated, and that bias does not appear in the statistical error
+      bar. I mitigate it with the factorisation test and the promoted blocks, and I
+      report the tested correlation strength as a systematic term. I would build the
+      full matrix instead only for n of 12 or fewer, where 4,096 calibration
+      circuits is 5 minutes of device time and the matrix is 128 MB, which is cheap
+      enough that correctness beats cleverness.
+    followUps:
+      - Your factorisation test says qubits 14 and 15 are correlated. What exactly do you change, and what does it cost in calibration circuits?
+      - Why does correcting a Pauli expectation value directly avoid ever forming a 2^n vector, and what is the scalar factor for a weight-6 Z observable?
+      - How would you decide the calibration refresh interval from data rather than from a guess?
+    commonMistakes:
+      - Building the full 2^n assignment matrix beyond about 12 qubits, which needs 1e9 shots and terabytes of storage at 20 qubits and is impossible before the hardware limit is reached.
+      - Applying an unconstrained matrix inverse and shipping the negative probabilities it produces, which pushes expectation values outside their physical range and hides the failure inside a plausible-looking number.
+      - Reporting the mitigated result without inflating the error bar by gamma, which at 5 percent readout error on 50 qubits understates the uncertainty by a factor of about 200.
+    references:
+      - label: IBM Quantum primitives documentation
+        url: https://docs.quantum.ibm.com/guides/primitives
+      - label: Mitiq error mitigation documentation
+        url: https://mitiq.readthedocs.io/
+  - id: iq-190
+    title: Offer zero-noise extrapolation as a shared service
+    kind: system-design
+    prompt: |
+      Design zero-noise extrapolation as a multi-tenant service on top of a
+      fleet of superconducting QPUs with two-qubit gate errors around 3e-3 and
+      two-qubit gate times of 100 to 300 ns. Users submit a circuit and an
+      observable and want a mitigated expectation value. Choose the noise
+      scaling method and defend it. Choose the extrapolation model and defend
+      it. Then give me the arithmetic on the shot and QPU-time overhead for
+      your chosen scale factors, and tell me exactly what error bar you report
+      and what goes into it. A result with the wrong error bar is worse than
+      no result, so I want both the statistical and the systematic component.
+    difficulty: medium
+    pattern: Error mitigation as a service
+    topics: [zero-noise-extrapolation, unitary-folding, richardson, shot-overhead, error-bars]
+    companies: [IBM, Q-CTRL, Rigetti, Xanadu]
+    modelAnswer: |
+      The decision that matters is that noise scaling must be combined with Pauli
+      twirling. Without twirling, folding a circuit amplifies coherent errors
+      quadratically and incoherent errors linearly, the two scale differently, and
+      no extrapolation model fits both. Twirl each hard cycle into stochastic Pauli
+      noise first, then scale, then extrapolate. Skip the twirl and the whole
+      service returns confidently wrong numbers.
+
+      Noise scaling method. Three candidates:
+      - Pulse stretching. Physically correct, but it needs pulse-level control
+        and a recalibration per stretch factor, so it is unavailable to a
+        multi-tenant service running on someone else's fleet.
+      - Global unitary folding, U -> U (U-dagger U)^k. Scale factors are the odd
+        integers 1, 3, 5, and nothing in between.
+      - Local folding of individual gates on a random subset. Continuous scale
+        factors, and you can fold only the noisy two-qubit gates.
+      Choose local folding on two-qubit gates: it runs through any transpiler and
+      gives arbitrary scale factors. Its weakness must be stated, that folding
+      assumes gate noise scales with how often the gate runs, which is good for
+      stochastic gate noise and poor for idling and leakage.
+
+      Extrapolation model. The expectation value of a twirled circuit under
+      stochastic Pauli noise decays roughly as
+
+          E(lambda) = A * exp(-lambda * Lambda) + B
+
+      where Lambda is the total expected error count of the unscaled circuit. So the
+      default model is exponential with an offset, fitted to at least four points,
+      with linear and Richardson kept as alternates. Richardson is unbiased if the
+      true dependence is a polynomial of the fitted degree and it is unstable
+      otherwise, which is why it is not the default. Fit all three, and if they
+      disagree by more than the statistical error, report the spread as the
+      systematic term rather than picking a winner.
+
+      Overhead arithmetic, and this is the part users get wrong. Take scale
+      factors {1, 1.5, 2, 3} with equal shots N at each. Shot count is 4N.
+      QPU time is proportional to circuit duration times shots, so the time
+      multiplier is (1 + 1.5 + 2 + 3) = 7.5 times N, that is 7.5 times a
+      single unscaled run of N shots. Users budget for 4x and get billed for
+      7.5x, so the API must quote QPU seconds, not shots.
+
+      Variance amplification. For Richardson extrapolation with nodes {1, 3, 5}, the
+      Lagrange coefficients evaluated at zero are
+
+          L1(0) = (0-3)(0-5) / ((1-3)(1-5)) =  15/8 =  1.875
+          L2(0) = (0-1)(0-5) / ((3-1)(3-5)) = -5/4  = -1.250
+          L3(0) = (0-1)(0-3) / ((5-1)(5-3)) =   3/8 =  0.375
+
+      which sum to 1 as they must. The variance of the extrapolated value is the sum
+      of squared coefficients times the per-point variance:
+
+          1.875^2 + 1.250^2 + 0.375^2 = 3.516 + 1.563 + 0.141 = 5.22
+
+      so the error bar is sqrt(5.22) = 2.28 times wider than one point at the same
+      shots per point. Against a single unmitigated estimate that spent the whole
+      budget on one setting, the penalty is sqrt(5.22 * 3) = 3.96. Round it: ZNE
+      with three Richardson points costs about a factor of 4 in statistical
+      precision, equivalently 16x the shots to recover it. A fitted exponential with
+      four points is gentler, typically a factor of 2 to 3, because it does not put
+      a 1.875 weight on a single node.
+
+      A worked case. Circuit with 400 two-qubit gates at 3e-3 gives Lambda = 1.2, so
+      the raw expectation is suppressed by exp(-1.2) = 0.30. A true value of 0.5 is
+      measured as 0.15. With 1e5 shots per point and a variance-1 observable, the
+      per-point standard error is 3.2e-3, and after a four-point exponential fit
+      with a factor of 2.5 penalty the mitigated standard error is about 8e-3. The
+      mitigation recovers a bias of 0.35 at a cost of 8e-3 in precision. That is a
+      good trade, and the arithmetic showing bias >> statistical error is exactly
+      how the service decides to run ZNE at all.
+
+      The error bar it reports. Three components, combined in quadrature and
+      also reported separately:
+      1. Statistical: bootstrap over shots through the actual fit, not a
+         textbook formula. Resample counts at each scale factor 1,000 times.
+      2. Model systematic: the spread across the exponential, linear and
+         Richardson fits. If this exceeds the statistical term, the
+         extrapolation is model-dominated and the result is flagged.
+      3. Scaling systematic: rerun scale factor 1 at the end of the job and
+         compare with the start. Any drift over the job is a bias the fit
+         cannot see, and its size goes in as a term.
+      The response carries value, both stderr components, the raw unmitigated
+      value, the fitted points and the model, so the correction is visible.
+
+      The trade-off I accepted: local folding is not physically faithful noise
+      scaling, so the extrapolated intercept estimates the zero-folding limit
+      rather than the true noiseless value, and idling and leakage are under-scaled.
+      I take a residual bias I cannot bound tightly in exchange for a method that
+      runs on any device through any transpiler. With calibrated pulse-level
+      control I would decide the other way and stretch pulses, which scales the
+      physical decoherence honestly.
+    followUps:
+      - Why does folding without Pauli twirling break the extrapolation, and what does a coherent over-rotation do to a folded circuit?
+      - Your three fit models disagree by more than the statistical error. What does the service return to the user?
+      - How would you choose scale factors adaptively from the observed decay rather than fixing them in advance?
+    commonMistakes:
+      - Scaling noise by folding without twirling first, so coherent and incoherent errors scale with different powers of the scale factor and no extrapolation model is correct.
+      - Quoting the overhead as the number of scale factors. With factors 1, 1.5, 2 and 3 the shot count is 4x but the QPU time is 7.5x, and billing by shots understates the cost by almost a factor of two.
+      - Reporting only the statistical error bar, which for Richardson on nodes 1, 3 and 5 is already 2.28x the per-point error and still says nothing about the extrapolation model bias that usually dominates.
+    references:
+      - label: Temme, Bravyi and Gambetta, Error mitigation for short-depth quantum circuits
+        url: https://arxiv.org/abs/1612.02058
+      - label: Mitiq error mitigation documentation
+        url: https://mitiq.readthedocs.io/
+  - id: iq-191
+    title: Offer probabilistic error cancellation and know when to refuse
+    kind: system-design
+    prompt: |
+      Design probabilistic error cancellation as a service. You need to learn
+      a noise model per hardware layer, invert it as a quasi-probability
+      decomposition, and sample. Specify the learning experiments, the model
+      you learn, and the sampling procedure. Then give me the sampling
+      overhead as a function of circuit size on hardware with 3e-3 two-qubit
+      error, and tell me the exact circuit size at which you stop offering
+      this and why. I want the crossover expressed in two-qubit gate count so
+      an engineer can put it in a config file. Compare the cost with zero-noise
+      extrapolation on the same circuit.
+    difficulty: medium
+    pattern: Error mitigation as a service
+    topics: [probabilistic-error-cancellation, noise-learning, quasi-probability, sampling-overhead, admission-control]
+    companies: [IBM, Q-CTRL, Quantinuum, Classiq]
+    modelAnswer: |
+      The decision that matters is the admission threshold, and it is a single
+      number: PEC is offered when the total expected error count of the
+      circuit is at or below about 2, and refused above it. On hardware with
+      3e-3 two-qubit error that is about 650 two-qubit gates. Above that the
+      sampling overhead crosses 3,000x and no shot budget survives it. That
+      threshold goes in the config file; everything else is how you get there.
+
+      What is learned. Twirl each hard cycle into stochastic Pauli noise, then
+      model the noise on layer l as a sparse Pauli-Lindblad channel
+
+          Lambda_l(rho) = exp( sum_k lambda_k ( P_k rho P_k - rho ) )
+
+      with the sum restricted to single-qubit Paulis and two-qubit Paulis
+      supported on edges of the coupling map. For a 127-qubit device with 144
+      couplers that is 3*127 + 15*144 = 2,541 generators per layer, and only
+      a handful of distinct layers appear in a typical circuit because the
+      transpiler emits repeated entangling cycles. Learn the rates by
+      measuring the decay of Pauli fidelities under repetitions of the twirled
+      layer: prepare a Pauli eigenstate, apply the layer d times for several
+      depths, measure the same Pauli, and fit an exponential. The fidelities
+      relate to the rates by a linear transform, so the fit gives lambda_k.
+      Cost: of order 1e3 circuits per layer per learning session, which is
+      minutes to tens of minutes of device time per device per layer.
+
+      How it is used. The inverse channel is not physical, so write it as a
+      quasi-probability combination of implementable operations:
+
+          Lambda^-1 = gamma * sum_i q_i O_i,   q_i >= 0,  sum q_i = 1
+
+      Sample O_i with probability q_i, apply a sign s_i in {+1, -1}, run the
+      circuit, and average sign-weighted outcomes multiplied by gamma. The
+      estimator is unbiased if the learned model is right. That last clause is
+      the entire risk of the method.
+
+      The overhead, with arithmetic. For a layer with total error rate
+      epsilon_l the 1-norm is gamma_l approximately exp(2 * epsilon_l), and
+      the circuit's total is the product, so with total expected error count
+      Lambda = sum over layers of epsilon_l:
+
+          gamma      = exp(2 * Lambda)
+          overhead   = gamma^2 = exp(4 * Lambda)
+
+          Lambda = 0.5   ->  gamma^2 = e^2   =        7.4
+          Lambda = 1.0   ->  gamma^2 = e^4   =       54.6
+          Lambda = 2.0   ->  gamma^2 = e^8   =    2,981
+          Lambda = 3.0   ->  gamma^2 = e^12  =  162,754
+          Lambda = 5.0   ->  gamma^2 = e^20  =  4.9e8
+
+      Convert to two-qubit gate count at 3e-3 per gate:
+
+          Lambda = 1  ->  333 gates   ->     55x shots
+          Lambda = 2  ->  667 gates   ->  2,981x shots
+          Lambda = 3  ->  1,000 gates -> 1.6e5x shots
+
+      With a 1 kHz repetition rate, 1e4 base shots and Lambda = 2, the job
+      needs 3e7 shots, about 8 hours of exclusive device time for one
+      expectation value. At Lambda = 3 it is 18 days. So the threshold is not
+      a matter of taste: it is the point at which one number costs a working
+      day. Set the config at Lambda <= 2, warn above 1.5, refuse above 2, and
+      express the limit to users in gates because that is what they control.
+
+      Against ZNE on the same circuit. At Lambda = 1.2, ZNE with a four-point
+      exponential fit costs about 7.5x in QPU time and about 2.5x in
+      statistical precision, so about 6x in effective shots, and leaves a bias
+      it cannot bound. PEC at Lambda = 1.2 costs exp(4.8) = 121x in shots and
+      is unbiased if the model is right. So the honest comparison is: PEC buys
+      you the removal of bias, and it costs roughly 20x more than ZNE at the
+      circuit size where both are viable. Offer ZNE by default, PEC when the
+      user asks for an unbiased estimate and their budget supports it, and
+      both together never.
+
+      Service shape. Noise models are per device, per layer, per calibration
+      window, stored with a validity interval. The admission controller
+      computes Lambda from the transpiled circuit and the current model before
+      accepting the job, returns the projected shot count and QPU seconds in
+      the job quote, and rejects with the projected cost in the error message.
+      A cheap approximation is worth building: partial PEC, where you cancel
+      only the largest lambda_k terms and leave the rest, giving a tunable
+      dial between gamma^2 = 1 and full cancellation. That dial is how a user
+      at Lambda = 3 gets something rather than a refusal.
+
+      The trade-off I accepted: PEC's unbiasedness is conditional on a noise
+      model that was learned at some earlier time on a drifting device, and
+      the resulting bias appears nowhere in the reported statistical error. I
+      handle it by re-learning inside the same job window and adding a drift
+      systematic, but I cannot make the guarantee unconditional. I would
+      decide against offering PEC at all on a device whose measured layer
+      fidelities move by more than a few percent within an hour, because there
+      the model is stale before the job finishes and the method's one
+      advantage over ZNE evaporates.
+    followUps:
+      - What shot count does a 500 two-qubit gate circuit at 1e-3 error need, and would you accept the job?
+      - How does partial cancellation of only the largest noise terms change the overhead and what bias does it leave?
+      - The learned model is 6 hours old and the device recalibrated in between. What does the admission controller do?
+    commonMistakes:
+      - Quoting the sampling overhead as gamma rather than gamma squared. The variance scales as the square of the 1-norm, so a stated 55x becomes 3,000x when the circuit doubles in size.
+      - Calling PEC unbiased without the conditional. It is unbiased only if the learned noise model is correct, and model error produces a bias that the reported statistical error bar cannot see.
+      - Stacking PEC on top of ZNE, which multiplies the overheads while the second method corrects a bias the first already removed, and produces an error bar nobody can interpret.
+    references:
+      - label: Temme, Bravyi and Gambetta, Error mitigation for short-depth quantum circuits
+        url: https://arxiv.org/abs/1612.02058
+      - label: IBM Quantum primitives documentation
+        url: https://docs.quantum.ibm.com/guides/primitives
+  - id: iq-192
+    title: Specify the API contract for a mitigation service
+    kind: system-design
+    prompt: |
+      Design the public API for the mitigation service. Decide what a user
+      asks for, what you return, and how uncertainty is expressed so that a
+      downstream paper or trading model does not over-trust the number.
+      Assume the callers are chemists and machine learning engineers who are
+      not error mitigation experts and who will copy the first example in the
+      docs. Give me the request schema, the response schema, the versioning
+      story, and the defaults. Tell me which decision you take away from the
+      user and why. Include how you price and quote the job, since mitigation
+      overheads are large enough that a user can accidentally spend a day of
+      QPU time on one expectation value.
+    difficulty: medium
+    pattern: Error mitigation as a service
+    topics: [api-design, uncertainty-reporting, defaults, quoting, versioning]
+    companies: [IBM, AWS Braket, Classiq, Microsoft Azure Quantum]
+    modelAnswer: |
+      The decision that matters is that the user asks for a target precision, not
+      for a shot count, and never names a mitigation method in the common path.
+      Shots are an implementation detail of reaching a precision, and the moment a
+      user picks shots the service can no longer be held to any accuracy statement.
+      That inversion is what makes the rest defensible.
+
+      Request schema:
+
+          POST /v2/estimate
+          { "circuits": [<IR>], "observables": [{"paulis":[...],"coeffs":[...]}],
+            "precision": 0.005,           // required, absolute, 1 sigma
+            "max_qpu_seconds": 600,       // required, hard ceiling
+            "backend": "device-a", "resilience": "auto",  // auto|none|zne|pec
+            "seed": 12345, "idempotency_key": "..." }
+
+      Two fields that most APIs make optional are required here. `precision` is what
+      the user actually wants. `max_qpu_seconds` guards the failure mode in the
+      prompt: a chemist asking for 1e-4 on a 600-gate circuit is asking for a week
+      of device time, and without a ceiling they learn that from the bill.
+
+      Quote before run. If projected cost exceeds the ceiling, the service returns
+      409 with a quote rather than queuing the job:
+
+          { "error": "precision_unreachable_within_budget",
+            "achievable_precision_at_budget": 0.021,
+            "qpu_seconds_for_requested_precision": 41200,
+            "dominant_cost": "pec_sampling_overhead",
+            "suggestions": [{"action":"relax_precision","to":0.02},
+                            {"action":"reduce_two_qubit_gates","from":840,"to":400}] }
+
+      The same body sent to POST /v2/estimate/quote returns this without queuing, so
+      a user can size a study before committing to it.
+
+      Response schema:
+
+          { "value": -1.8412, "stderr": 0.0047,
+            "stderr_breakdown": {"statistical":0.0031, "model_systematic":0.0035,
+                                 "drift_systematic":0.0009},
+            "unmitigated_value": -1.2130, "correction_magnitude_sigma": 133.6,
+            "method": {"name":"zne", "scale_factors":[1,1.5,2,3],
+                       "model":"exp_offset", "twirling":"pauli"},
+            "diagnostics": {"fit_chi2_per_dof":1.14, "physical_range_respected":true,
+                            "monotonic_in_scale_factor":true,
+                            "surrogate_test":{"ran":true,"deviation_sigma":1.7},
+                            "calibration_age_seconds":1840},
+            "trust": "ok", "warnings": [], "shots": 4200000, "qpu_seconds": 412,
+            "service_version": "2.3.1", "noise_model_id": "nm-77e1" }
+
+      The three fields that do the real work:
+      - `unmitigated_value`, always returned, so a user can see how much of the
+        answer came from the model rather than from the device.
+      - `correction_magnitude_sigma`, the size of the correction in units of the
+        reported error bar. When mitigation moves the answer by 134 sigma the
+        result is mostly inference, and noticing that should not require the docs.
+      - `stderr_breakdown`, splitting statistical from systematic. A single
+        combined stderr invites the reader to treat it all as shot noise, and
+        shot noise is the only component that shrinks if you pay more.
+
+      `trust` is three-valued: ok, degraded, unreliable, derived from the
+      diagnostics by fixed rules rather than by a model so that it is auditable.
+      Degraded when the calibration is past its validity window or the fit
+      chi-squared per degree of freedom exceeds 2. Unreliable when the surrogate
+      test deviates beyond 3 sigma, monotonicity fails, or the physical range is
+      violated. Unreliable results are still returned with the reason attached,
+      because hiding one produces a support ticket instead of an informed user.
+
+      Decisions taken away from the user:
+      - The method. `resilience: auto` chooses from the circuit's expected error
+        count Lambda: none below 0.1, where mitigation costs more than it fixes,
+        ZNE from 0.1 to 2, and PEC only on explicit request. Users do not know
+        where the crossover sits; the service does.
+      - Shot allocation across observable terms and across scale factors.
+      - Twirling, dynamical decoupling and transpilation, which are error
+        suppression, are close to free, and are therefore always on.
+      The user keeps precision, budget, backend, and an escape hatch to pin a
+      method for reproducibility of a published result.
+
+      Versioning. `service_version` and `noise_model_id` appear in every response,
+      and any change to the default method or extrapolation model is an announced
+      minor bump, because a chemist re-running last year's script and silently
+      getting a different number is the worst thing this API can do. Pinning a
+      version is supported for one year. Seeds make the classical half reproducible;
+      the device is not, and the docs say so beside the seed.
+
+      The trade-off I accepted: a precision-first API means the service picks shot
+      counts, so a user cannot cheaply run 100 shots to smoke-test a pipeline. I add
+      `resilience: none` with a `shots` override on a separate development endpoint
+      that returns no `trust` field at all, which keeps the escape hatch out of
+      production results. I would invert this only for a hardware-team audience,
+      where shot-level control is the point and the accuracy contract is not.
+    followUps:
+      - A user pins service_version for two years and the underlying device is retired. What does the API do?
+      - How would you express uncertainty for a 200-term Hamiltonian where each term has its own systematic component?
+      - What is the right default when the circuit has expected error count 0.05, and how do you explain the refusal to mitigate?
+    commonMistakes:
+      - Letting the user specify shots instead of precision, after which the service can make no accuracy statement and every support conversation starts with reconstructing what the user actually wanted.
+      - Returning a single combined error bar, which invites the reader to treat systematic model bias as shot noise that more budget would shrink.
+      - Omitting the unmitigated value from the response, so nobody downstream can see that the mitigation moved the answer by a hundred sigma.
+    references:
+      - label: IBM Quantum primitives documentation
+        url: https://docs.quantum.ibm.com/guides/primitives
+      - label: gRPC documentation
+        url: https://grpc.io/docs/
+  - id: iq-193
+    title: Build guardrails for when error mitigation lies
+    kind: system-design
+    prompt: |
+      Error mitigation can return a confident number that is wrong, and the
+      reported error bar will not show it. Name the failure modes concretely.
+      For each one design a guardrail. Then specify the automated test suite
+      that runs before any mitigated result is released to a user: what runs,
+      what it costs in QPU time, what threshold trips it, and what the service
+      does when it trips. You have a 10 percent QPU time budget for
+      verification and you may not ask the user to interpret diagnostics. I
+      want at least one test that can detect a wrong answer without knowing
+      the right one, and I want to know its blind spots.
+    difficulty: hard
+    pattern: Error mitigation as a service
+    topics: [failure-modes, guardrails, verification, surrogate-circuits, release-gates]
+    companies: [IBM, Q-CTRL, Quantinuum, Rigetti]
+    modelAnswer: |
+      The decision that matters is the Clifford surrogate test, and it gets 6 of
+      the 10 percent verification budget. Replace every non-Clifford rotation in the
+      user's circuit with the nearest Clifford angle and you have a circuit with the
+      same layout, two-qubit gate count, depth and layer structure, and therefore
+      nearly the same noise, whose exact expectation value a stabiliser simulator
+      computes in polynomial time. Run the full mitigation pipeline on it: if it
+      cannot recover an answer you already know, it will not recover the one you do
+      not. Nothing else here detects a wrong answer without knowing the right one.
+
+      The failure modes, each with a guardrail:
+
+      1. Extrapolating outside the valid regime. At high scale factors the
+      expectation has decayed into the noise floor and carries no information
+      about the intercept, so the fit is driven by pure noise. Guardrail: drop
+      any scale factor within 2 sigma of the depolarised value, and refuse to
+      fit fewer than 3 surviving points.
+
+      2. Coherent errors under folding. Folding G G-dagger G leaves a coherent
+      over-rotation partly uncancelled and scales it differently from
+      stochastic noise, so the extrapolation model is wrong in a way the fit
+      residuals may not reveal. Guardrail: Pauli twirling is mandatory, not
+      optional, and the service records that it ran.
+
+      3. Readout inversion producing unphysical results. Guardrail: assert
+      that every corrected probability is in [0, 1] and every expectation is
+      inside the observable's spectral range. On violation, flag as
+      unreliable. Do not silently clamp: clamping converts a visible failure
+      into an invisible bias.
+
+      4. Stale noise model under PEC. The estimator is unbiased only for the
+      true channel, and a model learned 6 hours ago on a since-recalibrated
+      device produces a bias entirely outside the error bar. Guardrail: a hard
+      validity window, plus re-measurement of a few layer fidelities in the job.
+
+      5. Observables near zero. When the true value is close to zero, the
+      relative correction is unbounded and a small additive bias becomes a
+      large relative error. Guardrail: report absolute error only, and warn
+      when the mitigated value is within 3 sigma of zero rather than quoting a
+      relative accuracy.
+
+      6. Post-selection changing the state. Symmetry verification discards
+      shots that fail a parity check, which is legitimate, but conditioning
+      reshapes the surviving distribution and the acceptance rate is itself
+      information. Guardrail: report the acceptance fraction, unreliable below 0.2.
+
+      7. Drift within the job. A 4-hour PEC job sits across a recalibration.
+      Guardrail: bracket the job with the same reference measurement.
+
+      8. Silent method fallback. The service degrades from PEC to ZNE because
+      of a budget ceiling and the user reads the number as unbiased.
+      Guardrail: the method actually used is in the response and any downgrade
+      is a warning, never a default.
+
+      The release gate, with its budget. Nothing reaches the user until all of these
+      pass or the result is labelled.
+
+      | Test | QPU budget | Trip threshold | Action on trip |
+      |---|---|---|---|
+      | Clifford surrogate | 6% | deviation > 3 sigma from exact | mark unreliable, attach exact and recovered values |
+      | Bracket drift | 2% | start vs end differ > 3 sigma | mark degraded, add drift systematic |
+      | Scale-factor monotonicity and fit quality | 0% | non-monotonic, or chi2/dof > 2 | refit alternates, report spread as systematic |
+      | Physicality | 0% | value outside spectral range | mark unreliable |
+      | Split-half consistency | 0% | halves differ > 3 sigma | mark degraded, investigate |
+      | Calibration freshness | 2% | model older than validity window | re-learn or widen error bar |
+
+      Three of the six cost no QPU time at all because they are computations on data
+      already collected, which is why 10 percent is enough. The surrogate test is
+      the expensive one and it earns its 6 percent.
+
+      The surrogate test's blind spots, because a test whose limits you cannot
+      name is a liability. It is blind to anything depending on non-Clifford
+      structure, since the rotation angles are replaced, so a mechanism that fires
+      only at particular angles is invisible. The Clifford circuit's true value is
+      often 0 or plus or minus 1, an easier target than a generic value, so the
+      test is optimistic; choose the replacement to land on a non-extremal
+      expectation where the structure allows, and run several surrogates. It tests
+      the pipeline, not the device on this exact circuit, so a state-dependent
+      error such as population-triggered leakage can pass the surrogate and corrupt
+      the target. And with 6 percent of the budget the surrogate's own error bar is
+      roughly 4 times the target's, which is why the threshold is 3 sigma of the
+      surrogate's error and not of the target's.
+
+      The trade-off I accepted: this gate slows every job by 10 percent and will
+      occasionally mark a correct result as unreliable, since a 3 sigma threshold
+      across six tests produces false positives at a rate of a few percent. I take
+      that over one published number that was wrong by 100 sigma with a tight error
+      bar. I would raise the thresholds only for an internal characterisation
+      audience that reads diagnostics, and never for the default path.
+    followUps:
+      - What Clifford replacement rule lands the surrogate on a non-extremal expectation value, and why does that matter?
+      - Six tests at 3 sigma each produce false positives at what rate, and how do you keep that from training users to ignore warnings?
+      - A result passes every gate and is still wrong. What class of error would do that, and what would you add?
+    commonMistakes:
+      - Clamping an unphysical mitigated value into range instead of flagging it, which turns a visible failure into a silent bias that survives into published results.
+      - Trusting the statistical error bar to reveal noise model error. A biased PEC estimator has a tight error bar around the wrong value, and no amount of shots detects it.
+      - Running a surrogate test and treating a pass as proof of correctness, when the surrogate is blind to angle-dependent and state-dependent error mechanisms by construction.
+    references:
+      - label: Mitiq error mitigation documentation
+        url: https://mitiq.readthedocs.io/
+      - label: Preskill, Quantum computing in the NISQ era and beyond
+        url: https://arxiv.org/abs/1801.00862
+  - id: iq-194
+    title: Design the noise-learning pipeline behind the service
+    kind: system-design
+    prompt: |
+      The mitigation service is only as good as its noise models. Design the
+      pipeline that produces them for a fleet of 12 devices between 27 and 156
+      qubits. Specify which characterisation experiments run, how often each
+      one runs, what fraction of device time they consume, how the results are
+      stored and served, and how you handle drift between the moment a model
+      is learned and the moment it is used. The devices recalibrate on their
+      own schedule and sometimes a qubit is removed from service mid-day.
+      Characterisation may not consume more than 5 percent of fleet time. Tell
+      me what you do when a model is stale and a user has already paid.
+    difficulty: hard
+    pattern: Error mitigation as a service
+    topics: [noise-learning, calibration-cadence, drift, model-store, data-pipeline]
+    companies: [IBM, Q-CTRL, Rigetti, Atom Computing]
+    modelAnswer: |
+      The decision that matters is that models are versioned artefacts with an
+      explicit validity window, and the mitigation path treats an expired model as a
+      hard error rather than as a slightly worse input. Once a model has a
+      timestamp, a device calibration id and an expiry, every other question in this
+      design has an answer; without that, the pipeline is a cron job producing
+      numbers nobody can defend.
+
+      The experiment ladder, with cadence chosen from how fast each quantity drifts:
+
+      | Experiment | Cadence | Circuits | Device time per run | Fleet cost |
+      |---|---|---|---|---|
+      | Readout calibration, tensored | 30 min | 2 + 200 correlation probes | 30 s | 1.7% |
+      | T1 and T2 per qubit | 2 h | 3 per qubit, 20 delays | 90 s at 156 qubits | 0.6% |
+      | Simultaneous randomized benchmarking per layer | 4 h | 300 per layer, 6 layers | 4 min | 1.7% |
+      | Sparse Pauli-Lindblad learning per hot layer | 8 h | 1,000 per layer, 3 layers | 8 min | 0.5% |
+      | Crosstalk and ZZ survey | 24 h | 2 per coupler | 3 min | 0.2% |
+      | Total | | | | 4.7% |
+
+      That lands inside the 5 percent ceiling with nothing to spare, which is the
+      point of the table: the budget forces the choice of which layers get the
+      expensive Pauli-Lindblad treatment. Only the layers a transpiler actually
+      emits get it, on a heavy-hex device a small set of edge-colouring cycles,
+      typically 3 to 6 layers covering most submitted circuits. Everything else
+      falls back to a depolarising approximation from the benchmarking numbers, and
+      jobs on an unlearned layer get a wider systematic term.
+
+      Cadence justification, hedged where it should be. Readout drifts fastest, on
+      a timescale of tens of minutes to a couple of hours, which is why it is the
+      only 30-minute item. T1 fluctuates substantially within a day, with excursions
+      of tens of percent that are device- and week-dependent, so a 2-hour cadence
+      samples the variation without pretending to track it. Two-qubit gate error
+      moves more slowly and is reset by the device's own recalibration. These are
+      qualitative timescales, not constants: log each quantity's autocorrelation
+      time from history and set the cadence from the data, reviewed monthly.
+
+      Storage and serving. Two tiers.
+      - Postgres holds the model index: one row per (device, model_type,
+        layer_signature, learned_at, calibration_id, valid_until,
+        quality_metrics, artefact_uri). Small, queryable, joined against jobs
+        for audit.
+      - Object storage holds the artefacts. A sparse Pauli-Lindblad model for a
+        156-qubit device with 176 couplers has 3*156 + 15*176 = 3,108 rate
+        parameters, about 25 kB as float64, call it 64 kB per layer with
+        covariance. Six layers, three snapshots a day, 12 devices, 365 days:
+        6 * 3 * 12 * 365 * 64 kB = 5.0 GB per year for the fleet. Storage is a
+        non-issue, so never overwrite; historical models are what let you
+        reprocess a user's job after finding a bug.
+      - Redis caches the current model per (device, layer) with a TTL equal to
+        the validity window, so the mitigation path does a single memory read.
+
+      Invalidation. A recalibration event, a qubit removed from service, or a
+      coupler disabled invalidates every model whose layer_signature touches the
+      affected qubits. The control system publishes these on a Kafka topic; the
+      pipeline consumes them, expires the affected models immediately rather than
+      waiting for the TTL, and schedules a priority re-learn. That is the mid-day
+      qubit removal case, and nothing slower handles it inside a cadence period.
+
+      Drift between learning and use. Three mechanisms, in increasing cost:
+      1. Widen. Every model carries an empirical drift rate from its own
+         history: the standard deviation of each parameter over the last 30
+         snapshots divided by the interval. The mitigation path adds
+         drift_rate * model_age in quadrature to the systematic term. Free,
+         always on, and it makes staleness visible in the number itself.
+      2. Anchor. For any job longer than 10 minutes, interleave a short
+         re-measurement of the two or three most influential layer fidelities at
+         the start and end. Costs about 2 percent and converts an unknown drift
+         into a measured one, which matters most for PEC where drift is bias.
+      3. Re-learn. If the anchor shows movement beyond the model's stated
+         drift rate, trigger a full re-learn and requeue.
+
+      When a model is stale and the user has already paid, the policy is fixed
+      rather than case by case:
+      - Job not started: hold it, re-learn, then run, communicating the delay.
+      - Job mid-flight and the anchor detects drift: finish it, return the result
+        marked degraded with the drift systematic included, and do not charge for
+        the verification overhead.
+      - Job completed against a model later found wrong, for example after a bug in
+        the learning code: this is why artefacts are retained. Reprocess from stored
+        raw counts against the corrected model, publish a revised result, notify
+        every user whose job used the affected model_id, and refund the QPU time.
+        Raw counts must therefore be stored alongside the mitigated value, which is
+        the job-store requirement people forget until the day they need it.
+
+      The trade-off I accepted: 4.7 percent of fleet time buys models for only the
+      3 to 6 hottest layers per device, so an unusual circuit shape gets a
+      depolarising approximation and a wider error bar rather than a sparse model.
+      That is a deliberate concentration of a fixed budget on the traffic that
+      exists. If the ceiling rose to 15 percent I would spend the increase on more
+      layers rather than more frequent relearning, because layer coverage determines
+      who gets a good answer and cadence only determines how good.
+    followUps:
+      - How would you measure the autocorrelation time of T1 from your own history and turn it into a cadence?
+      - After a learning-code bug that affected two weeks of models, what do you reprocess and what do you tell users?
+      - Why does layer coverage beat cadence when the characterisation budget increases, and when would that reverse?
+    commonMistakes:
+      - Serving a noise model without a validity window, so a stale model is used silently and produces a biased result that no diagnostic in the pipeline can catch.
+      - Waiting for the next scheduled run after a qubit is removed from service, when an event-driven invalidation off the control system's own notifications costs almost nothing and closes a window of hours.
+      - Storing only the mitigated result and discarding raw counts, which makes it impossible to reprocess affected jobs when a learning bug is found and turns a reprocessing exercise into a mass refund.
+    references:
+      - label: IBM Quantum primitives documentation
+        url: https://docs.quantum.ibm.com/guides/primitives
+      - label: Kafka documentation
+        url: https://kafka.apache.org/documentation/
+  - id: iq-195
+    title: Split a fixed QPU budget between shots, mitigation and circuit
+    kind: system-design
+    prompt: |
+      A customer has 4 hours of exclusive QPU time and wants one expectation
+      value as accurately as possible. They can spend it on more shots, on
+      mitigation overhead, or on running a better circuit produced by more
+      aggressive transpilation and qubit selection. The circuit as submitted
+      has 500 two-qubit gates on a device with 3e-3 two-qubit error and a
+      1 kHz repetition rate. Decide the split with numbers. Then design the
+      policy engine that makes this decision automatically for every job on
+      the fleet: its inputs, its rules, how it is calibrated, and how you stop
+      it from silently getting worse over six months. Tell me what the engine
+      does when its own assumptions do not hold.
+    difficulty: hard
+    pattern: Error mitigation as a service
+    topics: [budget-allocation, bias-variance, policy-engine, error-suppression, drift-monitoring]
+    companies: [IBM, Q-CTRL, Classiq, Multiverse Computing]
+    modelAnswer: |
+      The decision, and the arithmetic makes it lopsided. Spend almost nothing on
+      extra shots. Spend the first hour on circuit improvement and error suppression
+      and the remaining three on mitigation. Here is why.
+
+      Total shots available: 4 h = 14,400 s at 1 kHz is 1.44e7 shots. For a
+      variance-1 observable, spending the whole budget on one unmitigated setting
+      gives
+
+          sigma = 1 / sqrt(1.44e7) = 2.6e-4
+
+      Now the bias. 500 two-qubit gates at 3e-3 gives a total expected error count
+      Lambda = 1.5, so the expectation is suppressed by exp(-1.5) = 0.22 and a true
+      value of 0.5 is measured as 0.11.
+
+          bias        = 3.9e-1
+          statistical = 2.6e-4
+          ratio       = 1,500
+
+      Bias exceeds statistical error by 1,500x, so shots spent on variance are
+      wasted. The question is how to reduce Lambda and how to correct the rest.
+
+      Circuit first, because it is the cheapest lever and it acts in the exponent:
+      - Qubit selection. Two-qubit error varies by a factor of 3 to 5 across a
+        device, so a good subgraph moves the mean edge error to 1.5e-3, for one
+        calibration read and seconds of layout search.
+      - Routing and synthesis. Aggressive transpilation on a heavy-hex map removes
+        20 to 40 percent of the gates a default pass emits, for minutes of CPU.
+      - Error suppression. Dynamical decoupling and Pauli twirling cost no shots
+        and turn coherent error into stochastic error, which every mitigation
+        method assumes. Worth 10 to 30 percent, and it makes ZNE valid at all.
+
+      Combine: 500 gates falls to 350 and mean error to 1.8e-3, so Lambda = 0.63
+      and the signal rises from 0.22 to exp(-0.63) = 0.53, a 2.4x gain no number of
+      shots can buy. Budget one hour, mostly classical, 10 minutes of QPU.
+
+      Mitigation second. At Lambda = 0.63 the PEC overhead is exp(4 * 0.63) =
+      12.4x, affordable and unbiased if the model holds, while ZNE costs 7.5x in QPU
+      time and 2.5x in precision and leaves a bias. Choose PEC. Three hours is
+      1.08e7 shots; dividing by 12.4 leaves an effective 8.7e5 shots, so
+
+          sigma_mitigated = 1 / sqrt(8.7e5) = 1.1e-3
+
+      Final position: residual bias limited by noise model error rather than by
+      exp(-0.63) suppression, and a total error bar of order 1e-3 to 3e-3 once the
+      model systematic is folded in. The naive alternative, 4 hours of unmitigated
+      shots, gives 2.6e-4 around a value wrong by 0.39. The mitigated answer is 100x
+      less precise and 100x more correct, and that asymmetry is the whole lesson.
+
+      The policy engine. Inputs, all known before the job runs: circuit features
+      (two-qubit gate count, depth, layer census, idle time), the calibration
+      snapshot, the observable's weight and term count, the model's age and drift
+      rate, and the user's target and budget. Derived: Lambda before and after each
+      transformation, the bias exp(-Lambda), and each method's overhead.
+
+      Rules, in order, a decision list rather than a learned model so a support
+      engineer can explain any decision:
+      1. Always apply suppression. Twirling and dynamical decoupling are near free
+         and are preconditions for the validity of everything downstream.
+      2. Spend up to 5 percent of the budget on layout and transpiler search,
+         keeping the result only if projected Lambda drops by over 10 percent.
+      3. If projected bias < 0.3 * projected statistical error, run no mitigation:
+         below that ratio it adds variance and corrects nothing.
+      4. If Lambda <= 2, choose PEC when its overhead fits the budget at the target
+         precision, otherwise ZNE. Above Lambda = 3, refuse and return a quote:
+         that circuit needs to be smaller, not better funded.
+      5. Allocate remaining shots across terms as |coefficient| times standard
+         deviation, and across scale factors to minimise the intercept variance.
+
+      Calibration and anti-rot. Every threshold is fitted against ground truth from
+      the Clifford surrogate suite, run nightly across the fleet, giving a real
+      objective: total error against a known exact value. A shadow policy logs what
+      a candidate would have chosen and is promoted only after beating the incumbent
+      over a week of real shapes. Alarms sit on assumptions rather than outputs: the
+      engine assumes bias goes as exp(-Lambda), so measure that fit nightly and
+      alarm on a 20 percent move in the exponent. A held-out shape set, never used
+      for fitting, is checked monthly for overfitting.
+
+      When the assumptions do not hold. The core assumption is stochastic,
+      layer-local, roughly Markovian noise. It breaks under leakage out of the
+      computational subspace, under non-Markovian correlations such as a
+      two-level-system fluctuator parked on a qubit, and when a few high-weight
+      observable terms dominate the variance. Detection: the surrogate test deviates
+      or the exp(-Lambda) fit fails. Response: fall back to suppression plus ZNE
+      plus a doubled systematic, mark degraded, and page the characterisation team.
+
+      The trade-off I accepted: a rule list is less accurate than a learned
+      allocator and I chose it anyway, because every decision has to be explainable
+      to a user asking why their job cost what it cost, and because a learned
+      allocator trained on drifting hardware inherits the drift. I would revisit
+      only if the fleet outgrew human review, and the rule list stays as fallback.
+    followUps:
+      - What is the right split for a circuit with Lambda = 0.1, and why does the answer invert there?
+      - How do you allocate shots across four scale factors to minimise the variance of the fitted intercept rather than splitting them evenly?
+      - Your nightly surrogate suite says the fitted exponent moved 35 percent in a week. What is your first hypothesis and what do you measure next?
+    commonMistakes:
+      - Spending the budget on shots when bias exceeds statistical error by three orders of magnitude, which buys a tighter error bar around a number that is wrong by 0.39.
+      - Skipping transpilation and qubit selection because they feel like preprocessing, when they act in the exponent and a 30 percent gate reduction is worth more than any affordable increase in shots.
+      - Building the allocator as a learned model without an assumption check, so when the device's dominant error mechanism changes the engine keeps applying a confident correction derived from a model that no longer holds.
+    references:
+      - label: IBM Quantum transpilation guide
+        url: https://docs.quantum.ibm.com/guides/transpile
+      - label: Preskill, Quantum computing in the NISQ era and beyond
+        url: https://arxiv.org/abs/1801.00862

@@ -1,0 +1,203 @@
+---
+id: t2.m4.l1
+title: Kitaev's Phase Estimation
+type: concept
+track: t2
+module: t2.m4
+level: L2
+minutes: 15
+objectives:
+  - "Derive the state (1/sqrt(2^t)) * sum_j exp(2*pi*i*phi*j) |j> produced by the controlled powers of U"
+  - Show that the inverse QFT maps that state onto the binary expansion of phi when phi is exactly t bits
+  - "Explain why the eigenstate register is unchanged, so the input may be a superposition of eigenvectors"
+prerequisites:
+  - t2.m3.l2
+  - t0.m4.l3
+  - t1.m9.l1
+sources:
+  - label: Watrous, Quantum Computation lecture notes
+    url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+  - label: PennyLane Codebook
+    url: https://pennylane.ai/codebook
+tags: [qpe, eigenvalue]
+---
+
+A unitary's eigenvalues all sit on the unit circle, so each one is a single real
+number $\varphi$ with $e^{2\pi i \varphi}$ as the eigenvalue. Phase estimation is
+the circuit that writes $\varphi$ into a register in binary. Order finding is one
+instance of it, quantum chemistry another, linear-systems solvers a third; if you
+learn one subroutine in this track, learn this one.
+
+## The setup
+
+You are given a unitary $U$ as a circuit you can control, and an eigenvector
+$\ket{u}$ with
+
+$$
+U\ket{u} = e^{2\pi i \varphi}\ket{u}, \qquad 0 \le \varphi < 1 .
+$$
+
+You want $\varphi$ to $t$ bits. Use $t$ **counting** qubits, indices 0 to $t-1$
+with qubit 0 the most significant, plus whatever register holds $\ket{u}$.
+
+## The phase ramp
+
+Hadamard every counting qubit, then apply $U^{2^{\,t-1-q}}$ controlled on counting
+qubit $q$. Kickback does the rest. Since $\ket{u}$ is an eigenvector, a controlled
+$U^m$ leaves it alone and puts $e^{2\pi i \varphi m}$ on the control's $\ket 1$
+branch:
+
+$$
+\frac{\ket0 + \ket1}{\sqrt2}\ket{u}
+\;\longmapsto\;
+\frac{\ket0 + e^{2\pi i \varphi m}\ket1}{\sqrt2}\ket{u} .
+$$
+
+Do that for every counting qubit with $m = 2^{\,t-1-q}$ and multiply out the
+tensor product. A basis state $\ket{j}$ of the counting register has
+$j = \sum_q j_q 2^{\,t-1-q}$, so the accumulated phases combine into
+$e^{2\pi i \varphi j}$ and
+
+$$
+\bigotimes_{q=0}^{t-1}\frac{\ket0 + e^{2\pi i \varphi 2^{t-1-q}}\ket1}{\sqrt2}
+= \frac{1}{\sqrt{2^{t}}}\sum_{j=0}^{2^{t}-1} e^{2\pi i \varphi j}\ket{j} .
+$$
+
+That is the phase ramp of T2.M3.L3. Compare it with the product form of the QFT
+and you see the point: this state is exactly $\mathrm{QFT}\ket{2^t \varphi}$, so
+
+$$
+\mathrm{QFT}\dg \left( \frac{1}{\sqrt{2^{t}}}\sum_j e^{2\pi i \varphi j}\ket{j} \right)
+= \ket{2^{t}\varphi}
+$$
+
+whenever $2^t \varphi$ is an integer. The whole algorithm is: make the ramp,
+invert the transform, read the register.
+
+<Margin label="Exponentiate the angle, do not repeat the gate">
+Written naively the controlled powers cost $1 + 2 + 4 + \cdots + 2^{t-1} = 2^t - 1$
+applications of $U$, which is exponential in $t$. For a phase gate you instead
+multiply the angle, which is free. For a general $U$ you cannot, and $2^t$
+applications is the honest cost; this is why phase estimation is efficient only
+when $U^{2^k}$ has a short circuit, as modular exponentiation does.
+</Margin>
+
+## The exact case
+
+Take $U = P(2\pi \cdot 5/8)$, the phase gate, whose eigenvector $\ket1$ has
+$\varphi = 5/8 = 0.101$ in binary: exactly three bits. Three counting qubits should
+therefore give a deterministic answer.
+
+<Circuit
+  caption="Phase estimation of 5/8 on three counting qubits, eigenstate |1> on qubit 3. The counting register reads 101 with probability 1."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "qpe-5-8-exact",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "e", gate: "x", targets: [3] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "cu0", gate: "p", targets: [3], controls: [0], params: [15.707963267948966] },
+      { id: "cu1", gate: "p", targets: [3], controls: [1], params: [7.853981633974483] },
+      { id: "cu2", gate: "p", targets: [3], controls: [2], params: [3.9269908169872414] },
+      { id: "i0", gate: "swap", targets: [0, 2] },
+      { id: "i1", gate: "h", targets: [2] },
+      { id: "i2", gate: "p", targets: [1], controls: [2], params: [-1.5707963267948966] },
+      { id: "i3", gate: "h", targets: [1] },
+      { id: "i4", gate: "p", targets: [0], controls: [2], params: [-0.7853981633974483] },
+      { id: "i5", gate: "p", targets: [0], controls: [1], params: [-1.5707963267948966] },
+      { id: "i6", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+One surviving amplitude, $\ket{1011}$: counting register $101$, eigenstate qubit
+still $\ket1$. Read $0.101_2 = 5/8$ and you are done, with no error and no
+repetition. Determinism here is not luck; it is the statement that a phase
+representable in $t$ bits is transformed to a basis state exactly.
+
+## The eigenstate register never moves
+
+Look again at the kickback step. Controlled $U^m$ acting on $\ket{j}\ket{u}$ gives
+a phase times $\ket{j}\ket{u}$: the second register is an eigenvector, so it comes
+back unchanged, every time. The inverse QFT touches only the counting register. So
+$\ket u$ enters and leaves untouched, and by linearity, feeding a *superposition*
+of eigenvectors gives a superposition of answers, each entangled with its own
+eigenvector:
+
+$$
+\sum_i c_i \ket{0^t}\ket{u_i}
+\;\longmapsto\;
+\sum_i c_i \ket{2^t \varphi_i}\ket{u_i} .
+$$
+
+Put the eigenstate qubit of the circuit above in $\ket{+} = (\ket0 + \ket1)/\sqrt2$,
+a superposition of the two eigenvectors of $P$, whose phases are $\varphi = 0$ and
+$\varphi = 5/8$.
+
+<Circuit
+  caption="The same circuit with the eigenstate register in |+>. The output is an equal superposition of |000>|0> and |101>|1>: two eigenphases estimated in one run, each labelled by its eigenvector."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "qpe-eigen-superposition",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "e", gate: "h", targets: [3] },
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "h2", gate: "h", targets: [2] },
+      { id: "cu0", gate: "p", targets: [3], controls: [0], params: [15.707963267948966] },
+      { id: "cu1", gate: "p", targets: [3], controls: [1], params: [7.853981633974483] },
+      { id: "cu2", gate: "p", targets: [3], controls: [2], params: [3.9269908169872414] },
+      { id: "i0", gate: "swap", targets: [0, 2] },
+      { id: "i1", gate: "h", targets: [2] },
+      { id: "i2", gate: "p", targets: [1], controls: [2], params: [-1.5707963267948966] },
+      { id: "i3", gate: "h", targets: [1] },
+      { id: "i4", gate: "p", targets: [0], controls: [2], params: [-0.7853981633974483] },
+      { id: "i5", gate: "p", targets: [0], controls: [1], params: [-1.5707963267948966] },
+      { id: "i6", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+Amplitude $0.707107$ on $\ket{0000}$ and on $\ket{1011}$, and nothing else.
+Measuring the counting register returns $000$ or $101$ with equal probability, and
+in either case the eigenstate register has collapsed onto the matching
+eigenvector.
+
+<Callout tone="note" title="This is what makes phase estimation an algorithm rather than a measurement">
+You almost never have an eigenvector to hand. In order finding nobody can prepare
+the eigenvectors of the modular multiplication operator, and in chemistry nobody
+can prepare the ground state. What you can prepare is a state with decent overlap
+onto the one you want. Phase estimation then returns that eigenphase with
+probability equal to the overlap squared, and the eigenvector for free. The
+overlap is the resource, and estimating it honestly is the difference between a
+chemistry proposal and a chemistry result.
+</Callout>
+
+<Check question="You run phase estimation with $t = 3$ on a unitary whose eigenphase is $\varphi = 1$, that is, eigenvalue $e^{2\pi i} = 1$. What does the counting register read?">
+$000$, with probability 1. The phase is defined modulo 1, and $\varphi = 1$ is the
+same as $\varphi = 0$: every controlled power contributes $e^{2\pi i m} = 1$, the
+ramp is flat, and the inverse QFT sends the uniform superposition back to
+$\ket{0^t}$. This is the reason phase estimation cannot distinguish an eigenvalue
+of $1$ from an eigenvalue of $1$, which sounds trivial but is the source of a real
+failure in order finding: the trivial eigenvector contributes an uninformative
+$000\cdots0$ outcome, and T2.M5.L3 has to detect and discard it.
+</Check>
+
+## Where this comes from
+
+- [Watrous, Quantum Computation notes](https://cs.uwaterloo.ca/~watrous/QC-notes/),
+  for the derivation of the ramp and the exact-phase case.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 5.2, for the standard circuit and its analysis.
+- [PennyLane Codebook](https://pennylane.ai/codebook), whose phase-estimation
+  module builds exactly this circuit and sweeps the eigenstate overlap.
