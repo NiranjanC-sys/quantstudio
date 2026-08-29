@@ -1,28 +1,35 @@
 # yamllint configuration for RedQuant infrastructure YAML.
 #
 # Scope: infra/ and .github/. Run with:
-#   yamllint infra .github
+#   yamllint -c .yamllint.yml infra .github
 #
 # Rationale for the relaxations below. The default yamllint profile is tuned
 # for hand-written application config, not for Kubernetes manifests, GitHub
-# Actions workflows and Prometheus rule files. Applying it unmodified to this
-# tree produces ~530 findings, of which every single one is cosmetic:
+# Actions workflows and Prometheus rule files. Applied unmodified to this tree
+# it produces ~530 findings, every one of them cosmetic:
 #
-#   408  line-length            PromQL expressions, image digests and SHA-pinned
-#                               `uses:` lines cannot be wrapped without breaking
-#                               them. 120 is enforced instead of 80.
-#   119  document-start         A leading `---` adds nothing to single-document
-#                               manifests; multi-document files still use it as
-#                               a separator, which this config still allows.
+#   408  line-length            PromQL expressions and alert annotation text
+#                               (longest current line: 173 chars, an alert
+#                               `description:`) do not wrap without hurting the
+#                               rendered alert. 200 is enforced instead of 80,
+#                               which still catches a genuinely runaway line.
+#   119  document-start         A leading `---` adds nothing to a single-document
+#                               manifest. Multi-document files still use it as a
+#                               separator, which this config continues to allow.
 #     7  comments-indentation   Deliberate left-aligned block comments that
-#                               introduce a following stanza.
-#     5  truthy                 GitHub Actions' `on:` key. YAML 1.1 reads it as
-#                               a boolean; it is a required Actions keyword and
-#                               cannot be quoted or renamed.
+#                               introduce the stanza below them.
+#     5  truthy                 GitHub Actions' `on:` key. YAML 1.1 reads it as a
+#                               boolean; it is a required Actions keyword and can
+#                               be neither quoted nor renamed.
 #
-# Everything that indicates a real defect stays at error level and unmodified:
-# syntax errors, key-duplicates, trailing-spaces, empty-values, octal-values,
-# indentation consistency and new-line-at-end-of-file.
+# Everything that indicates a real defect stays at error level: syntax errors,
+# key-duplicates, trailing-spaces, octal-values, indentation consistency and
+# new-line-at-end-of-file.
+#
+# Deliberately NOT enabled: `empty-values`. A valueless key is idiomatic in both
+# file families here - Compose declares named volumes as `pg_data:` with no
+# options, and Actions declares triggers as `push:` / `pull_request:` with no
+# filters. yamllint disables this rule by default and it stays disabled.
 
 extends: default
 
@@ -31,9 +38,9 @@ ignore: |
   .git/
 
 rules:
-  # PromQL, SHA-pinned action references and long image digests do not wrap.
+  # PromQL and alert annotation text do not wrap.
   line-length:
-    max: 120
+    max: 200
     allow-non-breakable-words: true
     allow-non-breakable-inline-mappings: true
 
@@ -52,7 +59,6 @@ rules:
   # silently weaken them.
   key-duplicates: enable
   trailing-spaces: enable
-  empty-values: enable
   octal-values:
     forbid-implicit-octal: true
     forbid-explicit-octal: true

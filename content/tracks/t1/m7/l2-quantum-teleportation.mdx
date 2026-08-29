@@ -1,0 +1,209 @@
+---
+id: t1.m7.l2
+title: Quantum Teleportation
+type: concept
+track: t1
+module: t1.m7
+level: L1
+minutes: 15
+objectives:
+  - Derive the teleportation identity by expanding the three-qubit state in the Bell basis
+  - State the correction Bob applies for each of the four measurement outcomes
+  - Explain why teleportation destroys the original and needs two classical bits
+prerequisites:
+  - t1.m7.l1
+  - t1.m5.l4
+sources:
+  - label: Cleve, QIC 710 Quantum Information Processing (Waterloo IQC)
+    url: https://cleve.iqc.uwaterloo.ca/qic710/
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [protocols, teleportation]
+---
+
+You hold a qubit in an unknown state $\ket{\psi} = \alpha\ket{0} + \beta\ket{1}$.
+You cannot measure it without destroying it, you cannot copy it because of
+no-cloning, and you cannot describe it in a letter because $\alpha$ and $\beta$
+are two continuous real parameters that would take infinitely many bits to write
+down. How do you move it to somebody else? The answer costs one shared Bell pair
+and exactly two classical bits, and it works with no knowledge of $\alpha$ or
+$\beta$ at any point.
+
+## The register layout
+
+Three qubits. Qubit 0 is the message, held by Alice. Qubits 1 and 2 are a Bell
+pair $\ket{\Phi^+}$, with qubit 1 at Alice and qubit 2 at Bob. The starting state
+is the product
+
+$$
+\ket{\psi} \otimes \frac{\ket{00} + \ket{11}}{\sqrt2}.
+$$
+
+<Margin label="Convention">
+Basis strings read $\ket{q_0 q_1 q_2}$, qubit 0 most significant. Alice measures
+qubits 0 and 1 into classical bits $c_0$ and $c_1$; Bob acts on qubit 2.
+</Margin>
+
+## The identity, expanded by hand
+
+Expand the product and group the terms by what Alice holds. Writing
+$\ket{\psi} = \alpha\ket{0} + \beta\ket{1}$,
+
+$$
+\frac{1}{\sqrt2}\Big(
+\alpha\ket{0}\ket{00} + \alpha\ket{0}\ket{11}
++ \beta\ket{1}\ket{00} + \beta\ket{1}\ket{11}
+\Big).
+$$
+
+Now rewrite Alice's two qubits in the Bell basis. Using
+$\ket{00} = \tfrac{1}{\sqrt2}(\ket{\Phi^+} + \ket{\Phi^-})$,
+$\ket{11} = \tfrac{1}{\sqrt2}(\ket{\Phi^+} - \ket{\Phi^-})$,
+$\ket{01} = \tfrac{1}{\sqrt2}(\ket{\Psi^+} + \ket{\Psi^-})$ and
+$\ket{10} = \tfrac{1}{\sqrt2}(\ket{\Psi^+} - \ket{\Psi^-})$ on qubits 0 and 1,
+the whole state collapses into four clean terms:
+
+$$
+\half\Big(
+\ket{\Phi^+}(\alpha\ket{0} + \beta\ket{1})
++ \ket{\Phi^-}(\alpha\ket{0} - \beta\ket{1})
++ \ket{\Psi^+}(\beta\ket{0} + \alpha\ket{1})
++ \ket{\Psi^-}(\beta\ket{0} - \alpha\ket{1})
+\Big).
+$$
+
+Read the four brackets on the right. They are $\ket{\psi}$, $Z\ket{\psi}$,
+$X\ket{\psi}$ and $XZ\ket{\psi}$. The message is already sitting on Bob's qubit
+in all four branches, up to one of four known corrections. Nothing has moved yet
+and nothing has been measured. This is an algebraic identity about a state that
+was always there.
+
+## Turning the Bell basis into bits
+
+Alice cannot measure "in the Bell basis" directly on hardware. She rotates the
+Bell basis onto the computational basis with the inverse of the Bell preparation
+circuit, CNOT from qubit 0 to qubit 1 followed by Hadamard on qubit 0, then
+measures both in the computational basis. Label the outcomes
+$c_0$ and $c_1$. The identity above becomes
+
+$$
+\half \sum_{c_0, c_1 \in \{0,1\}} \ket{c_0 c_1} \otimes X^{c_1} Z^{c_0}\ket{\psi}.
+$$
+
+Every branch has amplitude $\tfrac12$, so each pair of bits appears with
+probability $\tfrac14$, independent of $\alpha$ and $\beta$. That independence is
+what makes the protocol safe: Alice's outcome carries no information about the
+message, which is why she can shout it over an open channel.
+
+Take a concrete message to check the arithmetic. Let
+$\ket{\psi} = \cos\tfrac{\pi}{6}\ket{0} + i\sin\tfrac{\pi}{6}\ket{1}
+= 0.866025\ket{0} + 0.5\,i\ket{1}$, produced by a single $U(\pi/3, \pi/2, 0)$
+gate. Here is the state immediately before Alice measures.
+
+<Circuit
+  caption="Message prepared on qubit 0, Bell pair on qubits 1 and 2, then Alice's CNOT and Hadamard. No measurement yet."
+  show={['amplitudes']}
+  ir={{
+    version: 1,
+    name: "teleport-pre-measurement",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "p0", gate: "u", targets: [0], params: [1.0471975511965976, 1.5707963267948966, 0] },
+      { id: "b0", gate: "h", targets: [1] },
+      { id: "b1", gate: "x", targets: [2], controls: [1] },
+      { id: "t0", gate: "x", targets: [1], controls: [0] },
+      { id: "t1", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+Eight non-zero amplitudes, and they are exactly the four branches written out.
+The four states whose last qubit is $\ket{0}$ carry amplitude
+$\alpha/2 = 0.4330$, and the four whose last qubit is $\ket{1}$ carry
+$\pm\beta/2 = \pm 0.25\,i$. Group them by the first two labels:
+
+| $c_0 c_1$ | Bob's qubit | correction |
+| --- | --- | --- |
+| $00$ | $\alpha\ket{0} + \beta\ket{1}$ | none |
+| $01$ | $\beta\ket{0} + \alpha\ket{1}$ | $X$ |
+| $10$ | $\alpha\ket{0} - \beta\ket{1}$ | $Z$ |
+| $11$ | $-\beta\ket{0} + \alpha\ket{1}$ | $X$ then $Z$ |
+
+So Bob applies $X$ if $c_1 = 1$, then $Z$ if $c_0 = 1$. Two bits, four cases, no
+knowledge of the message required.
+
+## The whole protocol
+
+<Simulate
+  show="probabilities"
+  ir={{
+    version: 1,
+    name: "teleportation",
+    qubits: 3,
+    clbits: 2,
+    ops: [
+      { id: "p0", gate: "u", targets: [0], params: [1.0471975511965976, 1.5707963267948966, 0] },
+      { id: "b0", gate: "h", targets: [1] },
+      { id: "b1", gate: "x", targets: [2], controls: [1] },
+      { id: "t0", gate: "x", targets: [1], controls: [0] },
+      { id: "t1", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] },
+      { id: "fx", gate: "x", targets: [2], condition: { bits: [1], value: 1 } },
+      { id: "fz", gate: "z", targets: [2], condition: { bits: [0], value: 1 } }
+    ]
+  }}
+>
+
+Two rows survive, and their probabilities are $0.75$ and $0.25$: qubit 2 now has
+exactly the measurement statistics of the message. Qubits 0 and 1 are frozen at
+whichever pair of bits this run produced.
+
+</Simulate>
+
+This circuit contains classical conditions, so the simulator runs a single
+trajectory rather than an exact statevector, and it reports magnitudes only.
+That is honest: once a measurement has happened there is no single global
+amplitude vector to report. Run it and read qubit 2: whichever branch fired,
+its marginal is $0.75$ on $\ket{0}$ and $0.25$ on $\ket{1}$, which is
+$|\alpha|^2$ and $|\beta|^2$ for the message we prepared.
+
+<Callout tone="gotcha" title="Nothing travels faster than light">
+Before Bob receives $c_0$ and $c_1$, his qubit is in the maximally mixed state,
+averaged over the four equally likely branches. He can measure it all he likes and
+learn nothing. The protocol completes only when two classical bits arrive over an
+ordinary channel, at ordinary speed.
+</Callout>
+
+## Two costs that are not optional
+
+**The original is destroyed.** Alice measured qubit 0. Whatever it was, it is now
+a classical bit. If teleportation left the original intact it would be a cloning
+machine, and T1.M5.L4 proved no such machine exists. The destruction is not a
+side effect of a clumsy implementation; it is what keeps the protocol consistent.
+
+**Two classical bits are required.** One bit would leave Bob unable to
+distinguish two of the four branches, and his best guess would be wrong half the
+time on those. You cannot compress below two because the four corrections
+$I$, $X$, $Z$, $XZ$ are genuinely different operations on an unknown state.
+
+The trade is now visible next to superdense coding. There, one qubit plus one
+Bell pair bought two classical bits. Here, two classical bits plus one Bell pair
+buy one qubit. Entanglement is the currency both directions convert through.
+
+<Check question="Alice runs the protocol but the classical channel fails and Bob never learns $c_0 c_1$. What state does Bob hold?">
+The maximally mixed state $\tfrac12 I$, for any message whatsoever. Averaging
+$X^{c_1}Z^{c_0}\ket{\psi}$ over the four equally likely branches gives the same
+mixture regardless of $\alpha$ and $\beta$, which is exactly the statement that
+the two classical bits carry all of the information Bob is missing. His qubit is
+useless until they arrive, and no amount of local processing fixes that.
+</Check>
+
+## Where this comes from
+
+- [Cleve, QIC 710](https://cleve.iqc.uwaterloo.ca/qic710/), for the resource
+  accounting that puts teleportation and superdense coding on the same page as
+  inverse conversions between entanglement, qubits and bits.
+- [Nielsen & Chuang, *Quantum Computation and Quantum Information*](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 1.3.7, for the Bell-basis expansion presented here in the same order.

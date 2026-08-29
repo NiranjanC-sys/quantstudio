@@ -1,0 +1,659 @@
+- generic [active] [ref=f2e1]:
+  - banner [ref=f2e2]:
+    - link "Skip to content" [ref=f2e3] [cursor=pointer]:
+      - /url: "#main"
+    - link "RedQuant home" [ref=f2e4] [cursor=pointer]:
+      - /url: /
+      - text: RedQuant
+    - navigation "Main" [ref=f2e6]:
+      - list [ref=f2e7]:
+        - listitem [ref=f2e8]:
+          - link "Curriculum" [ref=f2e9] [cursor=pointer]:
+            - /url: /curriculum
+        - listitem [ref=f2e10]:
+          - link "Lab" [ref=f2e11] [cursor=pointer]:
+            - /url: /lab
+        - listitem [ref=f2e12]:
+          - link "Contests" [ref=f2e13] [cursor=pointer]:
+            - /url: /contests
+        - listitem [ref=f2e14]:
+          - link "Interview" [ref=f2e15] [cursor=pointer]:
+            - /url: /interview
+        - listitem [ref=f2e16]:
+          - link "Pricing" [ref=f2e17] [cursor=pointer]:
+            - /url: /pricing
+    - generic [ref=f2e18]:
+      - 'button "Theme: System. Switch to Dark." [ref=f2e19] [cursor=pointer]': System
+      - link "Sign in" [ref=f2e20] [cursor=pointer]:
+        - /url: /login
+      - link "Start free" [ref=f2e21] [cursor=pointer]:
+        - /url: /signup
+  - main [ref=f2e22]:
+    - generic [ref=f2e23]:
+      - heading "Interview bank." [level=1] [ref=f2e24]
+      - paragraph [ref=f2e25]: "Quantum interviews converge on a small number of shapes: build a circuit to a spec, reason about a coupling map, defend a shot budget, architect a job queue. Every question here carries a real answer, not a hint."
+      - paragraph [ref=f2e26]:
+        - text: 40 questions ·
+        - link "20 employer briefings" [ref=f2e27] [cursor=pointer]:
+          - /url: /interview/companies
+    - region "Questions" [ref=f2e28]:
+      - generic [ref=f2e29]:
+        - complementary "Filters" [ref=f2e30]:
+          - searchbox "Search questions" [ref=f2e31]
+          - group "Kind" [ref=f2e32]:
+            - list [ref=f2e34]:
+              - listitem [ref=f2e35]:
+                - button "coding 40" [ref=f2e36] [cursor=pointer]:
+                  - generic [ref=f2e37]: coding
+                  - generic [ref=f2e38]: "40"
+          - group "Difficulty" [ref=f2e39]:
+            - list [ref=f2e41]:
+              - listitem [ref=f2e42]:
+                - button "medium 16" [ref=f2e43] [cursor=pointer]:
+                  - generic [ref=f2e44]: medium
+                  - generic [ref=f2e45]: "16"
+              - listitem [ref=f2e46]:
+                - button "easy 12" [ref=f2e47] [cursor=pointer]:
+                  - generic [ref=f2e48]: easy
+                  - generic [ref=f2e49]: "12"
+              - listitem [ref=f2e50]:
+                - button "hard 12" [ref=f2e51] [cursor=pointer]:
+                  - generic [ref=f2e52]: hard
+                  - generic [ref=f2e53]: "12"
+          - group "Company" [ref=f2e54]:
+            - list [ref=f2e56]:
+              - listitem [ref=f2e57]:
+                - button "IBM 39" [ref=f2e58] [cursor=pointer]:
+                  - generic [ref=f2e59]: IBM
+                  - generic [ref=f2e60]: "39"
+              - listitem [ref=f2e61]:
+                - button "Quantinuum 24" [ref=f2e62] [cursor=pointer]:
+                  - generic [ref=f2e63]: Quantinuum
+                  - generic [ref=f2e64]: "24"
+              - listitem [ref=f2e65]:
+                - button "Classiq 18" [ref=f2e66] [cursor=pointer]:
+                  - generic [ref=f2e67]: Classiq
+                  - generic [ref=f2e68]: "18"
+              - listitem [ref=f2e69]:
+                - button "Xanadu 15" [ref=f2e70] [cursor=pointer]:
+                  - generic [ref=f2e71]: Xanadu
+                  - generic [ref=f2e72]: "15"
+              - listitem [ref=f2e73]:
+                - button "Google Quantum AI 14" [ref=f2e74] [cursor=pointer]:
+                  - generic [ref=f2e75]: Google Quantum AI
+                  - generic [ref=f2e76]: "14"
+              - listitem [ref=f2e77]:
+                - button "Multiverse Computing 13" [ref=f2e78] [cursor=pointer]:
+                  - generic [ref=f2e79]: Multiverse Computing
+                  - generic [ref=f2e80]: "13"
+              - listitem [ref=f2e81]:
+                - button "Q-CTRL 8" [ref=f2e82] [cursor=pointer]:
+                  - generic [ref=f2e83]: Q-CTRL
+                  - generic [ref=f2e84]: "8"
+              - listitem [ref=f2e85]:
+                - button "Rigetti 8" [ref=f2e86] [cursor=pointer]:
+                  - generic [ref=f2e87]: Rigetti
+                  - generic [ref=f2e88]: "8"
+              - listitem [ref=f2e89]:
+                - button "IonQ 6" [ref=f2e90] [cursor=pointer]:
+                  - generic [ref=f2e91]: IonQ
+                  - generic [ref=f2e92]: "6"
+              - listitem [ref=f2e93]:
+                - button "AWS Braket 4" [ref=f2e94] [cursor=pointer]:
+                  - generic [ref=f2e95]: AWS Braket
+                  - generic [ref=f2e96]: "4"
+              - listitem [ref=f2e97]:
+                - button "Microsoft Azure Quantum 4" [ref=f2e98] [cursor=pointer]:
+                  - generic [ref=f2e99]: Microsoft Azure Quantum
+                  - generic [ref=f2e100]: "4"
+              - listitem [ref=f2e101]:
+                - button "Terra Quantum 4" [ref=f2e102] [cursor=pointer]:
+                  - generic [ref=f2e103]: Terra Quantum
+                  - generic [ref=f2e104]: "4"
+              - listitem [ref=f2e105]:
+                - button "Pasqal 2" [ref=f2e106] [cursor=pointer]:
+                  - generic [ref=f2e107]: Pasqal
+                  - generic [ref=f2e108]: "2"
+              - listitem [ref=f2e109]:
+                - button "D-Wave 1" [ref=f2e110] [cursor=pointer]:
+                  - generic [ref=f2e111]: D-Wave
+                  - generic [ref=f2e112]: "1"
+            - button "Show all 17" [ref=f2e113] [cursor=pointer]
+        - generic [ref=f2e114]:
+          - paragraph [ref=f2e115]: 40 of 40
+          - list [ref=f2e116]:
+            - listitem [ref=f2e117]:
+              - link "iq-001 Build a GHZ state on n qubits in logarithmic depth easy" [ref=f2e118] [cursor=pointer]:
+                - /url: /interview/iq-001
+                - generic [ref=f2e119]: iq-001
+                - generic [ref=f2e120]: Build a GHZ state on n qubits in logarithmic depth
+                - generic [ref=f2e121]: easy
+              - paragraph [ref=f2e122]:
+                - generic [ref=f2e123]: Circuit construction from a spec
+                - generic [ref=f2e124]: IBM
+                - generic [ref=f2e125]: Google Quantum AI
+                - generic [ref=f2e126]: Quantinuum
+                - generic [ref=f2e127]: IonQ
+            - listitem [ref=f2e128]:
+              - link "iq-002 Prepare a three-qubit W state exactly easy" [ref=f2e129] [cursor=pointer]:
+                - /url: /interview/iq-002
+                - generic [ref=f2e130]: iq-002
+                - generic [ref=f2e131]: Prepare a three-qubit W state exactly
+                - generic [ref=f2e132]: easy
+              - paragraph [ref=f2e133]:
+                - generic [ref=f2e134]: Circuit construction from a spec
+                - generic [ref=f2e135]: IonQ
+                - generic [ref=f2e136]: Quantinuum
+                - generic [ref=f2e137]: IBM
+                - generic [ref=f2e138]: Pasqal
+            - listitem [ref=f2e139]:
+              - link "iq-003 Encode two classical bits into the four Bell states easy" [ref=f2e140] [cursor=pointer]:
+                - /url: /interview/iq-003
+                - generic [ref=f2e141]: iq-003
+                - generic [ref=f2e142]: Encode two classical bits into the four Bell states
+                - generic [ref=f2e143]: easy
+              - paragraph [ref=f2e144]:
+                - generic [ref=f2e145]: Circuit construction from a spec
+                - generic [ref=f2e146]: IBM
+                - generic [ref=f2e147]: IonQ
+                - generic [ref=f2e148]: Quandela
+                - generic [ref=f2e149]: Xanadu
+            - listitem [ref=f2e150]:
+              - link "iq-004 Decompose a Toffoli into Clifford plus T and verify it medium" [ref=f2e151] [cursor=pointer]:
+                - /url: /interview/iq-004
+                - generic [ref=f2e152]: iq-004
+                - generic [ref=f2e153]: Decompose a Toffoli into Clifford plus T and verify it
+                - generic [ref=f2e154]: medium
+              - paragraph [ref=f2e155]:
+                - generic [ref=f2e156]: Circuit construction from a spec
+                - generic [ref=f2e157]: IBM
+                - generic [ref=f2e158]: Microsoft Azure Quantum
+                - generic [ref=f2e159]: PsiQuantum
+                - generic [ref=f2e160]: Quantinuum
+            - listitem [ref=f2e161]:
+              - link "iq-005 Implement the quantum Fourier transform and count its gates medium" [ref=f2e162] [cursor=pointer]:
+                - /url: /interview/iq-005
+                - generic [ref=f2e163]: iq-005
+                - generic [ref=f2e164]: Implement the quantum Fourier transform and count its gates
+                - generic [ref=f2e165]: medium
+              - paragraph [ref=f2e166]:
+                - generic [ref=f2e167]: Circuit construction from a spec
+                - generic [ref=f2e168]: IBM
+                - generic [ref=f2e169]: Google Quantum AI
+                - generic [ref=f2e170]: Quantinuum
+                - generic [ref=f2e171]: Microsoft Azure Quantum
+            - listitem [ref=f2e172]:
+              - link "iq-006 Exponentiate an arbitrary Pauli string medium" [ref=f2e173] [cursor=pointer]:
+                - /url: /interview/iq-006
+                - generic [ref=f2e174]: iq-006
+                - generic [ref=f2e175]: Exponentiate an arbitrary Pauli string
+                - generic [ref=f2e176]: medium
+              - paragraph [ref=f2e177]:
+                - generic [ref=f2e178]: Circuit construction from a spec
+                - generic [ref=f2e179]: IBM
+                - generic [ref=f2e180]: Google Quantum AI
+                - generic [ref=f2e181]: Quantinuum
+                - generic [ref=f2e182]: Rigetti
+            - listitem [ref=f2e183]:
+              - link "iq-007 Route a two-qubit gate onto a line coupling map medium" [ref=f2e184] [cursor=pointer]:
+                - /url: /interview/iq-007
+                - generic [ref=f2e185]: iq-007
+                - generic [ref=f2e186]: Route a two-qubit gate onto a line coupling map
+                - generic [ref=f2e187]: medium
+              - paragraph [ref=f2e188]:
+                - generic [ref=f2e189]: Circuit construction from a spec
+                - generic [ref=f2e190]: IBM
+                - generic [ref=f2e191]: Rigetti
+                - generic [ref=f2e192]: Google Quantum AI
+                - generic [ref=f2e193]: Q-CTRL
+            - listitem [ref=f2e194]:
+              - link "iq-008 Build a uniformly controlled Ry multiplexer hard" [ref=f2e195] [cursor=pointer]:
+                - /url: /interview/iq-008
+                - generic [ref=f2e196]: iq-008
+                - generic [ref=f2e197]: Build a uniformly controlled Ry multiplexer
+                - generic [ref=f2e198]: hard
+              - paragraph [ref=f2e199]:
+                - generic [ref=f2e200]: Circuit construction from a spec
+                - generic [ref=f2e201]: IBM
+                - generic [ref=f2e202]: Classiq
+                - generic [ref=f2e203]: Quantinuum
+                - generic [ref=f2e204]: Microsoft Azure Quantum
+            - listitem [ref=f2e205]:
+              - link "iq-009 Implement a multi-controlled X and justify the ancilla trade hard" [ref=f2e206] [cursor=pointer]:
+                - /url: /interview/iq-009
+                - generic [ref=f2e207]: iq-009
+                - generic [ref=f2e208]: Implement a multi-controlled X and justify the ancilla trade
+                - generic [ref=f2e209]: hard
+              - paragraph [ref=f2e210]:
+                - generic [ref=f2e211]: Circuit construction from a spec
+                - generic [ref=f2e212]: IBM
+                - generic [ref=f2e213]: Quantinuum
+                - generic [ref=f2e214]: Microsoft Azure Quantum
+                - generic [ref=f2e215]: Classiq
+            - listitem [ref=f2e216]:
+              - link "iq-010 Prepare a uniform superposition over M basis states when M is not a power of two hard" [ref=f2e217] [cursor=pointer]:
+                - /url: /interview/iq-010
+                - generic [ref=f2e218]: iq-010
+                - generic [ref=f2e219]: Prepare a uniform superposition over M basis states when M is not a power of two
+                - generic [ref=f2e220]: hard
+              - paragraph [ref=f2e221]:
+                - generic [ref=f2e222]: Circuit construction from a spec
+                - generic [ref=f2e223]: IBM
+                - generic [ref=f2e224]: Classiq
+                - generic [ref=f2e225]: Quantinuum
+                - generic [ref=f2e226]: Multiverse Computing
+            - listitem [ref=f2e227]:
+              - link "iq-011 Load an arbitrary single-qubit state from two complex amplitudes easy" [ref=f2e228] [cursor=pointer]:
+                - /url: /interview/iq-011
+                - generic [ref=f2e229]: iq-011
+                - generic [ref=f2e230]: Load an arbitrary single-qubit state from two complex amplitudes
+                - generic [ref=f2e231]: easy
+              - paragraph [ref=f2e232]:
+                - generic [ref=f2e233]: Custom state initialisation
+                - generic [ref=f2e234]: IBM
+                - generic [ref=f2e235]: IonQ
+                - generic [ref=f2e236]: Xanadu
+                - generic [ref=f2e237]: Rigetti
+            - listitem [ref=f2e238]:
+              - link "iq-012 Initialise a register to a computational basis state given an integer easy" [ref=f2e239] [cursor=pointer]:
+                - /url: /interview/iq-012
+                - generic [ref=f2e240]: iq-012
+                - generic [ref=f2e241]: Initialise a register to a computational basis state given an integer
+                - generic [ref=f2e242]: easy
+              - paragraph [ref=f2e243]:
+                - generic [ref=f2e244]: Custom state initialisation
+                - generic [ref=f2e245]: IBM
+                - generic [ref=f2e246]: Google Quantum AI
+                - generic [ref=f2e247]: AWS Braket
+                - generic [ref=f2e248]: IonQ
+            - listitem [ref=f2e249]:
+              - link "iq-013 Validate and normalise an amplitude vector before loading it easy" [ref=f2e250] [cursor=pointer]:
+                - /url: /interview/iq-013
+                - generic [ref=f2e251]: iq-013
+                - generic [ref=f2e252]: Validate and normalise an amplitude vector before loading it
+                - generic [ref=f2e253]: easy
+              - paragraph [ref=f2e254]:
+                - generic [ref=f2e255]: Custom state initialisation
+                - generic [ref=f2e256]: IBM
+                - generic [ref=f2e257]: Xanadu
+                - generic [ref=f2e258]: Classiq
+                - generic [ref=f2e259]: AWS Braket
+            - listitem [ref=f2e260]:
+              - link "iq-014 Amplitude-encode a real vector with recursive Ry multiplexers medium" [ref=f2e261] [cursor=pointer]:
+                - /url: /interview/iq-014
+                - generic [ref=f2e262]: iq-014
+                - generic [ref=f2e263]: Amplitude-encode a real vector with recursive Ry multiplexers
+                - generic [ref=f2e264]: medium
+              - paragraph [ref=f2e265]:
+                - generic [ref=f2e266]: Custom state initialisation
+                - generic [ref=f2e267]: IBM
+                - generic [ref=f2e268]: Classiq
+                - generic [ref=f2e269]: Xanadu
+                - generic [ref=f2e270]: Multiverse Computing
+            - listitem [ref=f2e271]:
+              - link "iq-015 Add complex phases to an amplitude-encoded state medium" [ref=f2e272] [cursor=pointer]:
+                - /url: /interview/iq-015
+                - generic [ref=f2e273]: iq-015
+                - generic [ref=f2e274]: Add complex phases to an amplitude-encoded state
+                - generic [ref=f2e275]: medium
+              - paragraph [ref=f2e276]:
+                - generic [ref=f2e277]: Custom state initialisation
+                - generic [ref=f2e278]: IBM
+                - generic [ref=f2e279]: Quantinuum
+                - generic [ref=f2e280]: Classiq
+                - generic [ref=f2e281]: Google Quantum AI
+            - listitem [ref=f2e282]:
+              - link "iq-016 Choose an encoding for a classical feature vector in a QML model medium" [ref=f2e283] [cursor=pointer]:
+                - /url: /interview/iq-016
+                - generic [ref=f2e284]: iq-016
+                - generic [ref=f2e285]: Choose an encoding for a classical feature vector in a QML model
+                - generic [ref=f2e286]: medium
+              - paragraph [ref=f2e287]:
+                - generic [ref=f2e288]: Custom state initialisation
+                - generic [ref=f2e289]: Xanadu
+                - generic [ref=f2e290]: IBM
+                - generic [ref=f2e291]: Multiverse Computing
+                - generic [ref=f2e292]: Terra Quantum
+            - listitem [ref=f2e293]:
+              - link "iq-017 Prepare the n-qubit W state with a linear cascade medium" [ref=f2e294] [cursor=pointer]:
+                - /url: /interview/iq-017
+                - generic [ref=f2e295]: iq-017
+                - generic [ref=f2e296]: Prepare the n-qubit W state with a linear cascade
+                - generic [ref=f2e297]: medium
+              - paragraph [ref=f2e298]:
+                - generic [ref=f2e299]: Custom state initialisation
+                - generic [ref=f2e300]: IonQ
+                - generic [ref=f2e301]: Quantinuum
+                - generic [ref=f2e302]: Pasqal
+                - generic [ref=f2e303]: QuEra
+            - listitem [ref=f2e304]:
+              - link "iq-018 Prepare a sparse state with d nonzero amplitudes in O(d n) gates hard" [ref=f2e305] [cursor=pointer]:
+                - /url: /interview/iq-018
+                - generic [ref=f2e306]: iq-018
+                - generic [ref=f2e307]: Prepare a sparse state with d nonzero amplitudes in O(d n) gates
+                - generic [ref=f2e308]: hard
+              - paragraph [ref=f2e309]:
+                - generic [ref=f2e310]: Custom state initialisation
+                - generic [ref=f2e311]: IBM
+                - generic [ref=f2e312]: Classiq
+                - generic [ref=f2e313]: Quantinuum
+                - generic [ref=f2e314]: Multiverse Computing
+            - listitem [ref=f2e315]:
+              - link "iq-019 Load a probability distribution with the Grover-Rudolph procedure hard" [ref=f2e316] [cursor=pointer]:
+                - /url: /interview/iq-019
+                - generic [ref=f2e317]: iq-019
+                - generic [ref=f2e318]: Load a probability distribution with the Grover-Rudolph procedure
+                - generic [ref=f2e319]: hard
+              - paragraph [ref=f2e320]:
+                - generic [ref=f2e321]: Custom state initialisation
+                - generic [ref=f2e322]: IBM
+                - generic [ref=f2e323]: Multiverse Computing
+                - generic [ref=f2e324]: Terra Quantum
+                - generic [ref=f2e325]: Quantinuum
+            - listitem [ref=f2e326]:
+              - link "iq-020 Use the Schmidt decomposition to cut the cost of bipartite state preparation hard" [ref=f2e327] [cursor=pointer]:
+                - /url: /interview/iq-020
+                - generic [ref=f2e328]: iq-020
+                - generic [ref=f2e329]: Use the Schmidt decomposition to cut the cost of bipartite state preparation
+                - generic [ref=f2e330]: hard
+              - paragraph [ref=f2e331]:
+                - generic [ref=f2e332]: Custom state initialisation
+                - generic [ref=f2e333]: IBM
+                - generic [ref=f2e334]: Xanadu
+                - generic [ref=f2e335]: Classiq
+                - generic [ref=f2e336]: Quantinuum
+            - listitem [ref=f2e337]:
+              - link "iq-021 Group Pauli terms into commuting families to cut measurement circuits easy" [ref=f2e338] [cursor=pointer]:
+                - /url: /interview/iq-021
+                - generic [ref=f2e339]: iq-021
+                - generic [ref=f2e340]: Group Pauli terms into commuting families to cut measurement circuits
+                - generic [ref=f2e341]: easy
+              - paragraph [ref=f2e342]:
+                - generic [ref=f2e343]: Hybrid classical preprocessing
+                - generic [ref=f2e344]: IBM
+                - generic [ref=f2e345]: Quantinuum
+                - generic [ref=f2e346]: Google Quantum AI
+                - generic [ref=f2e347]: Multiverse Computing
+            - listitem [ref=f2e348]:
+              - link "iq-022 Scale and pad classical features before they reach a rotation gate easy" [ref=f2e349] [cursor=pointer]:
+                - /url: /interview/iq-022
+                - generic [ref=f2e350]: iq-022
+                - generic [ref=f2e351]: Scale and pad classical features before they reach a rotation gate
+                - generic [ref=f2e352]: easy
+              - paragraph [ref=f2e353]:
+                - generic [ref=f2e354]: Hybrid classical preprocessing
+                - generic [ref=f2e355]: Xanadu
+                - generic [ref=f2e356]: IBM
+                - generic [ref=f2e357]: Multiverse Computing
+                - generic [ref=f2e358]: Terra Quantum
+            - listitem [ref=f2e359]:
+              - link "iq-023 Transpile once and bind many for a variational loop easy" [ref=f2e360] [cursor=pointer]:
+                - /url: /interview/iq-023
+                - generic [ref=f2e361]: iq-023
+                - generic [ref=f2e362]: Transpile once and bind many for a variational loop
+                - generic [ref=f2e363]: easy
+              - paragraph [ref=f2e364]:
+                - generic [ref=f2e365]: Hybrid classical preprocessing
+                - generic [ref=f2e366]: IBM
+                - generic [ref=f2e367]: Rigetti
+                - generic [ref=f2e368]: AWS Braket
+                - generic [ref=f2e369]: Q-CTRL
+            - listitem [ref=f2e370]:
+              - link "iq-024 Implement analytic gradients with the parameter-shift rule medium" [ref=f2e371] [cursor=pointer]:
+                - /url: /interview/iq-024
+                - generic [ref=f2e372]: iq-024
+                - generic [ref=f2e373]: Implement analytic gradients with the parameter-shift rule
+                - generic [ref=f2e374]: medium
+              - paragraph [ref=f2e375]:
+                - generic [ref=f2e376]: Hybrid classical preprocessing
+                - generic [ref=f2e377]: Xanadu
+                - generic [ref=f2e378]: IBM
+                - generic [ref=f2e379]: Google Quantum AI
+                - generic [ref=f2e380]: Rigetti
+            - listitem [ref=f2e381]:
+              - link "iq-025 Build a QAOA cost Hamiltonian from a MaxCut instance medium" [ref=f2e382] [cursor=pointer]:
+                - /url: /interview/iq-025
+                - generic [ref=f2e383]: iq-025
+                - generic [ref=f2e384]: Build a QAOA cost Hamiltonian from a MaxCut instance
+                - generic [ref=f2e385]: medium
+              - paragraph [ref=f2e386]:
+                - generic [ref=f2e387]: Hybrid classical preprocessing
+                - generic [ref=f2e388]: Google Quantum AI
+                - generic [ref=f2e389]: IBM
+                - generic [ref=f2e390]: Rigetti
+                - generic [ref=f2e391]: D-Wave
+            - listitem [ref=f2e392]:
+              - link "iq-026 Allocate a shot budget across Pauli terms to minimise variance medium" [ref=f2e393] [cursor=pointer]:
+                - /url: /interview/iq-026
+                - generic [ref=f2e394]: iq-026
+                - generic [ref=f2e395]: Allocate a shot budget across Pauli terms to minimise variance
+                - generic [ref=f2e396]: medium
+              - paragraph [ref=f2e397]:
+                - generic [ref=f2e398]: Hybrid classical preprocessing
+                - generic [ref=f2e399]: IBM
+                - generic [ref=f2e400]: Quantinuum
+                - generic [ref=f2e401]: Google Quantum AI
+                - generic [ref=f2e402]: Q-CTRL
+            - listitem [ref=f2e403]:
+              - link "iq-027 Halve the circuit count for a quantum kernel Gram matrix medium" [ref=f2e404] [cursor=pointer]:
+                - /url: /interview/iq-027
+                - generic [ref=f2e405]: iq-027
+                - generic [ref=f2e406]: Halve the circuit count for a quantum kernel Gram matrix
+                - generic [ref=f2e407]: medium
+              - paragraph [ref=f2e408]:
+                - generic [ref=f2e409]: Hybrid classical preprocessing
+                - generic [ref=f2e410]: IBM
+                - generic [ref=f2e411]: Xanadu
+                - generic [ref=f2e412]: Terra Quantum
+                - generic [ref=f2e413]: Multiverse Computing
+            - listitem [ref=f2e414]:
+              - link "iq-028 Taper qubits off a Hamiltonian using its Z2 symmetries hard" [ref=f2e415] [cursor=pointer]:
+                - /url: /interview/iq-028
+                - generic [ref=f2e416]: iq-028
+                - generic [ref=f2e417]: Taper qubits off a Hamiltonian using its Z2 symmetries
+                - generic [ref=f2e418]: hard
+              - paragraph [ref=f2e419]:
+                - generic [ref=f2e420]: Hybrid classical preprocessing
+                - generic [ref=f2e421]: IBM
+                - generic [ref=f2e422]: Quantinuum
+                - generic [ref=f2e423]: Google Quantum AI
+                - generic [ref=f2e424]: Classiq
+            - listitem [ref=f2e425]:
+              - link "iq-029 Budget the latency of a hybrid optimisation loop hard" [ref=f2e426] [cursor=pointer]:
+                - /url: /interview/iq-029
+                - generic [ref=f2e427]: iq-029
+                - generic [ref=f2e428]: Budget the latency of a hybrid optimisation loop
+                - generic [ref=f2e429]: hard
+              - paragraph [ref=f2e430]:
+                - generic [ref=f2e431]: Hybrid classical preprocessing
+                - generic [ref=f2e432]: IBM
+                - generic [ref=f2e433]: Rigetti
+                - generic [ref=f2e434]: AWS Braket
+                - generic [ref=f2e435]: Q-CTRL
+            - listitem [ref=f2e436]:
+              - link "iq-030 Choose an active space and a reference state before running VQE hard" [ref=f2e437] [cursor=pointer]:
+                - /url: /interview/iq-030
+                - generic [ref=f2e438]: iq-030
+                - generic [ref=f2e439]: Choose an active space and a reference state before running VQE
+                - generic [ref=f2e440]: hard
+              - paragraph [ref=f2e441]:
+                - generic [ref=f2e442]: Hybrid classical preprocessing
+                - generic [ref=f2e443]: IBM
+                - generic [ref=f2e444]: Quantinuum
+                - generic [ref=f2e445]: Google Quantum AI
+                - generic [ref=f2e446]: Multiverse Computing
+            - listitem [ref=f2e447]:
+              - link "iq-081 Compute an exact VQE gradient with the parameter-shift rule easy" [ref=f2e448] [cursor=pointer]:
+                - /url: /interview/iq-081
+                - generic [ref=f2e449]: iq-081
+                - generic [ref=f2e450]: Compute an exact VQE gradient with the parameter-shift rule
+                - generic [ref=f2e451]: easy
+              - paragraph [ref=f2e452]:
+                - generic [ref=f2e453]: VQE parameter optimisation
+                - generic [ref=f2e454]: IBM
+                - generic [ref=f2e455]: Xanadu
+                - generic [ref=f2e456]: Classiq
+                - generic [ref=f2e457]: Q-CTRL
+            - listitem [ref=f2e458]:
+              - link "iq-082 Estimate a VQE energy with a defensible error bar easy" [ref=f2e459] [cursor=pointer]:
+                - /url: /interview/iq-082
+                - generic [ref=f2e460]: iq-082
+                - generic [ref=f2e461]: Estimate a VQE energy with a defensible error bar
+                - generic [ref=f2e462]: easy
+              - paragraph [ref=f2e463]:
+                - generic [ref=f2e464]: VQE parameter optimisation
+                - generic [ref=f2e465]: IBM
+                - generic [ref=f2e466]: Quantinuum
+                - generic [ref=f2e467]: Classiq
+                - generic [ref=f2e468]: Multiverse Computing
+            - listitem [ref=f2e469]:
+              - link "iq-083 Run VQE end to end against exact diagonalisation easy" [ref=f2e470] [cursor=pointer]:
+                - /url: /interview/iq-083
+                - generic [ref=f2e471]: iq-083
+                - generic [ref=f2e472]: Run VQE end to end against exact diagonalisation
+                - generic [ref=f2e473]: easy
+              - paragraph [ref=f2e474]:
+                - generic [ref=f2e475]: VQE parameter optimisation
+                - generic [ref=f2e476]: IBM
+                - generic [ref=f2e477]: Xanadu
+                - generic [ref=f2e478]: Classiq
+                - generic [ref=f2e479]: Quantinuum
+            - listitem [ref=f2e480]:
+              - link "iq-084 Choose and implement an optimiser for a shot-noisy landscape medium" [ref=f2e481] [cursor=pointer]:
+                - /url: /interview/iq-084
+                - generic [ref=f2e482]: iq-084
+                - generic [ref=f2e483]: Choose and implement an optimiser for a shot-noisy landscape
+                - generic [ref=f2e484]: medium
+              - paragraph [ref=f2e485]:
+                - generic [ref=f2e486]: VQE parameter optimisation
+                - generic [ref=f2e487]: IBM
+                - generic [ref=f2e488]: Q-CTRL
+                - generic [ref=f2e489]: Rigetti
+                - generic [ref=f2e490]: Multiverse Computing
+            - listitem [ref=f2e491]:
+              - link "iq-085 Measure the barren plateau in a hardware-efficient ansatz medium" [ref=f2e492] [cursor=pointer]:
+                - /url: /interview/iq-085
+                - generic [ref=f2e493]: iq-085
+                - generic [ref=f2e494]: Measure the barren plateau in a hardware-efficient ansatz
+                - generic [ref=f2e495]: medium
+              - paragraph [ref=f2e496]:
+                - generic [ref=f2e497]: VQE parameter optimisation
+                - generic [ref=f2e498]: Google Quantum AI
+                - generic [ref=f2e499]: IBM
+                - generic [ref=f2e500]: Xanadu
+                - generic [ref=f2e501]: Q-CTRL
+            - listitem [ref=f2e502]:
+              - link "iq-086 Initialise and grow a VQE ansatz layer by layer medium" [ref=f2e503] [cursor=pointer]:
+                - /url: /interview/iq-086
+                - generic [ref=f2e504]: iq-086
+                - generic [ref=f2e505]: Initialise and grow a VQE ansatz layer by layer
+                - generic [ref=f2e506]: medium
+              - paragraph [ref=f2e507]:
+                - generic [ref=f2e508]: VQE parameter optimisation
+                - generic [ref=f2e509]: IBM
+                - generic [ref=f2e510]: Xanadu
+                - generic [ref=f2e511]: Classiq
+                - generic [ref=f2e512]: Quantinuum
+            - listitem [ref=f2e513]:
+              - link "iq-087 Group Pauli terms to cut the measurement cost of a VQE step medium" [ref=f2e514] [cursor=pointer]:
+                - /url: /interview/iq-087
+                - generic [ref=f2e515]: iq-087
+                - generic [ref=f2e516]: Group Pauli terms to cut the measurement cost of a VQE step
+                - generic [ref=f2e517]: medium
+              - paragraph [ref=f2e518]:
+                - generic [ref=f2e519]: VQE parameter optimisation
+                - generic [ref=f2e520]: IBM
+                - generic [ref=f2e521]: Classiq
+                - generic [ref=f2e522]: Quantinuum
+                - generic [ref=f2e523]: Multiverse Computing
+            - listitem [ref=f2e524]:
+              - link "iq-088 Implement quantum natural gradient with a block-diagonal metric hard" [ref=f2e525] [cursor=pointer]:
+                - /url: /interview/iq-088
+                - generic [ref=f2e526]: iq-088
+                - generic [ref=f2e527]: Implement quantum natural gradient with a block-diagonal metric
+                - generic [ref=f2e528]: hard
+              - paragraph [ref=f2e529]:
+                - generic [ref=f2e530]: VQE parameter optimisation
+                - generic [ref=f2e531]: Xanadu
+                - generic [ref=f2e532]: IBM
+                - generic [ref=f2e533]: Q-CTRL
+                - generic [ref=f2e534]: Classiq
+            - listitem [ref=f2e535]:
+              - link "iq-089 Select ansatz operators by gradient screening in ADAPT-VQE hard" [ref=f2e536] [cursor=pointer]:
+                - /url: /interview/iq-089
+                - generic [ref=f2e537]: iq-089
+                - generic [ref=f2e538]: Select ansatz operators by gradient screening in ADAPT-VQE
+                - generic [ref=f2e539]: hard
+              - paragraph [ref=f2e540]:
+                - generic [ref=f2e541]: VQE parameter optimisation
+                - generic [ref=f2e542]: IBM
+                - generic [ref=f2e543]: Quantinuum
+                - generic [ref=f2e544]: Classiq
+                - generic [ref=f2e545]: Xanadu
+            - listitem [ref=f2e546]:
+              - link "iq-090 Enforce a particle-number constraint in a noisy VQE run hard" [ref=f2e547] [cursor=pointer]:
+                - /url: /interview/iq-090
+                - generic [ref=f2e548]: iq-090
+                - generic [ref=f2e549]: Enforce a particle-number constraint in a noisy VQE run
+                - generic [ref=f2e550]: hard
+              - paragraph [ref=f2e551]:
+                - generic [ref=f2e552]: VQE parameter optimisation
+                - generic [ref=f2e553]: IBM
+                - generic [ref=f2e554]: Quantinuum
+                - generic [ref=f2e555]: Google Quantum AI
+                - generic [ref=f2e556]: Classiq
+  - contentinfo [ref=f2e557]:
+    - generic [ref=f2e558]:
+      - generic [ref=f2e559]:
+        - heading "Learn" [level=2] [ref=f2e560]
+        - list [ref=f2e561]:
+          - listitem [ref=f2e562]:
+            - link "Curriculum" [ref=f2e563] [cursor=pointer]:
+              - /url: /curriculum
+          - listitem [ref=f2e564]:
+            - link "Roadmaps" [ref=f2e565] [cursor=pointer]:
+              - /url: /roadmaps
+          - listitem [ref=f2e566]:
+            - link "Placement test" [ref=f2e567] [cursor=pointer]:
+              - /url: /placement
+          - listitem [ref=f2e568]:
+            - link "Glossary" [ref=f2e569] [cursor=pointer]:
+              - /url: /glossary
+      - generic [ref=f2e570]:
+        - heading "Build" [level=2] [ref=f2e571]
+        - list [ref=f2e572]:
+          - listitem [ref=f2e573]:
+            - link "Circuit lab" [ref=f2e574] [cursor=pointer]:
+              - /url: /lab
+          - listitem [ref=f2e575]:
+            - link "Autograded labs" [ref=f2e576] [cursor=pointer]:
+              - /url: /labs
+          - listitem [ref=f2e577]:
+            - link "Algorithm catalogue" [ref=f2e578] [cursor=pointer]:
+              - /url: /algorithms
+      - generic [ref=f2e579]:
+        - heading "Compete" [level=2] [ref=f2e580]
+        - list [ref=f2e581]:
+          - listitem [ref=f2e582]:
+            - link "Weekly contests" [ref=f2e583] [cursor=pointer]:
+              - /url: /contests
+          - listitem [ref=f2e584]:
+            - link "Leaderboard" [ref=f2e585] [cursor=pointer]:
+              - /url: /leaderboard
+          - listitem [ref=f2e586]:
+            - link "Interview bank" [ref=f2e587] [cursor=pointer]:
+              - /url: /interview
+      - generic [ref=f2e588]:
+        - heading "Institutions" [level=2] [ref=f2e589]
+        - list [ref=f2e590]:
+          - listitem [ref=f2e591]:
+            - link "For teams" [ref=f2e592] [cursor=pointer]:
+              - /url: /teams
+          - listitem [ref=f2e593]:
+            - link "For campuses" [ref=f2e594] [cursor=pointer]:
+              - /url: /campus
+          - listitem [ref=f2e595]:
+            - link "Instructor tools" [ref=f2e596] [cursor=pointer]:
+              - /url: /instructors
+    - paragraph [ref=f2e597]: Curriculum benchmarked against 20 published syllabi. Every lesson cites its sources.
+  - alert [ref=f2e598]

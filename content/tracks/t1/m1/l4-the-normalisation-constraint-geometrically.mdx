@@ -1,0 +1,176 @@
+---
+id: t1.m1.l4
+title: The Normalisation Constraint, Geometrically
+type: concept
+track: t1
+module: t1.m1
+level: L1
+minutes: 11
+objectives:
+  - State the normalisation condition and locate the valid states on the unit circle
+  - Renormalise an unnormalised vector and confirm the probabilities sum to 1
+  - Explain why every gate must preserve the unit circle
+prerequisites: [t1.m1.l3]
+sources:
+  - label: QWorld QBook101
+    url: https://qworld.net/qbook101/
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [qubit, normalisation]
+---
+
+Why is a quantum gate a unitary matrix rather than any matrix at all? The
+textbook answer, "because quantum evolution is unitary", explains nothing. The
+honest answer is a one-line consequence of the normalisation constraint, and
+seeing it derived is the difference between accepting the rule and being able to
+recover it when you have forgotten it.
+
+## The constraint, and the set it carves out
+
+A real-valued qubit state satisfies
+
+$$
+a_0^2 + a_1^2 = 1 .
+$$
+
+That equation is the unit circle in $\R^2$, so the set of valid states is a
+curve, not a region. There is no interior. The vector $(0.5, 0.5)$ is not a
+weakly normalised state or a state with low confidence; it is not a state at all,
+because $0.25 + 0.25 = 0.5 \ne 1$. Neither is $(1, 1)$, whose squares sum to 2.
+
+The reason is not aesthetic. The squares of the amplitudes are declared to be the
+outcome probabilities, and a probability distribution over two outcomes has to
+sum to 1. Normalisation is that requirement, transported through the squaring
+rule and nothing more.
+
+<Margin label="Definition">
+$\lVert \psi \rVert_2 = \sqrt{a_0^2 + a_1^2}$ is the Euclidean length. A state is
+a vector of length exactly 1. Two vectors of the same direction and different
+length describe the same physics only after the longer one is scaled down; the
+scaling is not optional bookkeeping, it is what makes probabilities add up.
+</Margin>
+
+## Renormalising
+
+Vectors that fail the constraint arrive constantly. A hand-written combination,
+a projection after a measurement, a state read off a matrix column: none of them
+come out normalised. The repair is division by the length.
+
+Take $v = (3, 4)$. Its length is $\sqrt{9 + 16} = \sqrt{25} = 5$, so
+
+$$
+\ket{\psi} = \frac{v}{\lVert v \rVert} = \begin{pmatrix} 0.6 \\ 0.8 \end{pmatrix},
+\qquad 0.6^2 + 0.8^2 = 0.36 + 0.64 = 1 .
+$$
+
+The probabilities are $0.36$ and $0.64$, which sum to 1 as required. Two more,
+worth doing in your head: $(1, 1)$ has length $\sqrt2$ and renormalises to
+$\left(\tfrac{1}{\sqrt2}, \tfrac{1}{\sqrt2}\right) = \ket{+}$; and $(2, -1)$ has
+length $\sqrt5$ and renormalises to $(0.894427, -0.447214)$, with probabilities
+$0.8$ and $0.2$.
+
+<Callout tone="note" title="Ratios survive, scale does not">
+Renormalising never changes the relative sizes or the signs of the entries, so
+it never changes any prediction. It only puts the vector where the rule for
+turning amplitudes into probabilities is valid. This is why authors write
+unnormalised states freely and attach the factor at the end.
+</Callout>
+
+## Why gates must preserve the circle
+
+Now the derivation. Suppose $G$ is a $2 \times 2$ real matrix that a machine can
+apply to any state. Feed it a valid state $\ket{\psi}$ and demand that the output
+is a valid state too, for every input. That single demand says
+
+$$
+\lVert G \ket{\psi} \rVert = 1 \quad \text{whenever} \quad \lVert \psi \rVert = 1 ,
+$$
+
+which by linearity extends to $\lVert G v \rVert = \lVert v \rVert$ for all $v$:
+scale any $v$ to unit length, apply the condition, scale back. A linear map that
+preserves all lengths preserves all inner products as well, and writing that in
+matrix form gives
+
+$$
+v^{\mathsf T} G^{\mathsf T} G\, w = v^{\mathsf T} w \quad \text{for all } v, w
+\quad \Longrightarrow \quad G^{\mathsf T} G = I .
+$$
+
+So $G$ is orthogonal. Over the reals the orthogonal $2 \times 2$ matrices are
+exactly the rotations, with determinant $+1$, and the reflections, with
+determinant $-1$. Nothing else can be a gate. Over the complex numbers the same
+argument with the conjugate transpose gives $G^{\dagger} G = I$, the definition
+of unitary, and T1.M3.L4 does that case in full.
+
+The failure mode is easy to see. The shear $M = \begin{pmatrix} 1 & 1 \\ 0 & 1\end{pmatrix}$
+sends $\ket{+}$ to $\left(\sqrt2, \tfrac{1}{\sqrt2}\right)$, whose squared
+entries sum to $2.5$. A machine implementing $M$ would report outcome 0 with
+probability 2, which is not a defect in the interpretation but a proof that no
+such machine exists.
+
+## Rotations of the circle, in a circuit
+
+The rotation gate $R_y(\theta)$ has matrix
+$\begin{pmatrix} \cos(\theta/2) & -\sin(\theta/2) \\ \sin(\theta/2) & \cos(\theta/2)\end{pmatrix}$,
+which is the rotation of the plane by $\theta/2$. The half is a convention that
+pays off on the Bloch sphere later; for now the useful consequence is that
+angles add. Rotating by $0.3$ and then by $0.62729522$ should land in the same
+place as rotating by $0.92729522$, which is the state $(0.6, 0.8)$.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="Two rotations composing. Ry(0.6) followed by Ry(1.2545904) is Ry(1.8545904), which lands on amplitudes 0.6 and 0.8."
+  ir={{
+    version: 1,
+    name: "rotations-compose",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "r1", gate: "ry", targets: [0], params: [0.6] },
+      { id: "r2", gate: "ry", targets: [0], params: [1.2545904360032246] }
+    ]
+  }}
+/>
+
+Reflections are allowed too, and mixing them with rotations changes nothing
+about normalisation. The sequence $R_y(0.7)$, $H$, $R_y(-1.3)$, $H$ contains two
+reflections and two rotations, and because $H R_y(\theta) H = R_y(-\theta)$ it
+collapses to $R_y(2.0)$, whose amplitudes are $\cos 1 = 0.540302$ and
+$\sin 1 = 0.841471$.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="Four gates, two of them reflections. The probabilities still sum to 1, because every factor is orthogonal."
+  ir={{
+    version: 1,
+    name: "mixed-orthogonal",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "r1", gate: "ry", targets: [0], params: [0.7] },
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "r2", gate: "ry", targets: [0], params: [-1.3] },
+      { id: "h2", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+Check the arithmetic: $0.540302^2 + 0.841471^2 = 0.291927 + 0.708073 = 1$. The
+invariant held through every intermediate step, because it held for every factor.
+
+<Check question="Is $(0.8, 0.6, 0)$ ever a legal state, and what is the state obtained by renormalising $(0, -5)$?">
+$(0.8, 0.6, 0)$ has three entries, so it cannot describe one qubit, which needs
+two. It is a legal state of a *qutrit*, a three-level system, since
+$0.64 + 0.36 + 0 = 1$. Renormalising $(0, -5)$ divides by the length 5 and gives
+$(0, -1)$, which is $-\ket{1}$: a perfectly good qubit state that reads 1 with
+probability 1, and is distinguished from $\ket{1}$ by no measurement whatsoever.
+</Check>
+
+## Where this comes from
+
+- [QWorld QBook101](https://qworld.net/qbook101/) derives orthogonality from
+  length preservation on the real circle before generalising, which is the
+  ordering used here.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 2.1, for the statement that unitarity is the only constraint on
+  quantum gates, and for the inner-product argument reproduced above.

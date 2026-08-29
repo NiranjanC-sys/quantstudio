@@ -1,0 +1,159 @@
+---
+id: t1.m1.l5
+title: Why |0> Is Not the Zero Vector
+type: concept
+track: t1
+module: t1.m1
+level: L1
+minutes: 10
+objectives:
+  - Distinguish the basis ket |0> from the zero vector of the state space
+  - Explain why the zero vector describes no physical state
+  - Identify the error in a calculation that produces an unnormalised or zero state
+prerequisites: [t1.m1.l4]
+sources:
+  - label: QWorld QBook101
+    url: https://qworld.net/qbook101/
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [qubit, notation]
+---
+
+Two objects in this subject are written with the character 0 and they are not
+the same object. One is $\ket{0}$, the basis state that reads out as the bit 0
+with certainty. The other is $\mathbf{0}$, the zero vector of $\R^2$, the
+additive identity that every vector space has. Confusing them produces a
+specific family of wrong answers, and the confusion is entirely the fault of the
+notation.
+
+## The two objects, side by side
+
+$$
+\ket{0} = \begin{pmatrix} 1 \\ 0 \end{pmatrix},
+\qquad
+\mathbf{0} = \begin{pmatrix} 0 \\ 0 \end{pmatrix} .
+$$
+
+Their lengths differ: $\lVert \ket{0} \rVert = 1$ and
+$\lVert \mathbf{0} \rVert = 0$. By the constraint of the previous lesson, only
+the first is a state. The second fails normalisation and cannot be repaired,
+because repairing means dividing by the length and the length is zero.
+
+<Margin label="Notation">
+The symbol inside a ket is a **label**, not a number. Writing
+$\ket{0}$ and $\ket{1}$ is a convention inherited from bits; the states could as
+honestly be called $\ket{\text{off}}$ and $\ket{\text{on}}$, and in T4 the same
+two vectors are called $\ket{g}$ and $\ket{e}$ for ground and excited. Nothing
+in $\ket{0}$ is being multiplied by zero.
+</Margin>
+
+## Why the zero vector cannot be a state
+
+Three independent reasons, each sufficient on its own.
+
+**Probabilities.** The squares of the entries of $\mathbf{0}$ are $0$ and $0$,
+which sum to $0$. A measurement of that system would return nothing at all,
+which is not a possible outcome of an experiment that certainly happens.
+
+**Normalisation.** The rescaling that fixes every other unnormalised vector,
+$v \mapsto v / \lVert v \rVert$, is undefined at $v = \mathbf{0}$. The zero
+vector is the unique vector in $\R^2$ with no normalised representative, so it
+is not "a state written badly". It is outside the set.
+
+**Linearity.** Every linear map sends $\mathbf{0}$ to $\mathbf{0}$. If the zero
+vector were a state, then it would be a state that no gate can ever leave, and
+every gate would agree on it. Since gates are invertible and length preserving,
+no unit vector is ever mapped to $\mathbf{0}$ either, so the zero vector is
+unreachable as well as inescapable. It is disconnected from the physics in both
+directions.
+
+## Where the confusion produces real errors
+
+The dangerous case is not writing $\ket{0} = \mathbf{0}$, which nobody does
+twice. It is producing $\mathbf{0}$ at the end of a calculation and reading it
+as a state.
+
+**A zero amplitude is not a zero state.** Apply $X$ to $\ket{0}$. The result is
+$\ket{1} = (0, 1)$, whose first entry is zero. The amplitude on outcome 0
+vanished; the state did not. It has length 1 and reads out as 1 with certainty.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="X on |0>. The amplitude on |0> is zero, so its row is absent from the table. The state itself has length 1."
+  ir={{
+    version: 1,
+    name: "x-on-zero",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "x1", gate: "x", targets: [0] }
+    ]
+  }}
+/>
+
+The figure lists one row. Rows whose probability is zero are omitted, and the
+habit of reading a short table as "the missing states are gone" is precisely the
+habit that leads to treating a vanished amplitude as a vanished system.
+Interference produces exactly this situation: after $H$ then $H$, the amplitude
+on $\ket{1}$ is $\tfrac12 - \tfrac12 = 0$, so the table shows a single row for
+$\ket{0}$ with amplitude 1.
+
+**A zero inner product is a number.** The expression $\braket{1}{0}$ evaluates
+to the scalar $0$, meaning the two states are orthogonal. It does not produce a
+state, and it is not $\ket{0}$ scaled by anything. The bracket eats two vectors
+and returns a number, which is the reason the notation splits into bras and
+kets at all.
+
+**A projection can genuinely give the zero vector.** Measuring $\ket{0}$ and
+asking for the outcome 1 means applying the projector
+$P_1 = \ketbra{1}{1}$, and
+
+$$
+P_1 \ket{0} = \ket{1}\braket{1}{0} = \mathbf{0} .
+$$
+
+Here the zero vector is the correct answer, and its meaning is the probability
+of that outcome, $\lVert P_1 \ket{0} \rVert^2 = 0$. The error is to continue,
+divide by the norm, and report a post-measurement state. There is no
+post-measurement state because the branch has probability zero and never occurs.
+T1.M2.L2 uses this rule in the form that matters: renormalise after a
+measurement, but only on branches that can happen.
+
+<Callout tone="gotcha" title="Three ways to produce a non-state">
+A vector that is not a state has arrived if any of these hold: its squared
+entries do not sum to 1 and you have not renormalised; it has the wrong number
+of entries for the number of qubits, so $2^n$ has been miscounted; or it is
+$\mathbf{0}$, in which case you have projected onto an impossible outcome or
+subtracted a state from itself.
+</Callout>
+
+## The superposition that is not a state
+
+Beginners write "the qubit is in $\ket{0} + \ket{1}$". As written, that vector
+is $(1, 1)$, with squared entries summing to 2. It is not a state; the state is
+$\tfrac{1}{\sqrt2}(\ket{0} + \ket{1})$. The habit of dropping the factor is
+harmless in a proof where you renormalise at the end, and fatal in code, where
+the missing $1/\sqrt2$ silently doubles every probability you compute from it.
+
+Similarly $\ket{0} - \ket{0} = \mathbf{0}$, which is not a state that somehow
+cancels itself out of existence. It is a sign that the two terms you subtracted
+were describing the same branch and should have been combined earlier.
+
+<Check question="A student computes $H\ket{+}$ and writes the result as $\left(\tfrac{1}{\sqrt2}\cdot\tfrac{1}{\sqrt2} + \tfrac{1}{\sqrt2}\cdot\tfrac{1}{\sqrt2},\ 0\right) = (1, 0)$, then says the second entry being 0 means the qubit has collapsed. What is wrong?">
+The arithmetic is right and the conclusion is wrong. $H\ket{+} = \ket{0}$, a unit
+vector, and no measurement occurred. The 0 in the second entry is an amplitude,
+the coefficient of $\ket{1}$, and it is zero because two contributions of
+$+\tfrac12$ and $-\tfrac12$ cancelled. Collapse is a change of state caused by
+measurement; this is destructive interference caused by a gate. The state after
+the gate is $\ket{0} = (1, 0)$, which has length 1, not the zero vector.
+</Check>
+
+## Where this comes from
+
+- [QWorld QBook101](https://qworld.net/qbook101/) is unusually careful about
+  ket labels being labels, and it introduces the zero-vector distinction while
+  the state space is still $\R^2$ and can be drawn.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  section 2.2.3, for the projector formulation of measurement in which
+  $P_m \ket{\psi} = \mathbf{0}$ is the statement that outcome $m$ has
+  probability zero.

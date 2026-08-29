@@ -9,10 +9,11 @@
   "exports": {
     ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
     "./tokens.css": "./src/tokens.css",
-    "./styles.css": "./src/tokens.css",
+    "./components.css": "./src/components.css",
+    "./styles.css": "./src/styles.css",
     "./package.json": "./package.json"
   },
-  "files": ["dist", "src/tokens.css"],
+  "files": ["dist", "src/tokens.css", "src/components.css", "src/styles.css"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",

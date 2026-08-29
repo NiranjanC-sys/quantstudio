@@ -1,0 +1,201 @@
+---
+id: t1.m7.l1
+title: Superdense Coding
+type: concept
+track: t1
+module: t1.m7
+level: L1
+minutes: 13
+objectives:
+  - Send two classical bits with one qubit and a shared Bell pair, step by step
+  - Show that the four encodings map the shared state onto the four Bell states
+  - Explain why this does not beat the Holevo bound on transmitted information
+prerequisites:
+  - t1.m5.l1
+sources:
+  - label: Cleve, QIC 710 Quantum Information Processing (Waterloo IQC)
+    url: https://cleve.iqc.uwaterloo.ca/qic710/
+  - label: Quantum Processes and Computation / Quantum Software (Oxford)
+    url: https://www.cs.ox.ac.uk/teaching/courses/quantum/
+tags: [protocols, superdense]
+---
+
+How many classical bits can one qubit carry? The honest answer is one. That is
+the Holevo bound, and it is a theorem. So what is going on in a protocol whose
+name promises two bits per qubit? The answer is that the accounting is done over
+the wrong interval. Superdense coding is the first protocol where entanglement
+stops being a curiosity and starts being a *resource you spend*, and the
+bookkeeping is the lesson.
+
+## The setup
+
+Alice wants to send Bob two classical bits, $b_0 b_1 \in \{00, 01, 10, 11\}$. She
+is allowed to send exactly one qubit. Before she knows what her message is,
+somebody prepares the Bell state
+
+$$
+\ket{\Phi^+} = \frac{\ket{00} + \ket{11}}{\sqrt{2}}
+$$
+
+and gives qubit 0 to Alice and qubit 1 to Bob. That distribution step can happen
+a year in advance, in a van, on a fibre, whenever. It carries no message,
+because at that moment nobody knows the message.
+
+<Margin label="Convention">
+Qubit 0 is the most significant bit, so $\ket{q_0 q_1}$ reads left to right.
+Alice always holds qubit 0 and Bob always holds qubit 1.
+</Margin>
+
+## Alice's four moves
+
+Alice applies one of four operations to her own qubit only. She never touches
+Bob's. Write the operation as $Z^{b_0}$ followed by $X^{b_1}$:
+
+| message | Alice applies | shared state becomes |
+| --- | --- | --- |
+| $00$ | $I$ | $\ket{\Phi^+} = \tfrac{1}{\sqrt2}(\ket{00} + \ket{11})$ |
+| $01$ | $X$ | $\ket{\Psi^+} = \tfrac{1}{\sqrt2}(\ket{01} + \ket{10})$ |
+| $10$ | $Z$ | $\ket{\Phi^-} = \tfrac{1}{\sqrt2}(\ket{00} - \ket{11})$ |
+| $11$ | $XZ$ | $-\ket{\Psi^-} = \tfrac{1}{\sqrt2}(-\ket{01} + \ket{10})$ |
+
+Take the third row slowly, because it is where the trick lives. $Z$ acts only on
+qubit 0, so it negates every term whose *first* label is 1:
+
+$$
+(Z \otimes I)\frac{\ket{00} + \ket{11}}{\sqrt2}
+= \frac{\ket{00} - \ket{11}}{\sqrt2} = \ket{\Phi^-}.
+$$
+
+A gate applied to one half of an entangled pair has changed the global state, and
+it has changed it into a state that is *perfectly distinguishable* from the one
+before. That is not true of product states: acting on your half of
+$\ket{0}\otimes\ket{0}$ can never produce a state orthogonal to the original
+unless you flip your own qubit, and then you have only two options, not four.
+Entanglement is what turns one qubit of local freedom into four global outcomes.
+
+The last row picks up a minus sign because $XZ = -ZX$, and the ordering matters
+for the algebra even though it will not matter for the measurement. Keep the sign
+and watch what happens to it.
+
+## Bob's decoder
+
+Bob receives Alice's qubit and now holds both. The four Bell states are
+orthonormal, so a measurement in the Bell basis distinguishes them with
+certainty. The circuit that rotates the Bell basis onto the computational basis
+is the Bell-preparation circuit run backwards: a CNOT from qubit 0 to qubit 1,
+then a Hadamard on qubit 0.
+
+<Circuit
+  caption="Message 10. Bell pair, Alice applies Z, Bob decodes with CNOT then H. The measured bits are exactly Alice's message."
+  show={['amplitudes', 'qasm']}
+  ir={{
+    version: 1,
+    name: "superdense-10",
+    qubits: 2,
+    clbits: 2,
+    ops: [
+      { id: "e0", gate: "h", targets: [0] },
+      { id: "e1", gate: "x", targets: [1], controls: [0] },
+      { id: "a0", gate: "z", targets: [0] },
+      { id: "d0", gate: "x", targets: [1], controls: [0] },
+      { id: "d1", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] }
+    ]
+  }}
+/>
+
+The output is the single basis state $\ket{10}$ with probability 1. Swap the
+encoding gate and the answer tracks it exactly:
+
+<Simulate
+  show="probabilities"
+  ir={{
+    version: 1,
+    name: "superdense-11",
+    qubits: 2,
+    clbits: 2,
+    ops: [
+      { id: "e0", gate: "h", targets: [0] },
+      { id: "e1", gate: "x", targets: [1], controls: [0] },
+      { id: "a0", gate: "z", targets: [0] },
+      { id: "a1", gate: "x", targets: [0] },
+      { id: "d0", gate: "x", targets: [1], controls: [0] },
+      { id: "d1", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] }
+    ]
+  }}
+>
+
+| outcome | probability |
+| --- | --- |
+| $11$ | $1.000000$ |
+
+</Simulate>
+
+Message $11$ arrives as $11$ with probability 1. If you switch the figure to the
+amplitude view you will see the amplitude of $\ket{11}$ reported as $-1$ rather
+than $+1$. That is the minus sign from $XZ = -ZX$, and it is a global phase on a
+one-term state, so it is unobservable. Four messages, four certain outcomes, one
+qubit in transit.
+
+<Callout tone="gotcha" title="The three-step reading">
+Superdense coding is often drawn as one circuit, which hides the point. It is
+three separated events: **distribute** the pair (no message exists yet),
+**encode** locally (no communication), **send one qubit and decode**. Only the
+third step is communication.
+</Callout>
+
+## Where the missing bit went
+
+Now the accounting. Over the whole protocol, two qubits pass between the parties:
+Bob's half of the Bell pair travelled to Bob at distribution time, and Alice's
+half travelled to Bob at send time. Two qubits, two bits. Holevo is untouched.
+
+What superdense coding actually buys is *scheduling*. It moves half the quantum
+communication cost into the past, to a moment when the channel was idle and the
+message did not exist. That is a real engineering win, and it is the same
+resource pattern you will meet again in teleportation, where the trade runs the
+other way.
+
+<Margin label="Definition">
+The **Holevo bound** says that a quantum system of dimension $2^n$ can carry at
+most $n$ bits of accessible classical information. It bounds what a *receiver*
+can extract, not what a state can encode.
+</Margin>
+
+## What breaks if you drop a piece
+
+Two failure modes are worth checking against the algebra.
+
+Suppose Alice and Bob share no entanglement and Alice simply prepares a fresh
+qubit. Her four options are four states of one qubit in $\C^2$. Any four states
+in a two-dimensional space include a pair with non-zero overlap, so Bob's
+decoding cannot be certain. The best he can do is one bit.
+
+Suppose instead the pair was prepared but Bob's half decohered into a classical
+coin flip. Then the state Bob holds is a mixture, the CNOT and Hadamard have
+nothing coherent to interfere, and the outcome distribution is uniform over all
+four bitstrings. You will measure exactly that failure in T1.M11 when a noisy
+Bell pair replaces a perfect one.
+
+<Check question="Alice applies $Z$ to her qubit while Bob's half is a thousand kilometres away. Has she signalled to Bob?">
+No. Bob's local state is unchanged by anything Alice does to her qubit alone. His
+reduced state was the maximally mixed state $\tfrac{1}{2}I$ before her gate and it
+is still $\tfrac{1}{2}I$ after. The four global states $\ket{\Phi^\pm}$ and
+$\ket{\Psi^\pm}$ all have the same reduced state on qubit 1, which is precisely
+why no measurement Bob performs alone can tell them apart. The information becomes
+available only when Alice's physical qubit arrives, and that arrival is the
+communication.
+</Check>
+
+## Where this comes from
+
+- [Cleve, QIC 710](https://cleve.iqc.uwaterloo.ca/qic710/), where superdense
+  coding and teleportation are taught as a matched pair of resource conversions
+  rather than as two isolated tricks. That framing is why this lesson insists on
+  the accounting.
+- [Oxford, Quantum Processes and Computation](https://www.cs.ox.ac.uk/teaching/courses/quantum/),
+  which presents dense coding diagrammatically and makes the "local operation,
+  global effect" step visually obvious.

@@ -1,0 +1,206 @@
+---
+id: t0.m2.l3
+title: Roots of Unity
+type: concept
+track: t0
+module: t0.m2
+level: L0
+minutes: 13
+objectives:
+  - List the N-th roots of unity for a given N and place them on the unit circle
+  - Prove that the N-th roots of unity sum to zero for N greater than 1
+  - Evaluate a geometric sum of powers of omega = e^{2 pi i / N}
+prerequisites: [t0.m2.l2]
+sources:
+  - label: Watrous, Quantum Computation lecture notes
+    url: https://cs.uwaterloo.ca/~watrous/QC-notes/
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [complex, fourier]
+---
+
+How many solutions does $z^N = 1$ have? Over the reals the answer is one or two
+and it depends awkwardly on the parity of $N$. Over the complex numbers it is
+always exactly $N$, they are evenly spaced around the unit circle, and they sum
+to zero. That last fact is not decoration: it is the cancellation that makes the
+quantum Fourier transform work, and every phase-estimation argument in T2 comes
+back to it.
+
+## Solving the equation
+
+Write $z = re^{i\theta}$. Then $z^N = r^N e^{iN\theta}$, and this equals
+$1 = 1 \cdot e^{i \cdot 0}$ exactly when the moduli match and the arguments
+match modulo $2\pi$:
+
+$$
+r^N = 1 \;\Rightarrow\; r = 1, \qquad
+N\theta \equiv 0 \pmod{2\pi} \;\Rightarrow\; \theta = \frac{2\pi k}{N},
+\; k \in \mathbb{Z}.
+$$
+
+The angles $2\pi k/N$ repeat with period $N$ in $k$, so there are exactly $N$
+distinct solutions. Name the first one after zero:
+
+$$
+\omega = \omega_N = e^{2\pi i / N},
+\qquad \text{roots} = \left\{ 1, \omega, \omega^2, \dots, \omega^{N-1} \right\}.
+$$
+
+<Margin label="Two useful reflexes">
+$\omega^{-1} = \omega^{N-1} = \overline{\omega}$, because inverting a
+unit-modulus number is conjugating it. And $\omega^{j}$ depends only on
+$j \bmod N$, so exponents on $\omega$ live in $\mathbb{Z}_N$, not $\mathbb{Z}$.
+</Margin>
+
+They are the vertices of a regular $N$-gon inscribed in the unit circle, with
+one vertex nailed to $1$.
+
+| $N$ | roots |
+| --- | --- |
+| 2 | $1,\; -1$ |
+| 3 | $1,\; -0.5 + 0.866025i,\; -0.5 - 0.866025i$ |
+| 4 | $1,\; i,\; -1,\; -i$ |
+| 6 | $1,\; 0.5 + 0.866025i,\; -0.5 + 0.866025i,\; -1,\; -0.5 - 0.866025i,\; 0.5 - 0.866025i$ |
+
+The value $0.866025$ is $\tfrac{\sqrt3}{2} = \sin(2\pi/3)$, and the $N = 6$ list
+contains the $N = 3$ and $N = 2$ lists inside it, because a sixth root of unity
+raised to the sixth power is 1 and so is a cube root raised to the sixth. In
+general the $d$-th roots of unity sit inside the $N$-th roots whenever $d$
+divides $N$.
+
+## They sum to zero
+
+**Claim.** For $N \ge 2$, $\displaystyle\sum_{k=0}^{N-1} \omega^{k} = 0$.
+
+**Proof.** This is a geometric series with ratio $\omega \ne 1$, so the standard
+formula applies:
+
+$$
+\sum_{k=0}^{N-1} \omega^{k} = \frac{\omega^{N} - 1}{\omega - 1}.
+$$
+
+But $\omega^N = e^{2\pi i} = 1$, so the numerator is 0 while the denominator is
+not, and the sum is 0. $\blacksquare$
+
+Sanity check at $N = 4$: $1 + i + (-1) + (-i) = 0$. At $N = 3$:
+$1 + (-0.5 + 0.866025i) + (-0.5 - 0.866025i) = 0$, the imaginary parts cancelling
+in pairs and the real parts summing to $1 - 1 = 0$.
+
+There is a proof without algebra worth carrying in your head. The roots are the
+vertices of a regular polygon centred at the origin, and the centroid of a
+regular polygon is its centre. The sum is $N$ times the centroid, hence zero.
+Symmetry, not cancellation of digits.
+
+## The general orthogonality sum
+
+Almost every use of roots of unity in this curriculum is one identity:
+
+$$
+\sum_{k=0}^{N-1} \omega^{jk} =
+\begin{cases}
+N, & j \equiv 0 \pmod N, \\
+0, & \text{otherwise.}
+\end{cases}
+$$
+
+**Proof.** If $j \equiv 0 \pmod N$ then $\omega^{j} = 1$ and every term is 1,
+giving $N$. Otherwise $\omega^{j} \ne 1$, and the same geometric formula applies
+with ratio $\omega^{j}$:
+
+$$
+\sum_{k=0}^{N-1} \left(\omega^{j}\right)^{k}
+= \frac{\left(\omega^{j}\right)^{N} - 1}{\omega^{j} - 1}
+= \frac{\left(\omega^{N}\right)^{j} - 1}{\omega^{j} - 1}
+= \frac{1 - 1}{\omega^{j} - 1} = 0 . \;\blacksquare
+$$
+
+Read it as an interference statement. Each term $\omega^{jk}$ is a unit vector
+in the plane; the sum either has every arrow pointing the same way, giving
+maximal constructive interference of size $N$, or the arrows are spread evenly
+around the circle and cancel exactly. There is no intermediate case. The Fourier
+transform is the machine that arranges for the phases you want to be in the
+first case and everything else in the second.
+
+Partial sums do not vanish, and the same formula gives them. With $N = 4$,
+
+$$
+\sum_{k=0}^{2} i^{k} = \frac{i^3 - 1}{i - 1} = \frac{-1 - i}{-1 + i} = i,
+$$
+
+which you can confirm directly: $1 + i - 1 = i$.
+
+## Roots of unity as gates
+
+The gate $P(\lambda) = \operatorname{diag}(1, e^{i\lambda})$ with
+$\lambda = 2\pi/N$ multiplies the $\ket{1}$ amplitude by $\omega_N$. Applying it
+$N$ times multiplies by $\omega_N^{N} = 1$, so the circuit is the identity: the
+gate has order exactly $N$. Take $N = 3$, so $\lambda = 2\pi/3 = 2.094395$.
+
+<Simulate
+  show="amplitudes"
+  caption="Hadamard then one P(2 pi / 3). The amplitude of |1> is omega_3 divided by the square root of two."
+  ir={{
+    version: 1,
+    name: "cube-root-once",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "p1", gate: "p", targets: [0], params: [2.0943951023931953] }
+    ]
+  }}
+/>
+
+The $\ket{1}$ amplitude reads $-0.3536 + 0.6124i$, which is
+$0.707107 \times (-0.5 + 0.866025i) = 0.707107\,\omega_3$, exactly the second
+cube root of unity scaled by $\isqrt$. Now apply the gate three times.
+
+<Simulate
+  show="amplitudes"
+  caption="Three copies of P(2 pi / 3). The accumulated phase is omega_3 cubed, which is 1, so the state is back where the Hadamard left it."
+  ir={{
+    version: 1,
+    name: "cube-root-thrice",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "p1", gate: "p", targets: [0], params: [2.0943951023931953] },
+      { id: "p2", gate: "p", targets: [0], params: [2.0943951023931953] },
+      { id: "p3", gate: "p", targets: [0], params: [2.0943951023931953] }
+    ]
+  }}
+/>
+
+Both amplitudes are $0.7071$ again. The three phases were the three cube roots
+of unity applied in succession, and their product returned to the start.
+
+<Callout tone="note" title="Where you will meet these again">
+The $N$-point quantum Fourier transform has matrix entries
+$\tfrac{1}{\sqrt N}\omega_N^{jk}$, and it is unitary precisely because of the
+orthogonality sum above. Phase estimation reads an eigenvalue $e^{2\pi i \phi}$
+by arranging for the wrong answers to be spread around the circle and cancel.
+Both live in T2.
+</Callout>
+
+<Check question="List the fifth roots of unity in exponential form, then evaluate $\sum_{k=0}^{4}\omega_5^{2k}$ and $\sum_{k=0}^{4}\omega_5^{5k}$.">
+The fifth roots are $e^{2\pi i k/5}$ for $k = 0,1,2,3,4$, that is
+$1, e^{2\pi i/5}, e^{4\pi i/5}, e^{6\pi i/5}, e^{8\pi i/5}$, evenly spaced every
+$72$ degrees.
+
+For the first sum, $j = 2$ is not a multiple of 5, so the orthogonality identity
+gives 0. Concretely the exponents $2k \bmod 5$ run through $0, 2, 4, 1, 3$, a
+permutation of all five roots, and those sum to zero.
+
+For the second sum, $j = 5 \equiv 0 \pmod 5$, so every term is
+$\omega_5^{5k} = 1$ and the sum is $5$.
+</Check>
+
+## Where this comes from
+
+- [Watrous, QC lecture notes](https://cs.uwaterloo.ca/~watrous/QC-notes/), whose
+  derivation order for the Fourier transform, phase estimation and order finding
+  rests on the orthogonality sum stated here.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  chapter 5, where the same sum is the unitarity proof for the quantum Fourier
+  transform.

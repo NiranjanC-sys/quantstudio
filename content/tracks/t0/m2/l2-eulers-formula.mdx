@@ -1,0 +1,200 @@
+---
+id: t0.m2.l2
+title: Euler's Formula and the Unit Circle
+type: concept
+track: t0
+module: t0.m2
+level: L0
+minutes: 12
+objectives:
+  - Derive e^{i theta} = cos theta + i sin theta from the power series
+  - Convert between rectangular and exponential form for any unit-modulus number
+  - Explain why multiplying by e^{i theta} is a rotation of the plane
+prerequisites: [t0.m2.l1]
+sources:
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+  - label: Nielsen & Chuang, Quantum Computation and Quantum Information
+    url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+tags: [complex, geometry]
+---
+
+Multiplying complex numbers multiplies moduli and adds arguments. Addition in
+the exponent, multiplication outside: that is the signature of the exponential
+function, and it is a strong hint that $\cos\theta + i\sin\theta$ is secretly
+$e^{\text{something}}$. It is, the something is $i\theta$, and once you believe
+it every phase in the rest of this curriculum becomes a single symbol you can
+multiply and differentiate without thinking about triangles.
+
+## The three series
+
+Start from the real power series, each convergent for every argument:
+
+$$
+e^{x} = \sum_{k=0}^{\infty} \frac{x^k}{k!}, \qquad
+\cos x = \sum_{m=0}^{\infty} \frac{(-1)^m x^{2m}}{(2m)!}, \qquad
+\sin x = \sum_{m=0}^{\infty} \frac{(-1)^m x^{2m+1}}{(2m+1)!} .
+$$
+
+Define $e^{z}$ for complex $z$ by the same series. That is a definition, not a
+theorem, and it is the right one because the series converges absolutely for
+every complex $z$, so terms may be reordered freely.
+
+Now substitute $z = i\theta$ with $\theta$ real. The only new ingredient is that
+powers of $i$ cycle with period four:
+
+$$
+i^0 = 1, \quad i^1 = i, \quad i^2 = -1, \quad i^3 = -i, \quad i^4 = 1, \dots
+$$
+
+so $i^{2m} = (-1)^m$ and $i^{2m+1} = (-1)^m i$. Split the sum into even and odd
+$k$:
+
+$$
+e^{i\theta} = \sum_{k \ge 0} \frac{(i\theta)^k}{k!}
+= \sum_{m \ge 0} \frac{i^{2m}\theta^{2m}}{(2m)!}
+  + \sum_{m \ge 0} \frac{i^{2m+1}\theta^{2m+1}}{(2m+1)!} .
+$$
+
+Substituting the powers of $i$,
+
+$$
+e^{i\theta} = \underbrace{\sum_{m \ge 0} \frac{(-1)^m \theta^{2m}}{(2m)!}}_{\cos\theta}
+ \;+\; i \underbrace{\sum_{m \ge 0} \frac{(-1)^m \theta^{2m+1}}{(2m+1)!}}_{\sin\theta}
+ \;=\; \cos\theta + i \sin\theta .
+$$
+
+That is **Euler's formula**.
+
+<Margin label="A proof without series">
+Let $f(\theta) = e^{-i\theta}(\cos\theta + i \sin\theta)$. Differentiating,
+$f'(\theta) = e^{-i\theta}\big[-i(\cos\theta + i\sin\theta) + (-\sin\theta +
+i\cos\theta)\big] = 0$. So $f$ is constant, and $f(0) = 1$, giving
+$\cos\theta + i\sin\theta = e^{i\theta}$. Shorter, but it assumes the derivative
+rule for $e^{i\theta}$ that the series proves.
+</Margin>
+
+Truncating the series is a fair numerical check. Summing $\sum_{k<30}
+(i)^k/k!$ at $\theta = 1$ gives $0.540302 + 0.841471 i$, and
+$\cos 1 = 0.540302$, $\sin 1 = 0.841471$.
+
+## Immediate consequences
+
+Setting $\theta$ to the obvious angles:
+
+$$
+e^{i\pi/2} = i, \qquad e^{i\pi} = -1, \qquad e^{3i\pi/2} = -i, \qquad
+e^{2\pi i} = 1 .
+$$
+
+The modulus is always 1, because
+
+$$
+\left|e^{i\theta}\right|^2 = \cos^2\theta + \sin^2\theta = 1 .
+$$
+
+So $\theta \mapsto e^{i\theta}$ traces the unit circle, at unit speed, starting
+at 1 and going anticlockwise. It is $2\pi$-periodic, which is the same
+statement as the argument being defined only modulo $2\pi$.
+
+Conjugation flips the angle: $\overline{e^{i\theta}} = \cos\theta - i\sin\theta
+= e^{-i\theta}$. Combined with $z\bar z = |z|^2$, this gives the tidy inverse
+$1/e^{i\theta} = e^{-i\theta}$.
+
+Any non-zero complex number now has the compact **polar form**
+
+$$
+z = r e^{i\theta}, \qquad r = |z| > 0, \quad \theta = \arg z .
+$$
+
+For example $2 + 2i$ has $r = 2\sqrt2 = 2.828427$ and $\theta = \pi/4$, so
+$2 + 2i = 2\sqrt{2}\, e^{i\pi/4}$. Going the other way,
+$e^{i\pi/4} = \tfrac{\sqrt2}{2}(1 + i) = 0.707107 + 0.707107 i$.
+
+## Multiplication is rotation
+
+In polar form the product rule of the previous lesson becomes a single
+exponent law:
+
+$$
+\left(r_1 e^{i\theta_1}\right)\left(r_2 e^{i\theta_2}\right)
+= r_1 r_2\, e^{i(\theta_1 + \theta_2)} .
+$$
+
+Fix $r_1 = 1$. Then multiplication by $e^{i\theta}$ leaves every modulus alone
+and adds $\theta$ to every argument: it is a rotation of the plane about the
+origin by angle $\theta$. Writing $z = x + iy$ as the real vector
+$(x, y)^{T}$ and expanding
+$e^{i\theta}(x+iy) = (x\cos\theta - y\sin\theta) + i(x\sin\theta + y\cos\theta)$
+shows the same map as a matrix,
+
+$$
+\begin{pmatrix} \cos\theta & -\sin\theta \\ \sin\theta & \cos\theta \end{pmatrix}
+\begin{pmatrix} x \\ y \end{pmatrix},
+$$
+
+the standard rotation matrix. The complex numbers are the plane with rotation
+built into the arithmetic, which is why they are the natural home for
+amplitudes.
+
+Repeated multiplication gives **de Moivre's theorem**:
+$\left(e^{i\theta}\right)^n = e^{in\theta}$, so
+$(\cos\theta + i\sin\theta)^n = \cos n\theta + i \sin n\theta$. That single line
+replaces a page of trigonometric identities and is the tool the next lesson uses
+on roots of unity.
+
+## Phases you can measure
+
+The gate $P(\lambda) = \operatorname{diag}(1, e^{i\lambda})$ multiplies the
+amplitude of $\ket{1}$ by a point on the unit circle and leaves $\ket{0}$ alone.
+The $T$ gate is $P(\pi/4)$. Applied after a Hadamard, it turns the state
+$\isqrt(\ket{0} + \ket{1})$ into $\isqrt\left(\ket{0} + e^{i\pi/4}\ket{1}\right)$,
+so the second amplitude should be $0.707107 \times (0.707107 + 0.707107 i) = 0.5
++ 0.5i$.
+
+<Simulate
+  show={['amplitudes', 'bloch']}
+  caption="Hadamard then T. The amplitude of |1> is 0.5 + 0.5i, which is exp(i pi/4) divided by the square root of two."
+  ir={{
+    version: 1,
+    name: "t-phase",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "t0", gate: "t", targets: [0] }
+    ]
+  }}
+/>
+
+Both amplitudes still have modulus $0.707107$, so both outcomes remain equally
+likely. What changed is an angle, and on the Bloch sphere view the state vector
+has swung $45$ degrees around the equator. The unit circle in the complex plane
+and the equator of the Bloch sphere are the same circle, seen twice.
+
+<Callout tone="note" title="Relative phase is the only kind that matters">
+Multiplying the *whole* state by $e^{i\varphi}$ changes no probability in any
+basis and no expectation value of any observable, so it is unobservable and
+called a global phase. Multiplying only one amplitude, as $T$ does, is a
+relative phase, and it is physical. T1.M1 makes this precise; the arithmetic
+you need for it is on this page.
+</Callout>
+
+<Check question="Write $-3$ and $-2i$ in the form $re^{i\theta}$ with the principal argument, then use exponentials to compute $(-2i)^3$.">
+$-3 = 3e^{i\pi}$, since the modulus is 3 and the point lies on the negative real
+axis. $-2i = 2e^{-i\pi/2}$, modulus 2, pointing straight down, and the principal
+argument convention $(-\pi, \pi]$ prefers $-\pi/2$ to $3\pi/2$.
+
+Then $(-2i)^3 = \left(2e^{-i\pi/2}\right)^3 = 8 e^{-3i\pi/2} = 8 e^{i\pi/2} =
+8i$, using $2\pi$-periodicity to bring the angle back into range. Direct
+expansion agrees: $(-2i)^3 = -8i^3 = -8(-i) = 8i$.
+</Check>
+
+## Where this comes from
+
+- [Microsoft Quantum Katas](https://github.com/microsoft/QuantumKatas), whose
+  complex-arithmetic exercises require polar form before any qubit appears, for
+  exactly the reason given here.
+- [Nielsen & Chuang](https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE),
+  chapter 2, for the phase conventions and the global-versus-relative phase
+  distinction previewed at the end.

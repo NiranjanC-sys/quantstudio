@@ -1,0 +1,193 @@
+---
+id: t0.m2.l1
+title: Complex Arithmetic, Modulus, Argument
+type: concept
+track: t0
+module: t0.m2
+level: L0
+minutes: 12
+objectives:
+  - Multiply and divide complex numbers in both rectangular and polar form
+  - Compute the modulus and argument of a given complex number
+  - Prove that |zw| equals |z||w| for all complex z and w
+prerequisites: [t0.m1.l1]
+sources:
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+  - label: QWorld QBook101
+    url: https://qworld.net/qbook101/
+tags: [complex]
+---
+
+T0.M1 ended on a minus sign. A stochastic matrix cannot produce one, a unitary
+can, and that single difference turned an idempotent fair coin into a gate that
+undoes itself. So the amplitudes a qubit carries are not probabilities, they are
+signed. Why stop at signed, and why is the answer the complex numbers rather
+than the reals with a sign attached? Because the operation you actually need is
+*rotation of a plane*, and $\mathbb{C}$ is precisely the number system in which
+rotation is multiplication.
+
+## Rectangular form and the one new rule
+
+A complex number is a pair of reals written $z = a + bi$, with $a =
+\operatorname{Re} z$ and $b = \operatorname{Im} z$. Addition is componentwise.
+Multiplication is ordinary expansion plus one substitution, $i^2 = -1$:
+
+$$
+(a + bi)(c + di) = ac + adi + bci + bdi^2 = (ac - bd) + (ad + bc)i .
+$$
+
+Take $z = 3 + 4i$ and $w = 1 - 2i$:
+
+$$
+zw = (3 \cdot 1 - 4 \cdot (-2)) + (3 \cdot (-2) + 4 \cdot 1)i
+   = (3 + 8) + (-6 + 4)i = 11 - 2i .
+$$
+
+<Margin label="Why not just signs">
+Signed reals give you two rotations of the line, by $0$ and by $\pi$. The
+gates in T1.M3 need every angle in between, and a general rotation of the plane
+is exactly what multiplication by a unit-modulus complex number does. The
+minus sign is the special case $\theta = \pi$.
+</Margin>
+
+## Conjugate, modulus, and division
+
+The **conjugate** $\bar{z} = a - bi$ flips the sign of the imaginary part. It is
+useful because the product of a number with its own conjugate is real and
+non-negative:
+
+$$
+z\bar{z} = (a+bi)(a-bi) = a^2 - (bi)^2 = a^2 + b^2 .
+$$
+
+Define the **modulus** $|z| = \sqrt{a^2 + b^2}$, the distance from the origin in
+the plane. Then $z \bar z = |z|^2$, always. For our two numbers,
+$|z| = \sqrt{9 + 16} = 5$ and $|w| = \sqrt{1 + 4} = \sqrt{5} = 2.236068$.
+
+Division follows immediately: to divide by $w$, multiply top and bottom by
+$\bar w$ and the denominator becomes real.
+
+$$
+\frac{z}{w} = \frac{(3+4i)(1+2i)}{(1-2i)(1+2i)}
+= \frac{3 + 6i + 4i + 8i^2}{1 + 4}
+= \frac{-5 + 10i}{5}
+= -1 + 2i .
+$$
+
+Check by multiplying back: $(-1+2i)(1-2i) = -1 + 2i + 2i - 4i^2 = 3 + 4i$. It
+is $z$.
+
+## Polar form: modulus and argument
+
+Every non-zero $z$ is determined by how far it is from the origin and in which
+direction. The direction is the **argument** $\arg z$, the angle from the
+positive real axis, computed with the two-argument arctangent so that the
+quadrant is right:
+
+$$
+\arg z = \operatorname{atan2}(b, a) .
+$$
+
+For $z = 3 + 4i$, $\arg z = \operatorname{atan2}(4,3) = 0.927295$ rad, which is
+$53.130102$ degrees. For $w = 1 - 2i$, the point is in the fourth quadrant and
+$\arg w = -1.107149$ rad, or $-63.434949$ degrees.
+
+<Callout tone="gotcha" title="atan2, not atan">
+$\arctan(b/a)$ loses the quadrant: it gives the same answer for $1+i$ and
+$-1-i$, which point in opposite directions. Every language has a two-argument
+version (`atan2`, `np.angle`, `Math.atan2`); use it. The argument is also only
+defined up to adding $2\pi$, and conventions differ on whether the principal
+value lives in $(-\pi, \pi]$ or $[0, 2\pi)$. NumPy and this curriculum use
+$(-\pi, \pi]$.
+</Callout>
+
+With $r = |z|$ and $\theta = \arg z$, the polar form is
+$z = r(\cos\theta + i \sin\theta)$. Multiplying two numbers in polar form uses
+the angle-addition identities:
+
+$$
+r_1(\cos\theta_1 + i\sin\theta_1) \cdot r_2(\cos\theta_2 + i \sin\theta_2)
+= r_1 r_2 \big[\cos(\theta_1+\theta_2) + i \sin(\theta_1 + \theta_2)\big].
+$$
+
+Moduli multiply, arguments add. Check it on our example: $\arg z + \arg w =
+0.927295 - 1.107149 = -0.179853$, and $\arg(11 - 2i) =
+\operatorname{atan2}(-2, 11) = -0.179853$. They agree to every digit shown.
+
+## The multiplicative property of the modulus
+
+The claim $|zw| = |z||w|$ deserves a proof, because everything about
+normalisation in T1 depends on it.
+
+**Proof.** Conjugation distributes over products, $\overline{zw} = \bar z \bar
+w$, which you can check by expanding both sides. Then
+
+$$
+|zw|^2 = (zw)\overline{(zw)} = z w \bar z \bar w = (z \bar z)(w \bar w)
+= |z|^2 |w|^2 ,
+$$
+
+using commutativity to reorder. Both $|zw|$ and $|z||w|$ are non-negative reals
+with equal squares, so they are equal. $\blacksquare$
+
+Expanded in coordinates the same statement is a classical identity,
+
+$$
+(a^2+b^2)(c^2+d^2) = (ac - bd)^2 + (ad + bc)^2 ,
+$$
+
+which is worth expanding once by hand: the cross terms $-2abcd$ and $+2abcd$
+cancel, leaving $a^2c^2 + b^2d^2 + a^2d^2 + b^2c^2$, which factors as claimed.
+Numerically, $|zw| = \sqrt{121 + 4} = \sqrt{125} = 11.180340$ and
+$|z||w| = 5\sqrt{5} = 11.180340$.
+
+## What this buys a qubit
+
+A qubit state is $\alpha\ket{0} + \beta\ket{1}$ with $\alpha, \beta \in
+\mathbb{C}$ and $|\alpha|^2 + |\beta|^2 = 1$. Measurement probabilities are
+squared moduli, so multiplying an amplitude by any number of modulus 1 leaves
+every probability untouched while changing the state. The $S$ gate does exactly
+that to the $\ket{1}$ amplitude, multiplying it by $i$.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="Hadamard then S. The amplitude of |1> is 0 + 0.7071i, a purely imaginary number of modulus 0.7071, so the probability is unchanged at 0.5."
+  ir={{
+    version: 1,
+    name: "phase-on-one",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "s0", gate: "s", targets: [0] }
+    ]
+  }}
+/>
+
+Both amplitudes have modulus $\isqrt = 0.707107$, so both probabilities are
+$0.5$, exactly as before the $S$ gate. The state has moved, and no single
+measurement in this basis can tell. T1.M9 is the story of how a later gate
+converts that invisible argument into a visible probability, which is what
+interference means.
+
+<Check question="Let $u = 2 + 2i$. Compute $|u|$, $\arg u$, $u^2$ and $1/u$.">
+$|u| = \sqrt{4+4} = \sqrt{8} = 2.828427$. The point is on the diagonal of the
+first quadrant, so $\arg u = \pi/4 = 0.785398$ rad.
+
+$u^2 = (2+2i)^2 = 4 + 8i + 4i^2 = 8i$. Consistent with polar form: the modulus
+should be $8$ and the argument $\pi/2$, and $8i$ has exactly those.
+
+$1/u = \bar u / |u|^2 = (2 - 2i)/8 = 0.25 - 0.25i$. Its modulus is
+$\sqrt{0.125} = 0.353553 = 1/2.828427$, as reciprocals require, and its argument
+is $-\pi/4$.
+</Check>
+
+## Where this comes from
+
+- [Microsoft Quantum Katas](https://github.com/microsoft/QuantumKatas), whose
+  complex-arithmetic kata is the exercise progression this lesson mirrors:
+  rectangular first, polar second, modulus identities third.
+- [QWorld QBook101](https://qworld.net/qbook101/), for the pedagogical decision
+  to delay complex amplitudes until after real-valued signed amplitudes have
+  already done visible work.

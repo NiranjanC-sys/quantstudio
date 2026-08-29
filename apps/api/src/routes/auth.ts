@@ -16,7 +16,6 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { clearSessionCookie, setSessionCookie } from '../auth/cookies.js';
 import type { OidcProviderId } from '../auth/oidc.js';
-import { OIDC_PROVIDERS } from '../auth/oidc.js';
 import { roleRequiresMfa, type Amr, type OrgRole, type UserRole } from '../auth/types.js';
 import {
   DEFAULT_TOTP,
@@ -37,7 +36,7 @@ import {
 import { ApiError, problem } from '../errors.js';
 import { entitlementsFor, freeSubscription, ssoAllowed } from '../entitlements/index.js';
 import { loadSubscriptionState } from '../entitlements/service.js';
-import { decryptSecret, encryptSecret, generateOpaqueToken, sha256Hex } from '../lib/crypto.js';
+import { decryptSecret, encryptSecret, generateOpaqueToken } from '../lib/crypto.js';
 import { validatePassword } from '../auth/password.js';
 import { authed, rateLimit, readBody, readParams, readQuery, useIdempotency } from './helpers.js';
 

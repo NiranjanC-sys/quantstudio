@@ -1,0 +1,196 @@
+---
+id: t1.m1.l3
+title: Superposition and Amplitude
+type: concept
+track: t1
+module: t1.m1
+level: L1
+minutes: 12
+objectives:
+  - Distinguish an amplitude from a probability by squaring the modulus
+  - Construct a state with a given pair of outcome probabilities and check the signs
+  - Explain why two states with the same probabilities can behave differently
+prerequisites: [t1.m1.l2]
+sources:
+  - label: QWorld QBook101
+    url: https://qworld.net/qbook101/
+  - label: Matuschak & Nielsen, Quantum Computing for the Very Curious
+    url: https://quantum.country/qcvc
+tags: [qubit, amplitude]
+---
+
+"The qubit is in both states at once" is the sentence that does the most damage
+in this subject. It suggests a qubit holds two answers and that a computation
+could read them both. What a qubit actually holds is one vector, and the two
+numbers in it are amplitudes, not answers. This lesson pins down what an
+amplitude is, how to build a state with the probabilities you want, and why the
+information that survives squaring is strictly less than the information in the
+state.
+
+## Superposition is a linear combination and nothing more
+
+A **superposition** of $\ket{0}$ and $\ket{1}$ is a linear combination
+
+$$
+\ket{\psi} = a_0 \ket{0} + a_1 \ket{1}
+= \begin{pmatrix} a_0 \\ a_1 \end{pmatrix},
+\qquad a_0^2 + a_1^2 = 1 ,
+$$
+
+with $a_0$ and $a_1$ real for now. The coefficients are the **amplitudes**. The
+word carries no metaphysics: it is the coefficient of a basis vector, in exactly
+the sense that $3\hat{x} + 4\hat{y}$ has coefficients 3 and 4.
+
+Amplitudes become probabilities only at measurement, and only through squaring:
+
+$$
+\Pr[0] = a_0^2, \qquad \Pr[1] = a_1^2 .
+$$
+
+<Margin label="Notation">
+For complex amplitudes, which arrive in T1.M1.L6, the rule becomes
+$\Pr[k] = |a_k|^2$, the squared modulus. The real case is the special case where
+the modulus is the absolute value, so nothing said here will need revising.
+</Margin>
+
+Squaring is a lossy operation, and that is the whole point. It maps two numbers
+to two numbers, but it cannot be inverted, because $a$ and $-a$ have the same
+square. A state carries a sign that the probability distribution does not.
+
+## Building a state to order
+
+Suppose you want a qubit that reads 0 with probability $0.36$ and 1 with
+probability $0.64$. Take square roots:
+
+$$
+|a_0| = \sqrt{0.36} = 0.6, \qquad |a_1| = \sqrt{0.64} = 0.8 .
+$$
+
+Check normalisation: $0.6^2 + 0.8^2 = 0.36 + 0.64 = 1$. Four sign choices give
+four different states,
+
+$$
+(0.6,\ 0.8), \quad (0.6,\ -0.8), \quad (-0.6,\ 0.8), \quad (-0.6,\ -0.8),
+$$
+
+and all four are legitimate. The requested probabilities did not determine the
+state; they determined it only up to signs. The gate $R_y(\theta)$ produces the
+first of them, since $R_y(\theta)\ket{0} = \cos(\theta/2)\ket{0} +
+\sin(\theta/2)\ket{1}$ and $\theta = 2\arctan(0.8/0.6) = 1.8545904$ gives
+$\cos(\theta/2) = 0.6$ exactly.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="Ry(1.8545904) prepares amplitudes 0.6 and 0.8, hence probabilities 0.36 and 0.64."
+  ir={{
+    version: 1,
+    name: "amplitudes-06-08",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "r1", gate: "ry", targets: [0], params: [1.8545904360032246] }
+    ]
+  }}
+/>
+
+Negating the angle negates the second amplitude and leaves the first alone,
+producing $(0.6, -0.8)$ with the same probabilities $0.36$ and $0.64$. Nothing
+you measure in the computational basis will ever separate the two circuits.
+
+## Same probabilities, different futures
+
+Now put a Hadamard on the end of each. Recall that $H$ sends
+$(a_0, a_1)$ to $\left(\tfrac{a_0 + a_1}{\sqrt2}, \tfrac{a_0 - a_1}{\sqrt2}\right)$.
+For the first state,
+
+$$
+H \begin{pmatrix} 0.6 \\ 0.8 \end{pmatrix}
+= \begin{pmatrix} 1.4/\sqrt2 \\ -0.2/\sqrt2 \end{pmatrix}
+= \begin{pmatrix} 0.989949 \\ -0.141421 \end{pmatrix},
+\qquad \Pr[0] = 0.98 .
+$$
+
+For the second, the sums and differences trade places:
+
+$$
+H \begin{pmatrix} 0.6 \\ -0.8 \end{pmatrix}
+= \begin{pmatrix} -0.2/\sqrt2 \\ 1.4/\sqrt2 \end{pmatrix},
+\qquad \Pr[0] = 0.02 .
+$$
+
+<Simulate
+  show="probabilities"
+  caption="Ry(+1.8545904) then H. The two amplitudes reinforce on |0> and nearly cancel on |1>."
+  ir={{
+    version: 1,
+    name: "plus-then-h",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "r1", gate: "ry", targets: [0], params: [1.8545904360032246] },
+      { id: "h1", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+<Simulate
+  show="probabilities"
+  caption="Ry(-1.8545904) then H. Identical input probabilities, opposite output."
+  ir={{
+    version: 1,
+    name: "minus-then-h",
+    qubits: 1,
+    clbits: 0,
+    ops: [
+      { id: "r1", gate: "ry", targets: [0], params: [-1.8545904360032246] },
+      { id: "h1", gate: "h", targets: [0] }
+    ]
+  }}
+/>
+
+Two states with identical readout statistics, run through the identical gate,
+give answers that disagree $98$ times in $100$. This is the operational content
+of the claim that a state carries more than its distribution. A classical
+description that recorded only $(0.36, 0.64)$ would have no way to produce these
+two different predictions, because it never stored the difference.
+
+<Callout tone="gotcha" title="Superposition is relative to a basis">
+$\ket{0}$ is not a superposition in the computational basis, but written in the
+$\{\ket{+}, \ket{-}\}$ basis it is
+$\ket{0} = \tfrac{1}{\sqrt2}\ket{+} + \tfrac{1}{\sqrt2}\ket{-}$, a perfectly
+even superposition. Asking whether a state "is in superposition" without naming
+a basis is asking an incomplete question.
+</Callout>
+
+## How much information is in one qubit
+
+It is tempting to conclude that a qubit stores a real number, and that a real
+number holds infinitely many bits, so that a thousand qubits could hold a
+library. The angle $\theta$ is indeed continuous. But
+a single measurement returns one bit, and it destroys the state, so extracting
+$\theta$ to $k$ bits of precision needs on the order of $4^k$ preparations and
+measurements. Holevo's bound, which T1.M7 states properly, makes this exact: one
+qubit transmits at most one classical bit. The extra structure is not storage
+capacity. It is the ability to interfere, and interference is only visible when
+many amplitudes meet.
+
+<Check question="You need a state with $\Pr[0] = 0.09$. Give one, and give a second that no computational-basis measurement can distinguish from it but that a Hadamard separates.">
+Take $\ket{\psi} = (0.3,\ 0.9539392)$, since $\sqrt{0.09} = 0.3$ and
+$\sqrt{0.91} = 0.9539392$. The partner is $\ket{\phi} = (0.3,\ -0.9539392)$.
+Both read 0 with probability $0.09$ and 1 with probability $0.91$. After $H$ the
+first has amplitude $(0.3 + 0.9539392)/\sqrt2 = 0.8866689$ on $\ket{0}$, giving
+$\Pr[0] = 0.7861818$, while the second has
+$(0.3 - 0.9539392)/\sqrt2 = -0.4624048$, giving $\Pr[0] = 0.2138182$. The two
+answers sum to 1, which is the algebraic trace of the cross term
+$2 a_0 a_1 / 2 = 0.2861818$ being added in one case and subtracted in the
+other.
+</Check>
+
+## Where this comes from
+
+- [QWorld QBook101](https://qworld.net/qbook101/) builds exactly this contrast,
+  a pair of states with equal probabilities and opposite behaviour under $H$, as
+  the first evidence that a quantum state is not a distribution.
+- [Quantum Computing for the Very Curious](https://quantum.country/qcvc), whose
+  treatment of amplitude insists on the same discipline: never say "both states
+  at once", always say which vector and in which basis.

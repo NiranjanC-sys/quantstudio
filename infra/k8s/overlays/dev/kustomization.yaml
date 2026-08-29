@@ -156,6 +156,10 @@ patches:
                   limits:
                     cpu: "250m"
                     memory: "512Mi"
+  # HPA bounds scaled for this environment. The base HPAs carry the §1 fleet-table
+  # production maxima (web 40, api 60, quantum-kernel 120, ai-tutor 24); leaving those
+  # unpatched would let a dev namespace scale to a full production tier, which is the
+  # same reason the ScaledObject bounds below are capped. Capped at the dev KEDA max.
   - target:
       kind: HorizontalPodAutoscaler
       name: web
@@ -166,6 +170,7 @@ patches:
         name: web
       spec:
         minReplicas: 1
+        maxReplicas: 2
   - target:
       kind: HorizontalPodAutoscaler
       name: api
@@ -176,6 +181,7 @@ patches:
         name: api
       spec:
         minReplicas: 1
+        maxReplicas: 2
   - target:
       kind: HorizontalPodAutoscaler
       name: quantum-kernel
@@ -186,6 +192,7 @@ patches:
         name: quantum-kernel
       spec:
         minReplicas: 1
+        maxReplicas: 2
   - target:
       kind: HorizontalPodAutoscaler
       name: ai-tutor
@@ -196,6 +203,7 @@ patches:
         name: ai-tutor
       spec:
         minReplicas: 1
+        maxReplicas: 2
   - target:
       kind: ScaledObject
       name: grader

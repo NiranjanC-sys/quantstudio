@@ -1,7 +1,7 @@
 /**
  * Motion constants and hooks.
  *
- * DESIGN.md bans `window.addEventListener('scroll')`. Scroll-linked reveals go
+ * DESIGN.md bans scroll event listeners on `window`. Scroll-linked reveals go
  * through `IntersectionObserver`, and `prefers-reduced-motion` drops everything
  * to opacity.
  */
