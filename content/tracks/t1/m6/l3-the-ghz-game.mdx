@@ -1,0 +1,240 @@
+---
+id: t1.m6.l3
+title: The GHZ Game
+type: concept
+track: t1
+module: t1.m6
+level: L1
+minutes: 14
+objectives:
+  - State the GHZ game rules and prove the classical winning probability is at most 3 in 4
+  - Show that the GHZ state and the stated measurements win with probability 1
+  - Explain why GHZ gives a nonlocality proof with no statistics required
+prerequisites: [t1.m6.l2]
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+tags: [nonlocality, ghz]
+---
+
+CHSH beats the classical bound by a factor of $\sqrt2$, which means telling the
+two apart requires counting. With three players there is a game whose quantum
+strategy wins *every* round and whose best classical strategy loses one round in
+four. A single loss then refutes the classical model outright, with no error
+bars anywhere.
+
+## The rules
+
+Three players, Alice, Bob and Charlie, are sent bits $x$, $y$ and $z$ chosen
+uniformly from the four strings with even parity:
+
+$$
+(x, y, z) \in \{ 000,\ 011,\ 101,\ 110 \} .
+$$
+
+They answer with bits $a$, $b$, $c$ and win when
+
+$$
+a \oplus b \oplus c = x \vee y \vee z ,
+$$
+
+which is 0 for the question $000$ and 1 for the other three. As before they may
+agree on anything in advance and may not communicate once the questions are
+sent.
+
+<Margin label="Why even-parity questions">
+The restriction is what makes the four constraints contradictory. Dropping it
+would add questions whose constraints are consistent with the rest, and the
+classical bound would rise. Every nonlocal game is a set of constraints chosen
+so that the classical model over-commits.
+</Margin>
+
+## The classical bound is exactly three in four
+
+A deterministic strategy is six bits: $f(0), f(1)$ for Alice, $g(0), g(1)$ for
+Bob, $h(0), h(1)$ for Charlie. The four win conditions are
+
+$$
+f(0) \oplus g(0) \oplus h(0) = 0 ,
+$$
+$$
+f(0) \oplus g(1) \oplus h(1) = 1 ,
+$$
+$$
+f(1) \oplus g(0) \oplus h(1) = 1 ,
+$$
+$$
+f(1) \oplus g(1) \oplus h(0) = 1 .
+$$
+
+Add all four modulo 2. On the left, each of the six values appears exactly
+twice, so everything cancels and the sum is 0. On the right the sum is
+$0 + 1 + 1 + 1 = 3 \equiv 1$. So $0 = 1$: the four conditions cannot all hold,
+and any deterministic strategy loses at least one question. Since the four
+questions are equally likely and a randomised strategy is an average of
+deterministic ones,
+
+$$
+\Pr[\text{win}] \le \frac{3}{4} .
+$$
+
+The bound is achieved by, for instance, always answering $a = 1$, $b = 0$,
+$c = 0$, which wins on the three odd-parity questions and loses on $000$.
+
+## The quantum strategy wins always
+
+The players share the GHZ state
+
+$$
+\ket{\mathrm{GHZ}} = \frac{\ket{000} + \ket{111}}{\sqrt2} ,
+$$
+
+prepared by a Hadamard on qubit 0 and CNOTs into qubits 1 and 2. On question bit
+0 a player measures $X$; on question bit 1 a player measures $Y$. Each reports
+the outcome bit, with 0 meaning the eigenvalue $+1$.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="H on qubit 0 then CNOTs into qubits 1 and 2. Amplitudes 0.707107 on |000> and |111>."
+  ir={{
+    version: 1,
+    name: "ghz-state",
+    qubits: 3,
+    clbits: 0,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "c1", gate: "x", targets: [1], controls: [0] },
+      { id: "c2", gate: "x", targets: [2], controls: [0] }
+    ]
+  }}
+/>
+
+The strategy works because of four operator identities:
+
+$$
+X \otimes X \otimes X \ket{\mathrm{GHZ}} = + \ket{\mathrm{GHZ}} ,
+$$
+$$
+X \otimes Y \otimes Y \ket{\mathrm{GHZ}}
+= Y \otimes X \otimes Y \ket{\mathrm{GHZ}}
+= Y \otimes Y \otimes X \ket{\mathrm{GHZ}}
+= - \ket{\mathrm{GHZ}} .
+$$
+
+Check the second by hand. $Y\ket{0} = i\ket{1}$ and $Y\ket{1} = -i\ket{0}$, so
+
+$$
+(X \otimes Y \otimes Y)\ket{000} = \ket{1} \otimes i\ket{1} \otimes i\ket{1} = -\ket{111} ,
+$$
+$$
+(X \otimes Y \otimes Y)\ket{111} = \ket{0} \otimes (-i\ket{0}) \otimes (-i\ket{0}) = -\ket{000} ,
+$$
+
+and the two terms combine to $-\ket{\mathrm{GHZ}}$.
+
+Now translate. The GHZ state is a $+1$ eigenstate of $XXX$, so the product of the
+three $\pm 1$ outcomes on question $000$ is $+1$ with certainty, which means
+$a \oplus b \oplus c = 0$. It is a $-1$ eigenstate of $XYY$, $YXY$ and $YYX$, so
+on each of the other three questions the product is $-1$ and the parity is 1.
+All four win conditions hold with probability 1.
+
+An $X$ measurement is a Hadamard before readout and a $Y$ measurement is
+$S^{\dagger}$ then a Hadamard, both from T1.M2.L3.
+
+<Simulate
+  show="probabilities"
+  caption="Question 000: a Hadamard on each qubit, measuring X on all three. Only the four even-parity outcomes appear, each with probability 0.25."
+  ir={{
+    version: 1,
+    name: "ghz-question-000",
+    qubits: 3,
+    clbits: 3,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "c1", gate: "x", targets: [1], controls: [0] },
+      { id: "c2", gate: "x", targets: [2], controls: [0] },
+      { id: "a0", gate: "h", targets: [0] },
+      { id: "a1", gate: "h", targets: [1] },
+      { id: "a2", gate: "h", targets: [2] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] },
+      { id: "m2", gate: "measure", targets: [2], cbits: [2] }
+    ]
+  }}
+/>
+
+<Simulate
+  show="probabilities"
+  caption="Question 011: X on qubit 0, Y on qubits 1 and 2. Only the four odd-parity outcomes appear, each with probability 0.25."
+  ir={{
+    version: 1,
+    name: "ghz-question-011",
+    qubits: 3,
+    clbits: 3,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "c1", gate: "x", targets: [1], controls: [0] },
+      { id: "c2", gate: "x", targets: [2], controls: [0] },
+      { id: "a0", gate: "h", targets: [0] },
+      { id: "b1", gate: "sdg", targets: [1] },
+      { id: "a1", gate: "h", targets: [1] },
+      { id: "b2", gate: "sdg", targets: [2] },
+      { id: "a2", gate: "h", targets: [2] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] },
+      { id: "m2", gate: "measure", targets: [2], cbits: [2] }
+    ]
+  }}
+/>
+
+The first figure lists $000$, $011$, $101$ and $110$, all with even parity. The
+second lists $001$, $010$, $100$ and $111$, all with odd parity. Every
+individual outcome is uniformly random, and the parity is deterministic. That is
+the entire trick: local randomness, global certainty.
+
+<Callout tone="note" title="Why this needs no statistics">
+CHSH separates $0.75$ from $0.8535534$, so distinguishing them requires enough
+shots that the difference exceeds the error bar. GHZ separates a strategy that
+never loses from one that must lose a quarter of the time. Observe a classical
+team and you will see a loss within a few rounds; observe the quantum team and
+you will never see one. Mermin's original point was that this makes the
+contradiction with local realism a matter of logic rather than of statistics.
+</Callout>
+
+## The same contradiction, in operators
+
+There is a way to see the impossibility without mentioning a game. Suppose each
+qubit has predetermined values $\pm 1$ for both $X$ and $Y$, call them
+$X_1, Y_1, X_2, Y_2, X_3, Y_3$. The four identities demand
+
+$$
+X_1 X_2 X_3 = +1, \quad X_1 Y_2 Y_3 = -1, \quad Y_1 X_2 Y_3 = -1, \quad Y_1 Y_2 X_3 = -1 .
+$$
+
+Multiply all four. On the left every symbol appears exactly twice, and each
+squares to $+1$, so the product is $+1$. On the right it is
+$(+1)(-1)(-1)(-1) = -1$. The predetermined values cannot exist. This is the same
+parity argument as the classical bound, and it shows the game is a repackaging
+of an algebraic contradiction, which is exactly the structure T1.M6.L4 pushes
+further.
+
+<Check question="What happens to the quantum strategy if the players share $\tfrac{1}{\sqrt2}(\ket{000} - \ket{111})$ instead?">
+Every sign flips. That state is a $-1$ eigenstate of $XXX$ and a $+1$ eigenstate
+of $XYY$, $YXY$ and $YYX$, so the parities come out exactly wrong on all four
+questions and the strategy wins with probability 0. The fix is one $Z$ gate on
+any single qubit before the measurements, which converts the state back to
+$\ket{\mathrm{GHZ}}$. The lesson generalises: nonlocal-game strategies are
+sensitive to the relative phase of the shared state, not only to how entangled
+it is.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), whose
+  nonlocality lecture presents GHZ as the game with a perfect quantum strategy
+  and gives the modulo-2 counting argument for the classical bound.
+- [Microsoft Quantum Katas](https://github.com/microsoft/QuantumKatas), whose
+  GHZ kata sets exactly this measurement rule and checks the parity conditions
+  outcome by outcome.

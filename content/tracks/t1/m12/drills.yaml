@@ -1,0 +1,58 @@
+module: t1.m12
+cards:
+  - id: t1.m12.d1
+    front: "Capstone: which two gates prepare Phi+, and what resource bound should the submission meet?"
+    back: "H on qubit 0 then CNOT from qubit 0 to qubit 1: two gates, depth 2, exactly one two-qubit gate."
+    lesson: t1.m12.l1
+  - id: t1.m12.d2
+    front: "Capstone: how do you obtain Phi-, Psi+ and Psi- from the Phi+ circuit?"
+    back: "Add Z on qubit 0 for Phi-, X on qubit 1 for Psi+, and both for Psi-."
+    lesson: t1.m12.l1
+  - id: t1.m12.d3
+    front: "Capstone: why is a computational-basis measurement alone not enough to identify a Bell state?"
+    back: "Because Phi+ and a classical mixture of |00> and |11> give identical Z-basis counts. You need X and Y basis measurements too."
+    lesson: t1.m12.l1
+  - id: t1.m12.d4
+    front: "Capstone: which gates precede the measurement for the XX and the YY correlator?"
+    back: "H on both qubits for XX; S dagger then H on both qubits for YY."
+    lesson: t1.m12.l1
+  - id: t1.m12.d5
+    front: "Capstone: what are the ideal values of <ZZ>, <XX> and <YY> on Phi+?"
+    back: "+1, +1 and -1 respectively."
+    lesson: t1.m12.l1
+  - id: t1.m12.d6
+    front: "Capstone: give the formula that turns three correlators into a fidelity with Phi+."
+    back: "F = (1 + <XX> - <YY> + <ZZ>) / 4, from the decomposition of the Phi+ projector into II, XX, -YY and ZZ."
+    lesson: t1.m12.l1
+  - id: t1.m12.d7
+    front: "Capstone: how is a correlator computed from measured counts?"
+    back: "(n00 - n01 - n10 + n11) / N, that is the probability of agreement minus the probability of disagreement."
+    lesson: t1.m12.l1
+  - id: t1.m12.d8
+    front: "Capstone: what is the standard error of a correlator whose true value is E, from N shots?"
+    back: "sqrt((1 - E squared) / N). For E near 0.7071 and N = 4096 that is 0.011049."
+    lesson: t1.m12.l1
+  - id: t1.m12.d9
+    front: "Capstone: which measurement settings give the maximal CHSH value on Phi+?"
+    back: "Alice at 0 and pi/2, Bob at pi/4 and -pi/4, in the x-z plane. Each correlator then has magnitude 0.707107."
+    lesson: t1.m12.l1
+  - id: t1.m12.d10
+    front: "Capstone: what CHSH value should a noiseless run give, and what is the classical bound?"
+    back: "S = 2.828427, which is 2 sqrt(2). The classical bound is 2, so the ideal violation is 0.828427."
+    lesson: t1.m12.l1
+  - id: t1.m12.d11
+    front: "Capstone: give the standard error of S in terms of the shot count N."
+    back: "2 times sqrt(0.5 / N), which is 0.044194 at N = 1024, 0.022097 at N = 4096 and 0.015625 at N = 8192."
+    lesson: t1.m12.l1
+  - id: t1.m12.d12
+    front: "Capstone: how is a measurement along an x-z plane angle theta implemented?"
+    back: "Apply Ry(-theta) to that qubit, then measure in the computational basis."
+    lesson: t1.m12.l1
+  - id: t1.m12.d13
+    front: "Capstone: why is a CHSH violation on a gate-model device not a loophole-free Bell test?"
+    back: "Because both qubits share one control system with no spacelike separation and the detection loophole is open. It is a statement about the device, not about nature."
+    lesson: t1.m12.l1
+  - id: t1.m12.d14
+    front: "Capstone: what does a fidelity of 0.92 fail to tell you?"
+    back: "Which error mechanism produced it. Local depolarising would read p = 0.054837, but a coherent over-rotation gives the same fidelity with a different Bloch picture. Only a depth sweep or tomography separates them."
+    lesson: t1.m12.l1

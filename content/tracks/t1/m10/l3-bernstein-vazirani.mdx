@@ -160,6 +160,20 @@ with no CNOTs at all the hidden string is $0000$, the constant case, and the que
 register reads all zeros, which is the Deutsch-Jozsa answer arriving as a special
 case.
 
+## The cost of the oracle itself
+
+One query, but how expensive is the query? The oracle for a hidden string $s$ is
+one CNOT per set bit of $s$, so at most $n$ two-qubit gates, all sharing the same
+target. They form a chain on the answer qubit, so the oracle's depth is $|s|$,
+the Hamming weight of the secret.
+
+That is worth noticing because it means the *circuit* size is still linear in
+$n$ even though the *query count* is 1. Query complexity deliberately ignores the
+internal cost of the oracle, on the grounds that in a real application the oracle
+is a subroutine you did not write. Bernstein-Vazirani is a good place to see the
+gap between the two accounting systems clearly, before Simon and Shor make it
+matter.
+
 ## Why classical needs exactly $n$
 
 **Upper bound.** Query $f$ on the standard basis vectors. The string with a 1 in

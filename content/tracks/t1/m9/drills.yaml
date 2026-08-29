@@ -1,0 +1,62 @@
+module: t1.m9
+cards:
+  - id: t1.m9.d1
+    front: "State the phase kickback identity for a controlled-U acting on an eigenvector."
+    back: "If U|u> = exp(i phi)|u>, then CU applied to |+>|u> gives ((|0> + exp(i phi)|1>)/sqrt(2)) tensor |u>. The target is unchanged."
+    lesson: t1.m9.l1
+  - id: t1.m9.d2
+    front: "What is the state after a CNOT with the control in |+> and the target in |->?"
+    back: "|-> tensor |->, with the four amplitudes +0.5, -0.5, -0.5, +0.5. The control flipped from |+> to |-> and the target did not move."
+    lesson: t1.m9.l1
+  - id: t1.m9.d3
+    front: "Why must the target of a phase-kickback gate be an eigenvector of U?"
+    back: "Only then does the target factor out of both branches. For a general target the two qubits come out entangled and no clean phase lands on the control."
+    lesson: t1.m9.l1
+  - id: t1.m9.d4
+    front: "Give the bit-flip-oracle identity that turns an XOR oracle into a phase oracle."
+    back: "U_f applied to |x>|-> equals (-1) to the f(x) times |x>|->. The ancilla in |-> is unchanged and the answer becomes a sign."
+    lesson: t1.m9.l1
+  - id: t1.m9.d5
+    front: "Name the three steps of the rotate-compute-rotate pattern and what each does."
+    back: "Rotate makes every input present with equal amplitude; compute writes the answer into relative phases; rotate back turns those phases into amplitudes a measurement can see."
+    lesson: t1.m9.l2
+  - id: t1.m9.d6
+    front: "What is H Z H, and what does that tell you about the Deutsch circuit?"
+    back: "H Z H = X. A balanced one-bit phase oracle turns the whole sandwich into an X gate, so the measurement returns 1 with certainty."
+    lesson: t1.m9.l2
+  - id: t1.m9.d7
+    front: "What happens if you omit the final Hadamard layer of a rotate-compute-rotate circuit?"
+    back: "The measurement is uniform and carries no information, because a phase oracle changes no magnitude and the Born rule squares the sign away."
+    lesson: t1.m9.l2
+  - id: t1.m9.d8
+    front: "On the Q-sphere, what do latitude, node size and node colour encode?"
+    back: "Latitude is Hamming weight, node size is the squared amplitude magnitude, and colour is the amplitude phase on a cyclic colormap."
+    lesson: t1.m9.l3
+  - id: t1.m9.d9
+    front: "What is the Q-sphere signature of a three-qubit GHZ state?"
+    back: "Exactly two nodes, at the two poles, of equal size and equal colour, each with probability 0.5."
+    lesson: t1.m9.l3
+  - id: t1.m9.d10
+    front: "How does the Bloch view distinguish a GHZ state from the product state |+++>?"
+    back: "For |+++> all three Bloch vectors have length 1. For GHZ all three have length 0, since every reduced state is maximally mixed."
+    lesson: t1.m9.l3
+  - id: t1.m9.d11
+    front: "Write the rule for computing an outcome probability from interfering paths."
+    back: "Sum the complex amplitudes of every path reaching the outcome, then square the magnitude. Probabilities are never summed."
+    lesson: t1.m9.l4
+  - id: t1.m9.d12
+    front: "Why can classical randomised computation not produce cancellation?"
+    back: "Its path weights are probabilities, which are non-negative, so summing them can only increase the total. Complex amplitudes can be negative or complex and can cancel."
+    lesson: t1.m9.l4
+  - id: t1.m9.d13
+    front: "Trace the two paths from |0> to |1> through two Hadamards."
+    back: "The path through |0> contributes +0.5 and the path through |1> contributes -0.5. They cancel exactly, so |1> has probability 0."
+    lesson: t1.m9.l4
+  - id: t1.m9.d14
+    front: "Name the interference step in Deutsch-Jozsa, Grover and phase estimation."
+    back: "The final Hadamard layer, the diffuser, and the inverse quantum Fourier transform respectively."
+    lesson: t1.m9.l4
+  - id: t1.m9.d15
+    front: "What is the one-line test to apply to any claimed quantum speedup?"
+    back: "Ask where the wrong answers cancel. Without destructive interference between paths to the same outcome, a classical sampler matches the output distribution."
+    lesson: t1.m9.l4

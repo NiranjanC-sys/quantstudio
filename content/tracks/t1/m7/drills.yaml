@@ -1,0 +1,62 @@
+module: t1.m7
+cards:
+  - id: t1.m7.d1
+    front: "In superdense coding, what does Alice do to encode each of the four messages?"
+    back: "She applies Z to the power b0 then X to the power b1 to her own qubit only: nothing, X, Z, or XZ."
+    lesson: t1.m7.l1
+  - id: t1.m7.d2
+    front: "Which four states does Alice's encoding map the shared Bell pair onto?"
+    back: "The four Bell states Phi+, Psi+, Phi- and Psi-, one for each two-bit message."
+    lesson: t1.m7.l1
+  - id: t1.m7.d3
+    front: "What is Bob's decoding circuit in superdense coding?"
+    back: "CNOT from qubit 0 to qubit 1, then H on qubit 0, then measure both. That is the Bell preparation circuit run backwards."
+    lesson: t1.m7.l1
+  - id: t1.m7.d4
+    front: "Does superdense coding violate the Holevo bound?"
+    back: "No. Two qubits cross the channel over the protocol's lifetime: Bob's half at distribution time and Alice's half at send time."
+    lesson: t1.m7.l1
+  - id: t1.m7.d5
+    front: "What resources does teleportation consume, and what does it deliver?"
+    back: "One shared Bell pair plus two classical bits deliver one unknown qubit. Superdense coding is the same trade run the other way."
+    lesson: t1.m7.l2
+  - id: t1.m7.d6
+    front: "Give the teleportation correction table."
+    back: "Bob applies X if c1 = 1, then Z if c0 = 1. Outcome 00 needs nothing, 01 needs X, 10 needs Z, 11 needs X then Z."
+    lesson: t1.m7.l2
+  - id: t1.m7.d7
+    front: "What happens to the original qubit in teleportation, and why must it?"
+    back: "It is destroyed by Alice's measurement. If it survived intact the protocol would be a cloning machine, which no-cloning forbids."
+    lesson: t1.m7.l2
+  - id: t1.m7.d8
+    front: "With what probability does each pair of teleportation measurement outcomes occur, and why does that matter?"
+    back: "0.25 each, independently of the message. The outcomes carry no information about the state, so Alice can announce them publicly."
+    lesson: t1.m7.l2
+  - id: t1.m7.d9
+    front: "In entanglement swapping, which qubits end up entangled and which are measured?"
+    back: "The two outer qubits, which never interacted, end up entangled. The repeater station measures the two inner qubits in the Bell basis."
+    lesson: t1.m7.l3
+  - id: t1.m7.d10
+    front: "Which Bell state do the outer qubits end in for repeater outcome ab, and what is the correction?"
+    back: "They hold X to the b, Z to the a applied to Phi+ on one side. The correction is X first if b = 1, then Z if a = 1, the same table as teleportation."
+    lesson: t1.m7.l3
+  - id: t1.m7.d11
+    front: "Why do quantum repeaters need swapping rather than amplification?"
+    back: "Because no-cloning forbids copying a quantum state, so a classical measure-and-retransmit repeater is impossible. Swapping joins short heralded links instead."
+    lesson: t1.m7.l3
+  - id: t1.m7.d12
+    front: "In Wiesner quantum money, what does the bank store and what does it measure at verification?"
+    back: "It stores a secret basis string and value string per serial number, and measures each qubit in the recorded basis, checking the recorded value."
+    lesson: t1.m7.l4
+  - id: t1.m7.d13
+    front: "What is the per-qubit success probability of a measure-and-resend forger, and for a 20-qubit note?"
+    back: "3/4 per qubit, since half the time the basis guess is right and otherwise verification passes half the time. For 20 qubits that is 0.003171."
+    lesson: t1.m7.l4
+  - id: t1.m7.d14
+    front: "Why can Wiesner money not be made publicly verifiable by publishing the basis string?"
+    back: "A forger who knows the basis measures in it, learns every value with certainty, and makes perfect copies. The security came entirely from the verifier's secret."
+    lesson: t1.m7.l4
+  - id: t1.m7.d15
+    front: "What is the QBER produced by a full intercept-resend attack on BB84, and what is sifting?"
+    back: "The QBER is 0.25. Sifting is discarding the positions where Alice's and Bob's bases differ, which keeps about half of them."
+    lesson: t1.m7.l5

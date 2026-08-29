@@ -124,6 +124,22 @@ you meant a condition gives a circuit that is coherent instead of collapsed, and
 the two agree only through the principle of deferred measurement.
 </Callout>
 
+## What a conditional circuit costs you in analysis
+
+There is an analytical price too, and the figures above show it. A circuit
+without conditions has one statevector: the simulator evolves it exactly and
+reports amplitudes and phases. A circuit with a condition does not. Once a
+measurement has fired, the run is on one branch, and the collection of branches
+is a probability distribution over states rather than a single state.
+
+So this platform's simulator switches modes. For a conditional circuit it samples
+trajectories, averages the probabilities over them, and reports magnitudes with no
+phase column, because there is no single global amplitude vector to report. That
+is not a limitation of the implementation; it is what a measurement in the middle
+of a circuit means. When you want exact amplitudes for reasoning, defer the
+measurement, work with the coherent circuit, and rely on the principle of deferred
+measurement to carry the conclusion back.
+
 ## Why the gate time stops mattering
 
 Count the physical work in that teleportation circuit: five gates before the

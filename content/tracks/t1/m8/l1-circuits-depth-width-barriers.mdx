@@ -112,6 +112,21 @@ qubits has depth $n$, while the tree doubles the number of correlated qubits per
 layer and so has depth $1 + \lceil \log_2 n \rceil$. At $n = 8$ that is depth 8
 against depth 4, at $n = 64$ it is 64 against 7.
 
+## The metric that actually predicts failure
+
+Depth as defined above counts every operation equally, and hardware does not. A
+single-qubit gate takes tens of nanoseconds; a two-qubit gate takes several times
+longer and carries roughly ten times the error. So the number practitioners quote
+when they want to predict whether a circuit will work is the **two-qubit depth**,
+the number of layers containing at least one entangling gate.
+
+Both GHZ circuits above have three two-qubit gates and no single-qubit gates
+after the Hadamard, so for them the two figures coincide. They diverge as soon as
+a circuit interleaves rotations between its entangling layers, which is what every
+variational ansatz in T5 does. When you read a figure footer on this platform,
+the four numbers are width, depth, total gates and two-qubit gates, in that order,
+and the last two are the ones to compare between two versions of the same circuit.
+
 <Callout tone="note" title="Depth is a lower bound on time, not the time">
 Real hardware adds constraints this model ignores: two-qubit gates only exist
 between physically coupled qubits, so a compiler inserts SWAPs, and a SWAP is

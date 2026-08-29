@@ -1,0 +1,210 @@
+---
+id: t1.m6.l4
+title: The Mermin-Peres Magic Square
+type: concept
+track: t1
+module: t1.m6
+level: L1
+minutes: 14
+objectives:
+  - Show that no classical assignment satisfies all six parity constraints of the magic square
+  - Verify that the nine two-qubit observables commute along every row and column
+  - Explain how the shared two-Bell-pair strategy wins with probability 1
+prerequisites: [t1.m6.l3]
+sources:
+  - label: Microsoft Quantum Katas
+    url: https://github.com/microsoft/QuantumKatas
+  - label: Quantum Processes and Computation / Quantum Software (Oxford)
+    url: https://www.cs.ox.ac.uk/teaching/courses/quantum/
+tags: [nonlocality, magic-square]
+---
+
+The GHZ game needed three players. The magic square needs two, wins with
+probability 1 against a classical ceiling of $8/9$, and its impossibility proof
+is a puzzle you can hand to someone with no physics at all: fill a
+$3 \times 3$ grid with $\pm 1$ so that every row multiplies to $+1$, the first
+two columns multiply to $+1$, and the last column multiplies to $-1$.
+
+## The puzzle has no solution
+
+Suppose such a grid existed, with entries $v_{rc} \in \{+1, -1\}$. Multiply all
+nine entries in two different orders.
+
+By rows: the product is the product of the three row products,
+$(+1)(+1)(+1) = +1$.
+
+By columns: it is the product of the three column products,
+$(+1)(+1)(-1) = -1$.
+
+Both compute the product of the same nine numbers, so $+1 = -1$. No grid exists.
+The obstruction is a single sign, and it does not depend on which cells you try:
+any five of the six constraints can be met, and the sixth then fails.
+
+<Margin label="The game">
+A referee sends Alice a row index and Bob a column index, each uniform over
+$\{1,2,3\}$. Alice returns three signs whose product satisfies her row's rule;
+Bob returns three signs satisfying his column's rule. They win when the two
+agree at the cell where the row meets the column. A deterministic classical
+strategy is exactly a grid, so it must fail on at least one of the nine
+question pairs: the classical ceiling is $8/9 \approx 0.888889$.
+</Margin>
+
+## Nine observables that do satisfy it
+
+Now replace the numbers by two-qubit observables:
+
+|  | column 1 | column 2 | column 3 |
+| --- | --- | --- | --- |
+| **row 1** | $Z \otimes I$ | $I \otimes Z$ | $Z \otimes Z$ |
+| **row 2** | $I \otimes X$ | $X \otimes I$ | $X \otimes X$ |
+| **row 3** | $Z \otimes X$ | $X \otimes Z$ | $Y \otimes Y$ |
+
+Every entry is Hermitian with eigenvalues $\pm 1$, so each is a legitimate
+$\pm 1$-valued measurement. Check the six products.
+
+Rows 1 and 2 are immediate: $(Z \otimes I)(I \otimes Z) = Z \otimes Z$, and
+squaring gives $I$. Row 3 needs the Pauli algebra of T1.M3.L1:
+
+$$
+(Z \otimes X)(X \otimes Z) = (ZX) \otimes (XZ) = (iY) \otimes (-iY) = Y \otimes Y ,
+$$
+
+so multiplying by the third entry gives $(Y \otimes Y)^2 = I$. Columns 1 and 2
+work the same way and give $+I$. Column 3 is the interesting one:
+
+$$
+(Z \otimes Z)(X \otimes X) = (ZX) \otimes (ZX) = (iY) \otimes (iY) = -\, Y \otimes Y ,
+$$
+
+so multiplying by $Y \otimes Y$ gives $-I$. The operators reproduce the
+impossible sign pattern that numbers cannot.
+
+The reason there is no contradiction is that operators need not commute, and the
+"product of all nine" is not well defined for them. Within a row or a column,
+however, all three *do* commute: check row 3, where
+$(Z \otimes X)(X \otimes Z) = Y \otimes Y = (X \otimes Z)(Z \otimes X)$, the two
+anticommutations on the separate factors cancelling. Commuting observables have
+simultaneous eigenvectors, so all three entries of a line have definite values
+at once and their product is the product of those values.
+
+<Callout tone="note" title="Contextuality, stated once">
+Each cell belongs to a row and to a column. Classically its value is the same in
+both. Quantum mechanically the value obtained depends on which *other*
+observables are measured alongside it, that is, on the context. The magic square
+is the cleanest demonstration that measurement outcomes cannot be
+context-independent, and it needs no entanglement to state, only to play.
+</Callout>
+
+## Commuting observables have joint values
+
+Before the strategy, see the mechanism on one Bell pair. $\ket{\Phi^+}$ is a
+$+1$ eigenstate of $Z \otimes Z$ and simultaneously of $X \otimes X$, which is
+possible because those two commute.
+
+<Simulate
+  show="probabilities"
+  caption="A Bell pair measured directly. Only |00> and |11> appear, so the product of the two Z outcomes is +1 every time."
+  ir={{
+    version: 1,
+    name: "bell-zz",
+    qubits: 2,
+    clbits: 2,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "cx", gate: "x", targets: [1], controls: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] }
+    ]
+  }}
+/>
+
+<Simulate
+  show="probabilities"
+  caption="The same pair with a Hadamard on each qubit, measuring X on both. Again only |00> and |11>, so the product of the two X outcomes is also +1 every time."
+  ir={{
+    version: 1,
+    name: "bell-xx",
+    qubits: 2,
+    clbits: 2,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "cx", gate: "x", targets: [1], controls: [0] },
+      { id: "a0", gate: "h", targets: [0] },
+      { id: "a1", gate: "h", targets: [1] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] }
+    ]
+  }}
+/>
+
+Two commuting observables, both with value $+1$, on one state. Individually
+every outcome is a fair coin; jointly the products are certain.
+
+## The winning strategy
+
+Alice and Bob share **two** Bell pairs. Alice holds one qubit of each, Bob holds
+the other two. Given row $r$, Alice measures the three observables of that row on
+her pair; they commute, so she can. Given column $c$, Bob measures the three
+observables of that column on his pair. Each reports the three signs obtained.
+
+Alice's row product is $+1$ by the row identity, and Bob's column product is the
+required sign by the column identity, so both answers are always valid. The only
+question is whether they agree at the intersection, and they do: on two Bell
+pairs, Alice and Bob measuring the *same* real symmetric observable always get
+the same outcome. All nine entries of the square are real symmetric matrices,
+including $Y \otimes Y$, whose entries are real because the two factors of $i$
+multiply out.
+
+Here is the intersection check for row 1 and column 1, where the shared cell is
+$Z \otimes I$. Alice measures both her qubits in the $Z$ basis; Bob measures his
+first in $Z$ and his second in $X$, which yields all three of
+$Z \otimes I$, $I \otimes X$ and $Z \otimes X$. Qubits 0 and 1 are Alice's,
+qubits 2 and 3 are Bob's, and the pairs are 0 with 2 and 1 with 3.
+
+<Simulate
+  show="probabilities"
+  caption="Two Bell pairs, with Bob measuring his second qubit in the X basis. Eight outcomes at 0.125 each, and in every one the first bit equals the third: Alice and Bob agree on the shared cell."
+  ir={{
+    version: 1,
+    name: "magic-square-intersection",
+    qubits: 4,
+    clbits: 4,
+    ops: [
+      { id: "h0", gate: "h", targets: [0] },
+      { id: "p0", gate: "x", targets: [2], controls: [0] },
+      { id: "h1", gate: "h", targets: [1] },
+      { id: "p1", gate: "x", targets: [3], controls: [1] },
+      { id: "bx", gate: "h", targets: [3] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] },
+      { id: "m2", gate: "measure", targets: [2], cbits: [2] },
+      { id: "m3", gate: "measure", targets: [3], cbits: [3] }
+    ]
+  }}
+/>
+
+Every listed outcome has bit 0 equal to bit 2. Alice's $Z \otimes I$ value and
+Bob's $Z \otimes I$ value always match, which is the win condition for this
+question pair. The same holds for all nine, so the strategy wins with
+probability 1 against a classical ceiling of $8/9$.
+
+<Check question="Why does the argument not also forbid the quantum strategy? Both Alice and Bob are, after all, producing signs for the same nine cells.">
+Because there is no single grid. Alice fills only the row she was asked about and
+Bob only his column, and the values Alice would have produced for a different
+row are not defined. Cells sharing a row or a column commute and can be measured
+together; cells in different rows *and* different columns generally cannot. Take
+$Z \otimes I$ at row 1 column 1 and $X \otimes I$ at row 2 column 2: their
+first factors anticommute, so the two observables anticommute and share no
+eigenvector. The impossibility proof needs all nine values to exist at once, and
+quantum mechanics never supplies them; it supplies three at a time,
+consistently, whichever three you ask for.
+</Check>
+
+## Where this comes from
+
+- [Microsoft Quantum Katas](https://github.com/microsoft/QuantumKatas), whose
+  magic-square kata uses exactly this operator table and asks the learner to
+  implement both the referee and the quantum players.
+- [Quantum Processes and Computation, Oxford](https://www.cs.ox.ac.uk/teaching/courses/quantum/),
+  for the treatment of the magic square as a contextuality proof and for the
+  diagrammatic account of why commuting lines can be measured together.

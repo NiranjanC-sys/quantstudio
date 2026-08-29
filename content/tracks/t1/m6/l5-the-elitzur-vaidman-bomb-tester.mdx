@@ -1,0 +1,218 @@
+---
+id: t1.m6.l5
+title: The Elitzur-Vaidman Bomb Tester
+type: concept
+track: t1
+module: t1.m6
+level: L1
+minutes: 13
+objectives:
+  - Compute the success probability of the naive one-shot interaction-free measurement
+  - Derive the quantum Zeno amplification that pushes the success probability toward 1
+  - Explain what "interaction-free" does and does not mean in this protocol
+prerequisites: [t1.m6.l4]
+sources:
+  - label: "O'Donnell, 15-859BB Quantum Computation (CMU)"
+    url: https://www.cs.cmu.edu/~odonnell/quantum18/
+  - label: Preskill, Ph219/CS219 Quantum Computation lecture notes (Caltech)
+    url: http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html
+tags: [nonlocality, interaction-free]
+---
+
+A crate holds a bomb whose trigger is a single photon: absorb one and it
+detonates. Some crates are duds, with a broken trigger that lets photons through.
+You must sort the live bombs from the duds without setting any off. Classically
+this is impossible, since the only way to learn whether the trigger absorbs
+photons is to send one. Quantum mechanically it can be done, and with enough
+patience it can be done almost every time.
+
+## The one-shot version
+
+Model the photon's path as a qubit: $\ket{0}$ is the reference arm and $\ket{1}$
+is the arm containing the crate. A beamsplitter is a Hadamard. The interferometer
+is $H$, then the crate, then $H$ again, then look at which output port the photon
+leaves by.
+
+With a **dud**, nothing touches the photon and the two Hadamards cancel:
+$H H \ket{0} = \ket{0}$. The photon always leaves by port 0.
+
+<Simulate
+  show="probabilities"
+  caption="A dud crate. Two Hadamards and nothing between them, so the photon leaves by port 0 with certainty."
+  ir={{
+    version: 1,
+    name: "bomb-dud",
+    qubits: 1,
+    clbits: 1,
+    ops: [
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "h2", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] }
+    ]
+  }}
+/>
+
+With a **live bomb** the crate is a detector: it records whether the photon took
+arm 1. Model the record as a second qubit and the recording as a CNOT from the
+path onto it, which is what T1.M5.L3 called entangling with the environment.
+Then the circuit is $H$ on the path, CNOT onto the bomb, $H$ on the path.
+
+<Simulate
+  show={['amplitudes', 'probabilities']}
+  caption="A live bomb. Qubit 0 is the output port, qubit 1 is the bomb record. All four outcomes have probability 0.25."
+  ir={{
+    version: 1,
+    name: "bomb-live",
+    qubits: 2,
+    clbits: 2,
+    ops: [
+      { id: "h1", gate: "h", targets: [0] },
+      { id: "bomb", gate: "x", targets: [1], controls: [0] },
+      { id: "h2", gate: "h", targets: [0] },
+      { id: "m0", gate: "measure", targets: [0], cbits: [0] },
+      { id: "m1", gate: "measure", targets: [1], cbits: [1] }
+    ]
+  }}
+/>
+
+Read the four outcomes by what they mean.
+
+| outcome | probability | meaning |
+| --- | --- | --- |
+| $\ket{01}$, $\ket{11}$ | $0.25 + 0.25 = 0.5$ | the bomb absorbed the photon and detonated |
+| $\ket{00}$ | $0.25$ | port 0 fired: consistent with a dud, inconclusive |
+| $\ket{10}$ | $0.25$ | port 1 fired with no absorption |
+
+The last row is the interesting one. Port 1 can never fire for a dud, because
+interference sends every dud photon to port 0. So port 1 firing proves the bomb
+is live, and it fired on a run in which the bomb absorbed nothing. You have
+learned that the trigger works without triggering it, with probability $0.25$
+per attempt, against a $0.5$ chance of losing the bomb.
+
+<Margin label="Why interference is doing the work">
+The dud case has one path amplitude for reaching port 1 from each arm, and they
+cancel. The live bomb destroys that cancellation by recording which arm was
+taken, so the two contributions no longer interfere and port 1 becomes
+reachable. The bomb changes the outcome distribution purely by being *able* to
+record, in the branch where it records nothing.
+</Margin>
+
+## Zeno amplification
+
+A quarter success against a half loss is a bad trade. Replace the single
+beamsplitter with a slow rotation applied $N$ times, with the crate consulted
+after each step.
+
+Each cycle applies $R_y(\pi/N)$, which moves the photon's amplitude by an angle
+$\pi/(2N)$ from $\ket{0}$ towards $\ket{1}$. The bomb then records. In the branch
+where nothing was absorbed, the photon is projected back onto $\ket{0}$, and the
+next cycle starts from where the last one began.
+
+The probability of absorption in one cycle is $\sin^2\!\left(\pi/(2N)\right)$, so
+the probability of surviving all $N$ cycles is
+
+$$
+\Pr[\text{survive}] = \cos^{2N}\!\left( \frac{\pi}{2N} \right) .
+$$
+
+For small $\pi/(2N)$ the per-cycle loss is about $\pi^2/(4N^2)$, and $N$ of them
+total about $\pi^2/(4N)$, which goes to 0 as $N$ grows. Meanwhile a dud never
+records anything, so the $N$ rotations compose into $R_y(\pi)$ and leave the
+photon in $\ket{1}$ with certainty. Survive the run and the final measurement
+tells you which crate you had: $\ket{0}$ means live, $\ket{1}$ means dud.
+
+| $N$ | survival probability |
+| --- | --- |
+| $3$ | $0.421875$ |
+| $4$ | $0.530790$ |
+| $10$ | $0.780546$ |
+| $50$ | $0.951842$ |
+| $100$ | $0.975627$ |
+
+Take $N = 3$ and check it exactly. Each cycle survives with
+$\cos^2(\pi/6) = 0.75$, so three survive with $0.75^3 = 27/64 = 0.421875$.
+
+<Simulate
+  show="amplitudes"
+  caption="Three cycles of Ry(pi/3) with a live bomb recording after each. Qubit 0 is the photon, qubits 1 to 3 are the bomb records. The state |0000> has probability 0.421875: no record fired and the photon is back at |0>."
+  ir={{
+    version: 1,
+    name: "zeno-live-bomb",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "r1", gate: "ry", targets: [0], params: [1.0471975511965976] },
+      { id: "b1", gate: "x", targets: [1], controls: [0] },
+      { id: "r2", gate: "ry", targets: [0], params: [1.0471975511965976] },
+      { id: "b2", gate: "x", targets: [2], controls: [0] },
+      { id: "r3", gate: "ry", targets: [0], params: [1.0471975511965976] },
+      { id: "b3", gate: "x", targets: [3], controls: [0] }
+    ]
+  }}
+/>
+
+The amplitude on $\ket{0000}$ is $\cos^3(\pi/6) = 0.649519$, whose square is
+$0.421875$. Note that no listed outcome has the photon at $\ket{1}$ with all
+records at 0: with a live bomb, surviving means ending at $\ket{0}$. The dud
+runs the same three rotations with no CNOTs, giving $R_y(\pi)\ket{0} = \ket{1}$
+with probability 1.
+
+<Simulate
+  show="probabilities"
+  caption="The same three rotations with a dud crate. Ry(pi/3) three times is Ry(pi), so the photon ends at |1> with certainty."
+  ir={{
+    version: 1,
+    name: "zeno-dud",
+    qubits: 4,
+    clbits: 0,
+    ops: [
+      { id: "r1", gate: "ry", targets: [0], params: [1.0471975511965976] },
+      { id: "r2", gate: "ry", targets: [0], params: [1.0471975511965976] },
+      { id: "r3", gate: "ry", targets: [0], params: [1.0471975511965976] }
+    ]
+  }}
+/>
+
+## What "interaction-free" means
+
+Three honest qualifications, because the phrase oversells the result.
+
+**No energy was absorbed on the successful branch.** That is the precise claim,
+and it is true: in the branch where port 1 fires or where all records stay 0, the
+bomb absorbed no photon.
+
+**The bomb's *presence* certainly had an effect.** The outcome distribution
+changed, which is how you learned anything at all. What the bomb did was destroy
+the interference by being capable of recording. Some authors prefer
+"absorption-free" or "quantum interrogation" for exactly this reason.
+
+**The successful branch is selected after the fact.** You do not choose to be in
+it. With $N = 3$ you lose the bomb $0.578125$ of the time, and the protocol only
+looks impressive once $N$ is large enough that the loss is rare.
+
+<Callout tone="gotcha" title="It is the same mechanism as decoherence">
+Nothing here is specific to bombs. Replace the bomb with any environment that
+could record which path was taken and the interference disappears, whether or
+not anyone reads the record. That is exactly the decoherence of T1.M11, seen
+from the other side: here the loss of interference is the signal rather than the
+noise.
+</Callout>
+
+<Check question="With $N = 4$ cycles, what is the per-cycle absorption probability and the overall survival probability?">
+Each cycle is $R_y(\pi/4)$, so the amplitude on $\ket{1}$ after one rotation is
+$\sin(\pi/8) = 0.382683$ and the absorption probability is
+$\sin^2(\pi/8) = 0.146447$. Survival per cycle is
+$\cos^2(\pi/8) = 0.853553$, and over four cycles
+$0.853553^4 = 0.530790$. Going from $N = 3$ to $N = 4$ raises the success rate
+from $0.421875$ to $0.530790$, and the improvement continues, slowly, like
+$1 - \pi^2/(4N)$.
+</Check>
+
+## Where this comes from
+
+- [O'Donnell, 15-859BB](https://www.cs.cmu.edu/~odonnell/quantum18/), whose
+  opening lecture uses the bomb tester as the first demonstration that quantum
+  mechanics buys something a classical algorithm cannot have.
+- [Preskill, Ph219](http://theory.caltech.edu/~preskill/ph219/ph219_2021-22.html),
+  chapter 3, for the Zeno-amplified version and for the careful statement of what
+  interaction-free measurement does and does not establish.

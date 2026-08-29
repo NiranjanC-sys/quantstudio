@@ -14,7 +14,7 @@
  *
  * Usage: `pnpm --filter @redquant/api db:seed`
  */
-import { sql } from 'drizzle-orm';
+import { and, eq, notInArray, sql } from 'drizzle-orm';
 import pg from 'pg';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { createPasswordHasher } from '../auth/password.js';
@@ -41,33 +41,22 @@ import type { DatabaseHandles } from './client.js';
 
 type Db = NodePgDatabase<typeof schema>;
 
-/** Six lesson kinds (syllabus). The kind decides grading, XP and gating. */
-function lessonKindFor(title: string, isLast: boolean): {
-  kind: 'concept' | 'interactive' | 'lab' | 'drill' | 'checkpoint' | 'project';
-  minutes: number;
-  xp: number;
-} {
-  const lowered = title.toLowerCase();
-  if (lowered.startsWith('project')) return { kind: 'project', minutes: 240, xp: 200 };
-  if (lowered.startsWith('diagnostic') || lowered.includes('checkpoint')) {
-    return { kind: 'checkpoint', minutes: 15, xp: 40 };
+/** Experience awarded per lesson kind. Checkpoints and projects are worth more. */
+function xpFor(kind: string): number {
+  switch (kind) {
+    case 'checkpoint':
+      return 40;
+    case 'project':
+      return 120;
+    case 'lab':
+      return 60;
+    case 'interactive':
+      return 30;
+    case 'drill':
+      return 10;
+    default:
+      return 25;
   }
-  if (lowered.includes(' lab') || lowered.includes('hands-on') || lowered.includes('end to end')) {
-    return { kind: 'lab', minutes: 25, xp: 60 };
-  }
-  if (
-    lowered.includes('sphere') ||
-    lowered.includes('geometric') ||
-    lowered.includes('landscape') ||
-    lowered.includes('observed') ||
-    lowered.includes('seen on')
-  ) {
-    return { kind: 'interactive', minutes: 8, xp: 20 };
-  }
-  // The closing lesson of a module is where the drill sits, so the module ends
-  // with recall rather than with more reading.
-  if (isLast) return { kind: 'drill', minutes: 3, xp: 10 };
-  return { kind: 'concept', minutes: 12, xp: 15 };
 }
 
 function slugify(value: string): string {
@@ -153,7 +142,7 @@ export async function seed(db: Db, env: Env): Promise<SeedSummary> {
   const lessonIdsByModule = new Map<string, number[]>();
 
   for (const [trackIndex, track] of SYLLABUS.entries()) {
-    const lessonCount = track.modules.reduce((sum, module) => sum + module.lessons.length + 1, 0);
+    const lessonCount = track.modules.reduce((sum, module) => sum + module.lessons.length, 0);
 
     const inserted = await db
       .insert(tracks)
@@ -187,6 +176,18 @@ export async function seed(db: Db, env: Env): Promise<SeedSummary> {
     trackIdByCode.set(track.code, trackId);
     summary.tracks += 1;
 
+    // Converge on the catalogue at the module level too. A module that was
+    // renumbered leaves a stale row that collides on (track_id, position).
+    const wantedModuleCodes = track.modules.map((m) => m.code);
+    await db
+      .delete(modules)
+      .where(
+        and(
+          eq(modules.trackId, trackId),
+          wantedModuleCodes.length > 0 ? notInArray(modules.code, wantedModuleCodes) : undefined,
+        ),
+      );
+
     for (const [moduleIndex, module] of track.modules.entries()) {
       const moduleRow = await db
         .insert(modules)
@@ -198,7 +199,7 @@ export async function seed(db: Db, env: Env): Promise<SeedSummary> {
           summary: null,
           level: track.level,
           position: moduleIndex + 1,
-          lessonCount: module.lessons.length + 1,
+          lessonCount: module.lessons.length,
         })
         .onConflictDoUpdate({
           target: modules.code,
@@ -207,7 +208,7 @@ export async function seed(db: Db, env: Env): Promise<SeedSummary> {
             title: module.title,
             level: track.level,
             position: moduleIndex + 1,
-            lessonCount: module.lessons.length + 1,
+            lessonCount: module.lessons.length,
           },
         })
         .returning({ id: modules.id });
@@ -241,14 +242,27 @@ export async function seed(db: Db, env: Env): Promise<SeedSummary> {
 
       // The syllabus lesson list, plus the checkpoint that gates the next module
       // at 80% ("Checkpoints — gate module progression at 80%").
-      const titles = [...module.lessons, `${module.title} Checkpoint`];
+      // Converge on the catalogue rather than appending to it. Without this a
+      // lesson that was renamed or removed leaves a stale row behind, and the
+      // next seed collides with it on (module_id, position).
+      const wantedSlugs = module.lessons.map((l) => slugify(`${module.code} ${l.title}`));
+      await db
+        .delete(lessons)
+        .where(
+          and(
+            eq(lessons.moduleId, moduleId),
+            wantedSlugs.length > 0 ? notInArray(lessons.slug, wantedSlugs) : undefined,
+          ),
+        );
+
       const ids: number[] = [];
 
-      for (const [lessonIndex, title] of titles.entries()) {
-        const isCheckpoint = lessonIndex === titles.length - 1;
-        const shape = isCheckpoint
-          ? ({ kind: 'checkpoint', minutes: 15, xp: 40 } as const)
-          : lessonKindFor(title, lessonIndex === titles.length - 2);
+      for (const [lessonIndex, lesson] of module.lessons.entries()) {
+        const title = lesson.title;
+        // The catalogue already states the kind and the duration. Inferring
+        // them from the title, as this once did, disagreed with the lesson the
+        // learner actually opens.
+        const shape = { kind: lesson.kind, minutes: lesson.minutes, xp: xpFor(lesson.kind) } as const;
 
         const needsGrader = shape.kind === 'lab' || shape.kind === 'project';
         const slug = slugify(`${module.code} ${title}`);
@@ -294,7 +308,7 @@ export async function seed(db: Db, env: Env): Promise<SeedSummary> {
 
         await db
           .insert(lessonConcepts)
-          .values({ lessonId, conceptId, weight: isCheckpoint ? 1 : 0.6 })
+          .values({ lessonId, conceptId, weight: shape.kind === 'checkpoint' ? 1 : 0.6 })
           .onConflictDoNothing();
       }
 

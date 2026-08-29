@@ -1,0 +1,62 @@
+module: t1.m11
+cards:
+  - id: t1.m11.d1
+    front: "Name the four dominant error sources on a gate-model device."
+    back: "Relaxation, dephasing, control error including crosstalk, and readout error."
+    lesson: t1.m11.l1
+  - id: t1.m11.d2
+    front: "How does a coherent error grow with depth, and how does an incoherent one?"
+    back: "A coherent error adds as an amplitude, so the error probability grows roughly as depth squared. An incoherent one adds as a probability, so it grows roughly linearly."
+    lesson: t1.m11.l1
+  - id: t1.m11.d3
+    front: "A per-gate over-rotation of 0.05 radians gives what error probability after 1, 10 and 40 gates?"
+    back: "0.000625, 0.061209 and 0.708073, following sin squared of d times 0.05 over 2."
+    lesson: t1.m11.l1
+  - id: t1.m11.d4
+    front: "Define T1 operationally."
+    back: "Prepare |1>, wait a time t, measure. The excited-state population decays as exp(-t/T1), and T1 is that time constant."
+    lesson: t1.m11.l2
+  - id: t1.m11.d5
+    front: "With T1 = 100 microseconds, what fraction of |1> survives a wait of 50 and of 200 microseconds?"
+    back: "0.606531 and 0.135335. The half-life is T1 ln 2, about 69 microseconds."
+    lesson: t1.m11.l2
+  - id: t1.m11.d6
+    front: "Define T2 operationally."
+    back: "Run a Ramsey experiment: H, wait t while a phase accumulates, H, measure. The fringe amplitude decays as exp(-t/T2), and T2 is that time constant."
+    lesson: t1.m11.l2
+  - id: t1.m11.d7
+    front: "State the relation between T1, T2 and the pure-dephasing time, and the bound it implies."
+    back: "1/T2 = 1/(2 T1) + 1/T_phi, so T2 is at most 2 T1, with equality only when there is no pure dephasing at all."
+    lesson: t1.m11.l2
+  - id: t1.m11.d8
+    front: "Write the single-qubit depolarising channel and its Pauli form."
+    back: "D_p(rho) = (1-p) rho + p I/2, equivalently a random Pauli X, Y or Z applied with total probability q = 3p/4."
+    lesson: t1.m11.l3
+  - id: t1.m11.d9
+    front: "What is the fidelity with |0> after depolarising the pure state |0> with parameter p?"
+    back: "1 - p/2. At p = 0.1 that is 0.95, and at p = 1 it is 0.5, which is the floor for one qubit."
+    lesson: t1.m11.l3
+  - id: t1.m11.d10
+    front: "Give the readout confusion matrix and its determinant."
+    back: "A = [[1 - e0, e1], [e0, 1 - e1]], with determinant 1 - e0 - e1. Inverting A corrects the measured distribution."
+    lesson: t1.m11.l3
+  - id: t1.m11.d11
+    front: "Give the fidelity of a Bell pair under local depolarising noise of strength p on each qubit."
+    back: "F(p) = 1 - 3p/2 + 3p squared over 4. At p = 0.01, 0.05 and 0.1 it is 0.985075, 0.926875 and 0.857500."
+    lesson: t1.m11.l4
+  - id: t1.m11.d12
+    front: "What is the floor of Bell-pair fidelity at p = 1, and at what p does the pair stop being entangled?"
+    back: "The floor is 0.25, the overlap of I/4 with any pure state. The state becomes separable when F falls to 0.5, at p = 0.422650."
+    lesson: t1.m11.l4
+  - id: t1.m11.d13
+    front: "Estimate the success probability of a circuit from its gate error rates."
+    back: "The product over gates of (1 - e_i). Use separate rates for single- and two-qubit gates, since the two-qubit rate is typically about ten times larger."
+    lesson: t1.m11.l5
+  - id: t1.m11.d14
+    front: "At what depth of two-qubit gates does success fall to one half, for error rates 0.01 and 0.005?"
+    back: "About 68.97 and 138.28 gates. The rule of thumb is 0.693 divided by the error rate."
+    lesson: t1.m11.l5
+  - id: t1.m11.d15
+    front: "Why does cutting two-qubit gates beat cutting single-qubit gates?"
+    back: "The gain ratio is e2 over e1, typically ten. Removing 50 two-qubit gates from a 200 single plus 100 two-qubit circuit gains 0.156119 against 0.013879 for 50 single-qubit gates."
+    lesson: t1.m11.l5

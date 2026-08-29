@@ -1,0 +1,708 @@
+# Benchmark pattern 12: quantum random number generation. Every entropy figure,
+# extractor yield and bias number in this file was computed.
+
+questions:
+  - id: iq-111
+    title: Build the simplest QRNG and say what it guarantees
+    kind: coding
+    prompt: |
+      Write the smallest possible quantum random number generator, give the
+      exact output distribution, and tell me precisely what randomness property
+      it does and does not guarantee. Then scale it to n bits per shot.
+    difficulty: easy
+    pattern: Quantum random number generation
+    topics: [qrng, superposition, measurement, randomness]
+    companies: [IBM, IonQ, Quantinuum, Q-CTRL]
+    modelAnswer: |
+      One qubit, one Hadamard, one measurement.
+
+      ```python
+      import cirq
+
+      def qrng(n: int = 1) -> cirq.Circuit:
+          q = cirq.LineQubit.range(n)
+          return cirq.Circuit(cirq.H.on_each(*q), cirq.measure(*q, key='bits'))
+      ```
+
+      H|0> = (|0> + |1>)/sqrt(2) with amplitudes both exactly 0.707106781187,
+      so the Born rule gives probability exactly 0.5 for each outcome. I
+      verified this and the n-qubit version: with n Hadamards all 2^n outcomes
+      are equiprobable to machine precision, 0.0625 each at n = 4 and
+      0.00390625 each at n = 8. So one shot of an n-qubit circuit yields n
+      uniform bits, and the circuit is depth 1.
+
+      What it guarantees, on ideal hardware: the outcome is not determined by
+      any pre-existing property of the qubit. This is fundamentally different
+      from a classical pseudorandom generator, whose output is a deterministic
+      function of a seed, and different again from a classical physical source
+      such as thermal noise, whose unpredictability is epistemic rather than
+      fundamental.
+
+      What it does not guarantee, and this is the half that matters:
+
+      * Uniformity on real hardware. Any miscalibration of the Hadamard biases
+        the output. If the gate is Ry(pi/2 + eps) instead, the probability of 1
+        becomes sin((pi/2 + eps)/2)^2, which for eps = 0.01 is 0.504999917 and
+        for eps = 0.1 is 0.549916708. A 0.1 radian calibration error gives a
+        5 percent bias, which is trivially detectable by any statistical test
+        and catastrophic for cryptographic use.
+      * Independence across shots. Correlated readout error, qubit relaxation
+        that biases towards |0>, and drift over an experiment all introduce
+        correlations that a naive test on a short sample will miss.
+      * Any protection against an adversary who controls the device. If the
+        hardware is untrusted, the bits could be pre-programmed, and no amount
+        of statistical testing distinguishes that from real randomness.
+
+      The last point is why device-independent QRNG exists and why the honest
+      answer to "is this secure randomness" is: only if you trust the device, or
+      only if you certify it with a Bell test.
+    followUps:
+      - How would you detect a slow drift in the bias over a long run?
+      - What test would you run before shipping these bits to a cryptographic library?
+      - Why does readout error bias the output in a specific direction rather than symmetrically?
+    commonMistakes:
+      - Claiming the output is uniform because the theory says so, without measuring the actual device bias.
+      - Assuming successive shots are independent, when readout error and relaxation introduce correlations.
+      - Treating quantum origin as equivalent to cryptographic security, which requires trusting or certifying the device.
+    references:
+      - label: IBM Quantum Learning courses
+        url: https://quantum.cloud.ibm.com/learning/en/courses
+      - label: QWorld QBook101
+        url: https://qworld.net/qbook101/
+
+  - id: iq-112
+    title: Quantify the randomness with min-entropy, not Shannon entropy
+    kind: coding
+    prompt: |
+      Your QRNG produces bits with P(1) = 0.55. How much randomness is that?
+      Give both the Shannon entropy and the min-entropy, explain which one a
+      cryptographer cares about and why, and say how many raw bits you need per
+      output bit.
+    difficulty: easy
+    pattern: Quantum random number generation
+    topics: [min-entropy, entropy, randomness-extraction, cryptography]
+    companies: [IBM, Q-CTRL, IonQ, Quantinuum]
+    modelAnswer: |
+      Compute both, because the gap is the point.
+
+          p       H_Shannon        H_min
+          0.50    1.000000000      1.000000000
+          0.51    0.999711442      0.971430848
+          0.55    0.992774454      0.862496476
+          0.60    0.970950594      0.736965594
+          0.70    0.881290899      0.514573173
+          0.90    0.468995594      0.152003093
+
+      At p = 0.55 the Shannon entropy is 0.9928 bits and the min-entropy is
+      0.8625 bits. Shannon entropy makes the source look almost perfect;
+      min-entropy correctly says you have lost 14 percent of your randomness.
+
+      The definitions explain the gap. Shannon entropy is the average surprise,
+      and it is the right measure for compression: it tells you how many bits
+      you need on average to encode a long sequence. Min-entropy is
+      -log2(max_x P(x)), the surprise of the most likely outcome, and it bounds
+      the probability that an adversary guesses your string in one try. A
+      cryptographer cares about the best single guess, not the average, so
+      min-entropy is the only correct measure. Using Shannon entropy to size a
+      key is the classic way to build a generator that looks fine and is not.
+
+      The gap widens sharply with bias. At p = 0.9 the Shannon entropy is still
+      0.469 bits, which sounds like you get roughly one usable bit for every two
+      raw bits, while the min-entropy is 0.152, so you actually need about
+      seven raw bits per output bit. Sizing from Shannon entropy would
+      overestimate your entropy pool by a factor of three.
+
+      For the extraction ratio, the leftover hash lemma says a two-universal
+      hash function extracts approximately k*H_min minus 2*log2(1/epsilon) bits
+      from k raw bits, at statistical distance epsilon from uniform. So at
+      p = 0.55 and a security parameter of epsilon = 2^-100, extracting 1000
+      output bits needs at least (1000 + 200)/0.8625 = 1392 raw bits, and in
+      practice you would take a comfortable margin above that.
+
+      The operational rule: measure the bias, compute min-entropy from the
+      measured bias with a confidence interval, use the lower end of the
+      interval, and never assume the ideal value.
+    followUps:
+      - How would you estimate min-entropy with a confidence bound from a finite sample?
+      - What is a two-universal hash family, and why does it work as an extractor?
+      - What changes if the bias drifts over the sampling period?
+    commonMistakes:
+      - Using Shannon entropy to size an extractor, which overestimates available randomness by a factor of three at p = 0.9.
+      - Assuming the ideal min-entropy of 1 bit per sample rather than measuring the device bias.
+      - Ignoring the security parameter term in the leftover hash lemma, which costs a fixed 2*log2(1/epsilon) bits regardless of how much you extract.
+    references:
+      - label: NIST Post-Quantum Cryptography project
+        url: https://csrc.nist.gov/projects/post-quantum-cryptography
+      - label: Waterloo QIC 710 Quantum Information Processing
+        url: https://cleve.iqc.uwaterloo.ca/qic710/
+
+  - id: iq-113
+    title: Implement and cost the von Neumann extractor
+    kind: coding
+    prompt: |
+      Implement the von Neumann debiasing extractor, prove it produces uniform
+      bits from an independent biased source, and give the yield. Then tell me
+      why nobody uses it alone in production.
+    difficulty: medium
+    pattern: Quantum random number generation
+    topics: [von-neumann-extractor, debiasing, yield, post-processing]
+    companies: [IBM, IonQ, Q-CTRL, Infleqtion]
+    modelAnswer: |
+      Take raw bits in non-overlapping pairs. Output 0 for the pair 01, output
+      1 for the pair 10, and discard 00 and 11.
+
+      ```python
+      def von_neumann(bits):
+          out = []
+          for a, b in zip(bits[0::2], bits[1::2]):
+              if a != b:
+                  out.append(a)
+          return out
+      ```
+
+      Correctness: for independent bits with P(1) = p, the pair 01 has
+      probability (1-p)*p and the pair 10 has probability p*(1-p). These are
+      equal for every p, so conditioned on the pair being kept, the output is
+      uniform exactly, with no dependence on p at all. That is the whole
+      argument and it does not need p to be known.
+
+      Yield. A pair is kept with probability 2p(1-p), and each kept pair yields
+      one bit, so the output rate per input bit is p(1-p):
+
+          p = 0.50  ->  0.250000000 output bits per input bit
+          p = 0.55  ->  0.247500000
+          p = 0.60  ->  0.240000000
+          p = 0.70  ->  0.210000000
+          p = 0.90  ->  0.090000000
+
+      Note the striking fact at p = 0.5: the source already has min-entropy 1
+      bit per sample, and the extractor throws away three quarters of it. Von
+      Neumann is optimal in the sense of requiring no knowledge of p, and
+      badly suboptimal in the sense of rate.
+
+      Why nobody uses it alone:
+
+      * The rate is terrible, at best 0.25 against a theoretical maximum of 1.
+        Iterated and Peres extractors recover most of the gap by recycling the
+        discarded pairs, approaching the Shannon rate.
+      * It assumes the raw bits are independent and identically distributed.
+        Real hardware has drift, so p changes over the run, and it has
+        correlations from readout crosstalk and relaxation. Under correlation
+        the equality of P(01) and P(10) fails and the output is not uniform.
+        This is the failure that matters, because it is silent.
+      * It provides no security against an adversary with side information
+        about the source. Cryptographic extraction needs a seeded extractor with
+        a proof against side information, which is what the leftover hash lemma
+        provides.
+
+      The production design is: measure and continuously monitor the raw bias,
+      apply a health test that halts on drift, then feed the raw bits into a
+      seeded randomness extractor sized from a conservative min-entropy bound.
+      Von Neumann is a teaching example and a useful sanity check, not a
+      pipeline.
+    followUps:
+      - Describe the Peres extractor and how much of the discarded entropy it recovers.
+      - What health tests would you run continuously on the raw stream?
+      - How does the argument change if consecutive bits are correlated?
+    commonMistakes:
+      - Believing the extractor fixes correlated sources. Its correctness proof depends on independence, and correlation breaks it silently.
+      - Quoting the yield as 2p(1-p) rather than p(1-p), which double counts by forgetting that a pair consumes two input bits.
+      - Using it as the only post-processing step in a cryptographic generator, where a seeded extractor with a security proof is required.
+    references:
+      - label: NIST Post-Quantum Cryptography project
+        url: https://csrc.nist.gov/projects/post-quantum-cryptography
+      - label: QWorld QBook101
+        url: https://qworld.net/qbook101/
+
+  - id: iq-114
+    title: Detect a miscalibrated gate from the output statistics
+    kind: coding
+    prompt: |
+      Your QRNG uses a single Hadamard. Over 10 million shots you measure
+      P(1) = 0.5050. Is that a calibration problem or a statistical
+      fluctuation? Show the reasoning, and say what angle error would explain
+      it.
+    difficulty: medium
+    pattern: Quantum random number generation
+    topics: [calibration, statistics, hypothesis-testing, bias]
+    companies: [IBM, IonQ, Q-CTRL, Rigetti]
+    modelAnswer: |
+      It is a calibration problem, and it is not close.
+
+      The statistical argument first. Under the null hypothesis p = 0.5, the
+      standard error of the sample mean over N = 10^7 shots is
+      sqrt(0.25/10^7) = 0.000158. The observed deviation is 0.005, which is
+      31.6 standard errors. The probability of that under the null is smaller
+      than any number you would write down. So the bias is real.
+
+      A useful complementary bound: Hoeffding says detecting a bias of delta at
+      99 percent confidence needs about (1/(2*delta^2))*ln(2/0.01) samples. For
+      delta = 0.01 that is 26,492 samples and for delta = 0.001 it is 2,649,159.
+      At 10^7 shots you have resolution well below 0.001, so a 0.005 bias was
+      always going to be visible.
+
+      Now the physics. If the gate is Ry(pi/2 + eps) rather than an exact
+      Hadamard, then P(1) = sin((pi/2 + eps)/2)^2. Computed:
+
+          eps = 0.01  ->  P(1) = 0.504999917
+          eps = 0.05  ->  P(1) = 0.524989585
+          eps = 0.10  ->  P(1) = 0.549916708
+
+      So an over-rotation of eps = 0.01 radians reproduces the observed 0.5050
+      almost exactly. That is a 0.57 degree calibration error, which is entirely
+      plausible on a device that has drifted since its last calibration.
+
+      But do not stop at the gate. A second explanation produces the same
+      signature: asymmetric readout error. If P(read 1 | true 0) and
+      P(read 0 | true 1) differ, the measured distribution is biased even with a
+      perfect gate. Distinguish them with two experiments. Prepare |0> and
+      measure, then prepare |1> and measure: that gives the readout error matrix
+      directly and independently of the Hadamard. If the readout matrix is
+      symmetric, the bias is in the gate; if not, apply readout mitigation and
+      re-measure.
+
+      A third, often overlooked: T1 relaxation between the gate and the
+      measurement biases towards |0>, giving P(1) below 0.5, not above. Since
+      the observed bias is above 0.5, relaxation is not the explanation here,
+      and noticing the sign is the kind of detail that separates a real
+      diagnosis from a list of possibilities.
+
+      Consequence for the QRNG: at P(1) = 0.505 the min-entropy is 0.985644945
+      bits per sample rather than 1, so you need about 1.5 percent more raw bits
+      after extraction. Small, but you must account for it rather than assume
+      the ideal value.
+    followUps:
+      - Design the continuous health test that would catch this drift within minutes.
+      - How would you separate gate error from readout error in a single experiment?
+      - What would the signature of a slow drift look like versus a step change?
+    commonMistakes:
+      - Treating a 31 sigma deviation as possible noise. Compute the standard error before speculating.
+      - Blaming the gate without checking readout asymmetry, which produces an identical signature.
+      - Ignoring the sign of the bias, which immediately rules out relaxation as a cause.
+    references:
+      - label: Bravyi et al, Mitigating measurement errors in multi-qubit experiments
+        url: https://arxiv.org/abs/2006.14044
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+
+  - id: iq-115
+    title: Explain device-independent randomness and the Bell test
+    kind: coding
+    prompt: |
+      What does device-independent quantum random number generation mean, why
+      does it need a Bell inequality violation, and what would you actually
+      measure? Give the numbers that separate the classical and quantum cases.
+    difficulty: medium
+    pattern: Quantum random number generation
+    topics: [device-independent, chsh, bell-inequality, certification]
+    companies: [IBM, IonQ, Quantinuum, Infleqtion]
+    modelAnswer: |
+      Device independence means the randomness is certified without trusting
+      the internal workings of the device. You treat the box as a black box that
+      takes inputs and returns outputs, and you certify from the input-output
+      statistics alone that the outputs could not have been predetermined.
+
+      The certification tool is a Bell inequality. The CHSH quantity is
+      S = E(A0,B0) + E(A0,B1) + E(A1,B0) - E(A1,B1) where each E is the
+      correlation of two dichotomic measurements. Any local hidden variable
+      model, which includes any device whose outputs are a deterministic
+      function of internal state and inputs, satisfies |S| <= 2. Quantum
+      mechanics allows up to the Tsirelson bound 2*sqrt(2) = 2.828427125.
+
+      I computed the CHSH value for the singlet state with the optimal
+      measurement settings, A at 0 and pi/2, B at pi/4 and -pi/4, and got
+      exactly 2.828427125, matching the Tsirelson bound to machine precision.
+      That is the certificate: observing S above 2 proves the outputs are not
+      predetermined, and the amount by which S exceeds 2 lower bounds the
+      min-entropy of the outputs.
+
+      What you actually measure: two separated devices, random and independent
+      input choices, and enough rounds to establish S above 2 with statistical
+      confidence. The engineering is dominated by loopholes, and naming them is
+      the substance of the answer.
+
+      * Detection loophole. If detector efficiency is low, the observed
+        subensemble can violate CHSH while the full ensemble does not. Closing
+        it requires efficiency above a threshold, around 82.8 percent for CHSH
+        with maximally entangled states.
+      * Locality loophole. The measurement setting choice on one side must be
+        outside the light cone of the other side's measurement. This forces
+        physical separation and fast random setting generation.
+      * Freedom of choice. The setting choices must be independent of the hidden
+        variables, which in practice means generating them from a separate
+        source, and there is a regress here that cannot be fully closed.
+
+      The cost is the honest headline: device-independent generators produce
+      bits at rates many orders of magnitude below a trusted-device generator,
+      because each certified bit requires many Bell test rounds. The design
+      pattern in practice is to use a device-independent source to seed a
+      classical cryptographic generator, rather than to produce bulk randomness
+      directly.
+    followUps:
+      - How does the min-entropy bound depend on the observed CHSH value?
+      - What detection efficiency threshold does CHSH require, and how do non-maximally entangled states change it?
+      - Why can the freedom of choice loophole never be fully closed?
+    commonMistakes:
+      - Claiming a Bell violation proves randomness without addressing the detection and locality loopholes.
+      - Confusing device independence with the weaker semi-device-independent setting, where some assumptions about the device remain.
+      - Presenting device-independent generation as practical for bulk randomness. The rates are far too low.
+    references:
+      - label: Waterloo QIC 710 Quantum Information Processing
+        url: https://cleve.iqc.uwaterloo.ca/qic710/
+      - label: Microsoft Quantum Katas
+        url: https://github.com/microsoft/QuantumKatas
+
+  - id: iq-116
+    title: Design the health tests for a production QRNG
+    kind: coding
+    prompt: |
+      You are shipping a QRNG service. Design the continuous health tests, say
+      what each one catches, what the failure action is, and how you avoid
+      false alarms that halt the service unnecessarily.
+    difficulty: medium
+    pattern: Quantum random number generation
+    topics: [health-tests, monitoring, operations, randomness]
+    companies: [IBM, IonQ, Q-CTRL, Infleqtion]
+    modelAnswer: |
+      Health tests run on the raw stream before extraction, because after
+      extraction everything looks uniform even when the source has failed. That
+      is the single most important design decision here: testing the output of
+      a good extractor tells you nothing about the source.
+
+      The tests, with what each catches:
+
+      * Repetition count. Halt if the same bit repeats more than a cutoff C
+        consecutive times. For an ideal source the probability of a run of
+        length C is 2^-(C-1) per position, so C = 40 gives a false alarm rate
+        around 10^-12 per sample. Catches a stuck qubit or a stuck readout line,
+        which is the most common hard failure.
+      * Adaptive proportion. Over a window of W samples, halt if the count of
+        the most common value exceeds a cutoff derived from the assumed
+        min-entropy. At W = 1024 and an assumed min-entropy of 0.98 this catches
+        a sudden bias step within one window.
+      * Running bias estimate with a control chart. Track P(1) over a sliding
+        window and alarm on a sustained shift. At 10^7 samples the standard
+        error is 0.000158, so a shift of 0.005, which corresponds to a gate
+        over-rotation of about 0.01 radians and gives P(1) = 0.504999917, is a
+        31 sigma event and is unmissable. The point of the control chart is to
+        catch it in minutes rather than after the fact.
+      * Autocorrelation at small lags. Catches readout crosstalk and relaxation
+        effects that leave the marginal distribution unbiased but the sequence
+        correlated. This is the failure that a bias test cannot see and that
+        breaks the von Neumann extractor's correctness proof.
+      * Startup test. A longer battery run at boot before any bits are served,
+        since a device that fails at startup should never produce output at all.
+
+      Failure actions, graded rather than binary: alarm and continue with a
+      reduced min-entropy assumption for a mild bias shift, since the extractor
+      can be resized rather than halted; halt and refuse to serve for a
+      repetition failure or a hard autocorrelation failure, since those indicate
+      the source is not producing entropy at all; always drain and discard the
+      buffered raw pool on a halt, because bits collected during an undetected
+      failure are not trustworthy.
+
+      Avoiding false alarms: set cutoffs from an explicit false-alarm budget
+      rather than by intuition. Decide the acceptable rate, say one spurious
+      halt per year of continuous operation, translate that into a per-window
+      probability given the sampling rate, and derive the cutoffs from the
+      binomial tail. Then run the tests against a known-good source for long
+      enough to confirm the empirical false alarm rate matches the design. A
+      test whose false alarm rate has not been measured will either be disabled
+      by operators or ignored, which is worse than not having it.
+    followUps:
+      - How would you choose the repetition cutoff for a specific false alarm budget?
+      - Why must health tests run before extraction rather than after?
+      - What would you log so that a post-incident analysis can reconstruct what happened?
+    commonMistakes:
+      - Running statistical tests on the extractor output, which passes even when the source has completely failed.
+      - Setting cutoffs by intuition rather than from an explicit false alarm budget, producing tests that operators eventually disable.
+      - Testing only the marginal bias, missing correlations that break the extractor's independence assumption.
+    references:
+      - label: NIST Post-Quantum Cryptography project
+        url: https://csrc.nist.gov/projects/post-quantum-cryptography
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+
+  - id: iq-117
+    title: Compare a QRNG against a classical entropy source honestly
+    kind: coding
+    prompt: |
+      A customer asks whether they should replace their operating system's
+      entropy source with a QRNG. Give them a straight answer, including the
+      cases where the QRNG is not the better choice.
+    difficulty: hard
+    pattern: Quantum random number generation
+    topics: [threat-model, entropy-sources, engineering-tradeoffs, security]
+    companies: [IBM, IonQ, Q-CTRL, Multiverse Computing]
+    modelAnswer: |
+      For almost all customers, no, and the reasoning matters more than the
+      verdict.
+
+      What a modern operating system CSPRNG actually does: it gathers entropy
+      from hardware sources including CPU instructions such as RDRAND, interrupt
+      timing and device jitter, mixes it into a pool, and then expands it with a
+      cryptographically secure deterministic generator. Once you have 256 bits
+      of genuine entropy, a secure deterministic generator produces an unbounded
+      stream that no computationally bounded adversary can distinguish from
+      uniform. The security does not improve by adding more entropy after that
+      point.
+
+      That is the crux. Randomness is not a consumable that runs out. If the
+      seed is genuinely unpredictable, the stream is secure, and a QRNG improves
+      nothing about the stream. The QRNG addresses seeding, which is a problem
+      only in specific circumstances.
+
+      Where a QRNG genuinely helps:
+
+      * Boot-time entropy starvation on embedded and virtualised systems, where
+        there is no disk, no user input, and no reliable jitter, and the system
+        has generated keys from a nearly empty pool. This is a real and
+        documented failure class.
+      * Environments where the CPU entropy instruction is not trusted, either
+        because the threat model includes the CPU vendor or because it is
+        unavailable.
+      * High-assurance settings with a regulatory requirement for a physical
+        entropy source with a specific certification.
+      * Applications needing very high rates of certified fresh entropy, such as
+        some key distribution and gaming or lottery regulatory contexts.
+
+      Where it does not help, and may hurt:
+
+      * As a drop-in replacement for the CSPRNG output. You gain nothing and you
+        add a hardware dependency, a driver, and a new failure mode.
+      * If it is used without health tests and extraction. A biased quantum
+        source is worse than a well-seeded classical generator: at P(1) = 0.55
+        the min-entropy is 0.862496476 bits per sample rather than 1, and using
+        raw bits directly leaks that structure.
+      * If the device is untrusted. Quantum origin is not a security property by
+        itself; without device-independent certification you are trusting the
+        vendor exactly as you would trust a CPU vendor.
+
+      The recommendation to give: keep the operating system CSPRNG as the
+      interface applications use, and if entropy starvation is a real risk in
+      their deployment, add the QRNG as an additional seeding source feeding the
+      kernel entropy pool, with health tests and extraction in front of it.
+      That gets the benefit without replacing a well-understood component.
+    followUps:
+      - How would you feed a QRNG into a Linux entropy pool, and what interface would you use?
+      - What would change your recommendation to a full replacement?
+      - How does the argument differ for a hardware security module?
+    commonMistakes:
+      - Treating randomness as a consumable that depletes, which motivates replacing a perfectly secure CSPRNG.
+      - Presenting quantum origin as a security property independent of whether the device is trusted.
+      - Recommending raw QRNG output without extraction, which is measurably worse than a well-seeded classical generator.
+    references:
+      - label: NIST Post-Quantum Cryptography project
+        url: https://csrc.nist.gov/projects/post-quantum-cryptography
+      - label: Waterloo QIC 710 Quantum Information Processing
+        url: https://cleve.iqc.uwaterloo.ca/qic710/
+
+  - id: iq-118
+    title: Squeeze more bits per shot out of the same hardware
+    kind: coding
+    prompt: |
+      Your QRNG runs on a 20-qubit device with a fixed shot rate. Design the
+      circuit and post-processing that maximises certified random bits per
+      second, and quantify the improvement over one Hadamard on one qubit.
+    difficulty: hard
+    pattern: Quantum random number generation
+    topics: [throughput, parallelism, extraction, optimisation]
+    companies: [IBM, IonQ, Quantinuum, Infleqtion]
+    modelAnswer: |
+      Three multiplicative wins: parallelism, per-qubit calibration, and
+      extractor efficiency.
+
+      Parallelism. One Hadamard per qubit on all 20 qubits gives 20 raw bits per
+      shot instead of 1, at the same depth. I verified that n Hadamards produce
+      a uniform distribution over all 2^n outcomes exactly, with probability
+      0.00390625 per outcome at n = 8, so there is no theoretical cost to
+      parallelising. The practical cost is crosstalk during simultaneous
+      measurement, which introduces correlations, so this must be validated with
+      an autocorrelation test across qubits rather than assumed.
+
+      Per-qubit calibration and entropy accounting. Qubits differ in readout
+      fidelity and gate calibration, so their min-entropies differ. Measure
+      P(1) per qubit, compute min-entropy per qubit, and sum rather than
+      assuming 20 bits. If the qubits have measured biases of 0.500, 0.505 and
+      0.550, the min-entropies are 1.000000000, 0.985644945 and 0.862496476, so
+      the honest total is the sum of the individual values. Dropping the worst
+      qubits can increase the total certified entropy if their bias is severe
+      enough that the extractor loses more than the qubit contributes; that is a
+      calculation, not a judgement call.
+
+      Extractor efficiency. Von Neumann yields at most 0.25 output bits per raw
+      bit, computed exactly as p(1-p) which peaks at 0.25 for p = 0.5. A seeded
+      two-universal hash extractor yields close to the full min-entropy minus
+      the security parameter overhead: for 20 qubits at an average min-entropy
+      of 0.98, one shot has 19.6 bits of min-entropy and an extractor at
+      epsilon = 2^-100 returns 19.6*k - 200 bits from k shots, so the overhead
+      amortises to nothing over many shots. That is a factor of four over von
+      Neumann.
+
+      Combined improvement over a single Hadamard on one qubit with von Neumann
+      post-processing: 20x from parallelism times roughly 4x from the extractor,
+      so about 80x, before accounting for bias. That is the number to quote, and
+      it makes clear that the extractor choice is as important as the qubit
+      count.
+
+      What not to do. Do not add circuit depth to "make it more random". The
+      output of one Hadamard is already exactly uniform, and any additional
+      gates can only introduce bias through their own errors. Depth 1 is
+      optimal, and a deeper circuit is strictly worse on every axis including
+      throughput.
+
+      The remaining bottleneck is usually not the circuit at all but the shot
+      rate, which is dominated by measurement and reset time and by classical
+      communication overhead per job. Batching many shots per job submission is
+      typically the largest practical throughput win on a cloud-accessed device.
+    followUps:
+      - How would you decide whether to drop a badly biased qubit from the pool?
+      - What autocorrelation tests would you run across qubits rather than across shots?
+      - Where would you expect the shot rate bottleneck to be on a specific device?
+    commonMistakes:
+      - Adding circuit depth in the belief that a more complex circuit produces better randomness. Depth 1 is already exactly uniform.
+      - Assuming 20 qubits gives 20 bits of min-entropy without measuring per-qubit bias.
+      - Ignoring measurement crosstalk, which correlates simultaneously measured qubits and invalidates the independence assumption.
+    references:
+      - label: IBM Quantum documentation
+        url: https://docs.quantum.ibm.com/
+      - label: IonQ documentation
+        url: https://docs.ionq.com/
+
+  - id: iq-119
+    title: Reason about randomness in a simulator versus on hardware
+    kind: coding
+    prompt: |
+      A learner runs the QRNG circuit on a simulator and asks whether the bits
+      are really random. Answer them, and explain what a seeded simulator does
+      and why that is the right design.
+    difficulty: hard
+    pattern: Quantum random number generation
+    topics: [simulation, pseudorandomness, reproducibility, pedagogy]
+    companies: [IBM, Classiq, AWS Braket, Microsoft Azure Quantum]
+    modelAnswer: |
+      No. Simulator bits are pseudorandom, and that is deliberate.
+
+      A statevector simulator computes the exact amplitudes and then samples
+      from the resulting distribution using a classical pseudorandom generator.
+      For the single-Hadamard circuit the amplitudes are both exactly
+      0.707106781187 and the distribution is exactly uniform, so the sampling is
+      a fair coin flip drawn from a deterministic stream. Given the seed, every
+      bit is predictable.
+
+      That is the right design for three reasons. Reproducibility: a learner who
+      gets a wrong answer must be able to reproduce it, and a grader must be
+      able to reproduce a submission's behaviour exactly. Debuggability: a
+      failure that occurs one time in a thousand is only tractable if you can
+      replay the exact stream. And testability: assertions on sampled results
+      would be flaky without a fixed seed, and flaky tests get deleted.
+
+      What to tell the learner about the difference. On hardware the outcome is
+      not determined by anything in the device's prior state; the Born rule
+      gives probabilities and nothing determines which outcome occurs. On a
+      simulator the outcome is a deterministic function of the seed. Those are
+      different in kind, not in degree, and no statistical test distinguishes
+      them, which is itself the interesting lesson: passing every randomness
+      test is not evidence of quantum origin.
+
+      A good exercise that makes this concrete: run the circuit twice with the
+      same seed and observe identical bitstrings, then run it on hardware twice
+      and observe different ones. Then run the same statistical battery on both
+      and observe that both pass. The conclusion the learner should draw is that
+      randomness quality and randomness origin are separate properties, and only
+      the first is testable from the output.
+
+      One practical note for platform design: exact statevector probabilities
+      should be used for grading rather than sampled counts. Grading a QRNG
+      exercise by measuring whether the sampled bias is near 0.5 introduces
+      statistical flakiness with no pedagogical benefit, since the simulator
+      already knows the distribution is exactly uniform. Assert on the
+      distribution, not on a sample from it.
+    followUps:
+      - How would you design a lesson that makes the origin distinction land without hand waving?
+      - What should a platform do if a learner deliberately hard codes a random-looking string?
+      - How would you seed a simulator so that parallel workers do not produce correlated streams?
+    commonMistakes:
+      - Telling learners that simulator randomness is equivalent to quantum randomness, which erases the distinction the exercise exists to teach.
+      - Grading sampling exercises on sampled statistics rather than exact distributions, introducing flakiness for no benefit.
+      - Using the same seed across parallel workers, which produces correlated streams that look fine per worker and are wrong in aggregate.
+    references:
+      - label: Qiskit Aer documentation
+        url: https://qiskit.github.io/qiskit-aer/
+      - label: Quantum Computing for the Very Curious
+        url: https://quantum.country/qcvc
+
+  - id: iq-120
+    title: Certify the entropy of a QRNG service end to end
+    kind: coding
+    prompt: |
+      Write the entropy accounting for a QRNG service from raw measurement to
+      delivered bits. Every step that loses entropy must be named with a
+      number, and the delivered guarantee must be stated precisely.
+    difficulty: hard
+    pattern: Quantum random number generation
+    topics: [entropy-accounting, certification, extraction, service-design]
+    companies: [IBM, IonQ, Q-CTRL, Infleqtion]
+    modelAnswer: |
+      Account in min-entropy per raw sample, never in Shannon entropy, and take
+      a lower confidence bound at every measured step.
+
+      Step 1, raw source. Measure P(1) per qubit over a large sample and
+      compute H_min = -log2(max(p, 1-p)) with a confidence interval. Worked
+      values: p = 0.500 gives 1.000000000, p = 0.505 gives 0.985644945,
+      p = 0.550 gives 0.862496476. Use the lower end of the interval, not the
+      point estimate. At 10^7 samples the standard error on p is 0.000158, so
+      the interval is tight and the loss from using its lower end is negligible;
+      at 10^5 samples it is not, and the accounting must say which regime you
+      are in.
+
+      Step 2, correlations. Independence across qubits and across shots is an
+      assumption, and if the autocorrelation test shows any structure, the
+      correct response is to reduce the assumed min-entropy of the block rather
+      than to ignore it. A block of 20 qubits with measured pairwise
+      correlations should be assigned the min-entropy of the joint distribution
+      estimated over the block, which is at most the sum of the individual
+      values and is usually less.
+
+      Step 3, health tests. These do not lose entropy; they gate whether the
+      block is used at all. Record every halt and discard the buffered pool on a
+      halt, because bits collected during an undetected failure carry no
+      guarantee.
+
+      Step 4, extraction. A two-universal hash extractor delivers approximately
+      k*H_min minus 2*log2(1/epsilon) bits at statistical distance epsilon from
+      uniform. At epsilon = 2^-100 that is a fixed 200-bit overhead per
+      extraction call, which amortises to nothing over large blocks and
+      dominates for small ones, so extract in large blocks. The seed for the
+      extractor must be independent of the source and can be reused across
+      calls, which is what makes seeded extraction practical.
+
+      Step 5, delivery. State the guarantee precisely: the delivered bits are
+      within statistical distance epsilon of uniform, conditioned on the source
+      having min-entropy at least the assumed value per sample, conditioned on
+      the independence assumptions holding, and conditioned on trusting the
+      device. Every one of those conditions is an assumption you are making, and
+      an honest service statement lists them rather than saying "quantum
+      random".
+
+      Worked total: 20 qubits, measured min-entropy averaging 0.98 per qubit,
+      gives 19.6 bits per shot. At 10,000 shots per extraction block that is
+      196,000 bits of min-entropy, minus 200 for the security parameter, so
+      195,800 delivered bits per block, an extraction efficiency of 99.9
+      percent. Compare against von Neumann on the same raw stream, which would
+      deliver at most 0.25 bits per raw bit, so 50,000 bits, a factor of nearly
+      four worse. The accounting is what shows that the extractor choice, not
+      the qubit count, is where the entropy goes.
+    followUps:
+      - How would you estimate the joint min-entropy of a correlated 20-qubit block?
+      - What does the guarantee become if the device is untrusted?
+      - How would you handle a source whose bias drifts within an extraction block?
+    commonMistakes:
+      - Accounting in Shannon entropy, which overstates the delivered randomness.
+      - Using the point estimate of the bias rather than a lower confidence bound.
+      - Stating the delivered guarantee without listing the assumptions it is conditional on, particularly device trust and independence.
+    references:
+      - label: NIST Post-Quantum Cryptography project
+        url: https://csrc.nist.gov/projects/post-quantum-cryptography
+      - label: Waterloo QIC 710 Quantum Information Processing
+        url: https://cleve.iqc.uwaterloo.ca/qic710/

@@ -115,6 +115,25 @@ Second, the reported numbers are not exactly $0.5$, because 4096 samples of a
 fair coin do not land exactly even. The deferred circuit reports exactly $0.5$
 because it never sampled anything.
 
+## The same proof for a general controlled operation
+
+Nothing about the argument used the fact that the gate was $X$. Suppose the
+classical version measures qubit 0 and applies some unitary $U$ to a register
+$R$ when the outcome is 1, and let the pre-measurement state be
+$(c_0\ket{0} + c_1\ket{1})\ket{\chi}$ with $\ket{\chi}$ the state of $R$.
+
+Measuring first gives outcome $a$ with probability $|c_a|^2$ and leaves $R$ in
+$U^a\ket{\chi}$. Deferring instead applies the coherent controlled-$U$, giving
+
+$$
+c_0 \ket{0}\ket{\chi} + c_1 \ket{1} U\ket{\chi},
+$$
+
+and then measuring qubit 0 returns $a$ with probability $|c_a|^2$ and leaves $R$
+in $U^a\ket{\chi}$. The two lines are the same statement, which is the proof.
+What changed is only when the branch was collapsed, and a branch nobody has looked
+at yet is indistinguishable from one that was chosen and hidden.
+
 ## What deferring costs
 
 The principle says the distributions match. It does not say the two circuits are

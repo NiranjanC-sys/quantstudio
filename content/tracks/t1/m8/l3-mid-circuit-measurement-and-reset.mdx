@@ -137,6 +137,25 @@ decoherence. Reuse pays off when the alternative is not running at all. It is a
 loss when you had the qubits anyway.
 </Callout>
 
+## Where reuse actually shows up
+
+Three patterns in the rest of the curriculum depend on this lesson, and it is
+worth naming them now so the technique does not look like a toy.
+
+**Syndrome extraction.** Every error-correcting code in T4 measures ancilla
+qubits repeatedly, round after round, and resets them between rounds. A surface
+code that allocated a fresh ancilla per round would need a new qubit every
+microsecond forever.
+
+**Repeat until success.** Some gate constructions are probabilistic: they apply
+the intended operation when a measured flag comes out 0, and a known recoverable
+error otherwise. The circuit measures the flag, resets the ancilla, and tries
+again. Without reset the ancilla count would grow with the number of attempts.
+
+**Qubit-count reduction in simulation.** A circuit that measures a register and
+never uses it again can free those wires for the next stage. On a device with 5
+usable qubits this is the difference between running and not running.
+
 ## The latency you are actually paying
 
 Gate times and measurement times are not the same order of magnitude. On

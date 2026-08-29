@@ -1,0 +1,686 @@
+# Benchmark pattern 14: resource counting. Every gate count, T count, qubit
+# budget and runtime figure in this file was computed or taken from a named
+# published estimate.
+
+questions:
+  - id: iq-131
+    title: Count the gates in an n-qubit QFT
+    kind: coding
+    prompt: |
+      Give the exact gate count for the textbook quantum Fourier transform on
+      n qubits, broken down by gate type, and instantiate it at n = 3, 10 and
+      100. Then verify your n = 3 circuit against the discrete Fourier
+      transform matrix under the qubit-0-most-significant convention.
+    difficulty: easy
+    pattern: Resource counting and estimation
+    topics: [qft, gate-counting, circuit-synthesis, verification]
+    companies: [IBM, Microsoft Azure Quantum, Quantinuum, Classiq]
+    modelAnswer: |
+      The textbook QFT applies, for each qubit j from 0 to n-1, one Hadamard
+      followed by controlled phase rotations from every later qubit k, with
+      angle pi/2^(k-j). Then a bit-reversal permutation of floor(n/2) SWAPs.
+
+          Hadamards:            n
+          controlled phases:    n(n-1)/2
+          SWAPs:                floor(n/2)
+
+      Instantiated:
+
+          n = 3:    3 H,     3 CP,   1 SWAP    total 6 gates plus the SWAP
+          n = 10:  10 H,    45 CP,   5 SWAP    total 55 gates plus the SWAPs
+          n = 100: 100 H, 4950 CP,  50 SWAP    total 5050 gates plus the SWAPs
+
+      So the QFT is O(n^2) gates, quadratic in the register size, and the
+      controlled phases dominate completely past small n.
+
+      Verification at n = 3. I built the circuit and compared it against the
+      explicit DFT matrix with entries exp(2 pi i j k / 8)/sqrt(8), under the
+      convention that qubit 0 is the most significant bit, and the two agree to
+      machine precision. The two-qubit gate count of the built circuit is 4:
+      three controlled phases and one SWAP.
+
+      Two points worth making unprompted.
+
+      The SWAP layer exists only because the textbook circuit produces the
+      output in reversed bit order. It is almost always free in practice,
+      because you can either relabel the qubits in software or absorb the
+      reversal into the surrounding circuit's qubit mapping. Reporting it as a
+      cost without saying that is misleading.
+
+      On a CNOT-native device each controlled phase becomes 2 CNOTs, so the
+      real two-qubit count is n(n-1) CNOTs plus 3*floor(n/2) for the SWAPs.
+      At n = 10 that is 90 CNOTs plus 15, and at n = 100 it is 9900 plus 150,
+      which is far beyond current coherence. That number, not the gate count, is
+      what determines whether a QFT runs.
+    followUps:
+      - How does routing on a line coupling map change the count?
+      - Why does the bit-reversal SWAP layer usually cost nothing in practice?
+      - What is the depth of the QFT, as opposed to the gate count?
+    commonMistakes:
+      - Counting n^2 controlled phases rather than n(n-1)/2, doubling the estimate.
+      - Reporting gate count without converting controlled phases into the device's native two-qubit gate, which is what actually limits the circuit.
+      - Treating the bit-reversal SWAPs as unavoidable, when relabelling is free.
+    references:
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+      - label: Cirq documentation
+        url: https://quantumai.google/cirq
+
+  - id: iq-132
+    title: Truncate the QFT and quantify what you lose
+    kind: coding
+    prompt: |
+      The small rotation angles in a QFT are below the gate fidelity of any
+      real device. Truncate them, measure the resulting error, and give me the
+      gate count and error at each truncation level for n = 6.
+    difficulty: easy
+    pattern: Resource counting and estimation
+    topics: [approximate-qft, truncation, error-analysis, gate-counting]
+    companies: [IBM, Quantinuum, Rigetti, Classiq]
+    modelAnswer: |
+      Keep only controlled phases between qubits within m-1 positions of each
+      other and drop the rest. I built the truncated circuits at n = 6 and
+      measured the spectral norm distance from the exact QFT:
+
+          levels kept   CP gates   spectral error
+          0             0          1.999606e+00
+          1             5          1.999579e+00
+          2             9          1.481902e+00
+          3             12         4.859604e-01
+          4             14         9.813535e-02
+          5             15         0.000000e+00
+
+      The exact circuit has n(n-1)/2 = 15 controlled phases. Keeping 4 levels
+      uses 14 of them and gives spectral error 0.098; keeping 3 uses 12 and
+      gives 0.486. The error falls roughly by a factor of five per additional
+      level, which reflects the geometric decay of the dropped angles.
+
+      The asymptotic result is that keeping O(log n) levels suffices for the
+      approximate QFT to have error bounded by a constant, so the gate count
+      drops from O(n^2) to O(n log n). For a phase estimation application the
+      relevant question is not the operator norm but whether the peak of the
+      output distribution moves, and phase estimation is considerably more
+      tolerant than the operator norm suggests, which is why the approximate QFT
+      is used essentially universally.
+
+      At n = 6 the saving is modest because n is small: 14 gates against 15. The
+      saving is dramatic at scale. At n = 100 the exact count is 4950 and
+      keeping 10 levels leaves exactly 945 controlled phases, a factor of five
+      reduction, and at n = 1000 the factor is far larger.
+
+      The engineering argument that closes the case: a rotation of angle
+      pi/2^10 is about 0.003 radians. On hardware with 0.1 percent two-qubit
+      error, executing that gate injects more error than the rotation
+      contributes signal. So beyond some level the truncated circuit is not
+      merely cheaper, it is more accurate than the exact one. That crossover,
+      not the asymptotic bound, is what should set the truncation level, and it
+      is device specific.
+    followUps:
+      - How would you find the crossover level for a specific device error rate?
+      - Why is phase estimation more tolerant of truncation than the operator norm suggests?
+      - What is the analogous truncation for the inverse QFT?
+    commonMistakes:
+      - Choosing the truncation level from the asymptotic O(log n) result rather than from the device error rate, which is the binding constraint.
+      - Assuming the exact circuit is always more accurate on hardware. Past the crossover it is not.
+      - Measuring truncation error in the Frobenius norm and comparing against published spectral norm bounds.
+    references:
+      - label: Nielsen and Chuang, Quantum Computation and Quantum Information
+        url: https://www.cambridge.org/highereducation/books/quantum-computation-and-quantum-information/01E10196D0A682A6AEFFEA52D53BE9AE
+      - label: IBM Quantum transpilation guide
+        url: https://docs.quantum.ibm.com/guides/transpile
+
+  - id: iq-133
+    title: Count T gates for a multi-controlled operation
+    kind: coding
+    prompt: |
+      Give the T count and CNOT count for a k-controlled X gate, with and
+      without ancillas. Instantiate at k = 2, 3, 5 and 20, and say why T count
+      is the number that matters in a fault-tolerant setting.
+    difficulty: medium
+    pattern: Resource counting and estimation
+    topics: [t-count, multi-controlled-gates, fault-tolerance, ancillas]
+    companies: [IBM, PsiQuantum, Microsoft Azure Quantum, Quantinuum]
+    modelAnswer: |
+      Start from the Toffoli, which is the k = 2 case. The standard ancilla-free
+      decomposition uses 6 CNOTs and 7 T gates with T-depth 3. I verified that
+      circuit against CCX directly: the unitaries match to machine precision and
+      the counts are exactly 6 and 7.
+
+      With k-1 clean ancillas, a k-controlled X is a ladder of Toffolis that
+      computes the AND of the controls forward and uncomputes it afterwards,
+      using 2(k-1) Toffolis:
+
+          k = 2:   1 Toffoli,   6 CNOT,   7 T,   0 ancillas
+          k = 3:   4 Toffolis, 24 CNOT,  28 T,   2 ancillas
+          k = 5:   8 Toffolis, 48 CNOT,  56 T,   4 ancillas
+          k = 20: 38 Toffolis, 228 CNOT, 266 T, 19 ancillas
+
+      Without ancillas the Barenco construction is quadratic in k rather than
+      linear, so it wins only when spare qubits genuinely do not exist. With
+      dirty ancillas, meaning qubits in arbitrary unknown states that must be
+      returned unchanged, you get the linear count back at roughly double the
+      constant, which is usually the right trade on a crowded device.
+
+      Why T count is the number that matters. Under the surface code, Clifford
+      gates are implemented transversally or by lattice surgery and are
+      comparatively cheap. Non-Clifford gates are not, and the standard route is
+      magic state distillation: you prepare noisy magic states, distil them
+      through a circuit that consumes many to produce one better one, and inject
+      the result. A distillation factory occupies a large block of physical
+      qubits and takes many surface code cycles per output state. In published
+      fault-tolerant resource estimates, magic state distillation dominates both
+      the physical qubit count and the runtime.
+
+      So in the NISQ setting you count two-qubit gates, because two-qubit error
+      dominates. In the fault-tolerant setting you count T gates, because
+      distillation dominates. Quoting one when the question is about the other
+      is the mistake being probed. For the k = 20 case above, 266 T gates means
+      266 distilled magic states, and at realistic distillation costs that is
+      the dominant term in both space and time, while the 228 CNOTs are close to
+      free.
+
+      One refinement worth naming: the relative-phase Toffoli of Maslov achieves
+      the same computation up to a phase that cancels in compute-uncompute
+      pairs, at 4 T gates rather than 7, which is a substantial saving in
+      exactly the ladder structure above where every Toffoli is later
+      uncomputed.
+    followUps:
+      - How does the relative-phase Toffoli save T gates in a compute-uncompute pair?
+      - What is a dirty ancilla, and what does it cost relative to a clean one?
+      - Roughly how many physical qubits does a magic state factory occupy?
+    commonMistakes:
+      - Reporting CNOT count as the resource in a fault-tolerant estimate, where Clifford gates are comparatively cheap and T gates dominate.
+      - Quoting a Toffoli T count without naming the decomposition, since constructions trade T count against T depth and ancillas.
+      - Assuming the ancilla-free construction is always worse. It is quadratic in k but needs no spare qubits, which sometimes decides it.
+    references:
+      - label: Amy, Maslov and Mosca, Polynomial-time T-depth Optimization of Clifford+T circuits via Matroid Partitioning
+        url: https://arxiv.org/abs/1303.2042
+      - label: Barenco et al, Elementary gates for quantum computation
+        url: https://arxiv.org/abs/quant-ph/9503016
+
+  - id: iq-134
+    title: Estimate the T count for an arbitrary rotation
+    kind: coding
+    prompt: |
+      A fault-tolerant machine has no continuous rotations, only Clifford and
+      T. How many T gates does it take to approximate Rz(theta) to accuracy
+      epsilon? Give the scaling, the constant, and numbers at three accuracy
+      targets.
+    difficulty: medium
+    pattern: Resource counting and estimation
+    topics: [gate-synthesis, solovay-kitaev, t-count, approximation]
+    companies: [IBM, PsiQuantum, Microsoft Azure Quantum, Quantinuum]
+    modelAnswer: |
+      Two answers, and the difference between them is a large practical factor.
+
+      The Solovay-Kitaev theorem guarantees an approximation using
+      O(log^c(1/epsilon)) gates with c somewhere near 4 for the standard
+      constructive proof. It is a general theorem for any universal gate set and
+      it gives a terrible constant. Evaluating log2(1/epsilon)^3.97:
+
+          epsilon = 1e-3   ->  about 9.2e3
+          epsilon = 1e-6   ->  about 1.4e5
+          epsilon = 1e-10  ->  about 1.1e6
+
+      The Ross-Selinger algorithm, specific to Clifford+T single-qubit z
+      rotations, achieves T count approximately 3*log2(1/epsilon) plus a small
+      constant, and is optimal up to that constant:
+
+          epsilon = 1e-3   ->  about 30 T gates
+          epsilon = 1e-6   ->  about 60
+          epsilon = 1e-10  ->  about 100
+
+      Two to four orders of magnitude better. The lesson to state is that
+      Solovay-Kitaev is the theorem that says synthesis is possible, and it is
+      not the algorithm anyone uses. Quoting the Solovay-Kitaev count as the
+      cost of a rotation in a fault-tolerant estimate inflates it enormously.
+
+      Now the consequence for algorithm design. A single Rz costs tens of T
+      gates, so a circuit with many arbitrary rotations is expensive in exactly
+      the currency that fault tolerance charges. This changes design decisions:
+
+      * The approximate QFT wins twice over. Dropping small rotations removes
+        gates, and each surviving rotation still costs tens of T gates, so the
+        saving compounds.
+      * Algorithms expressible with Clifford plus Toffoli, such as reversible
+        arithmetic, are relatively cheap: a Toffoli is 7 T gates flat,
+        independent of any accuracy parameter. This is why Shor's modular
+        arithmetic, which is all Toffoli, is cheaper per operation than its
+        phase rotations.
+      * Rotations that appear many times with the same angle should be
+        synthesised once and reused, and rotations by angles that happen to be
+        Clifford or T should be recognised rather than synthesised.
+
+      One important subtlety. If a circuit uses R rotations each synthesised to
+      accuracy epsilon, the total error is at most R*epsilon by the triangle
+      inequality, so to hit total error delta you need epsilon = delta/R, and
+      the per-rotation T count grows as 3*log2(R/delta). The dependence on R is
+      logarithmic, so it costs little, but omitting it underestimates the budget
+      and it is the first thing a careful reviewer checks.
+    followUps:
+      - How does the total T count scale for a circuit with R rotations at total error delta?
+      - Why is a Toffoli's T count independent of an accuracy parameter?
+      - What angles can be implemented exactly in Clifford+T with no approximation?
+    commonMistakes:
+      - Quoting Solovay-Kitaev counts in a resource estimate, which overstates the cost by orders of magnitude against Ross-Selinger.
+      - Using a fixed per-rotation epsilon without dividing by the number of rotations to hit a total error target.
+      - Treating all gates as equal cost in a fault-tolerant setting, where a Clifford is nearly free and a rotation costs tens of T gates.
+    references:
+      - label: Dawson and Nielsen, The Solovay-Kitaev algorithm
+        url: https://arxiv.org/abs/quant-ph/0505030
+      - label: Amy, Maslov and Mosca, Polynomial-time T-depth Optimization of Clifford+T circuits via Matroid Partitioning
+        url: https://arxiv.org/abs/1303.2042
+
+  - id: iq-135
+    title: Convert logical qubits into physical qubits
+    kind: coding
+    prompt: |
+      An algorithm needs 100 logical qubits. How many physical qubits is that?
+      Walk me through what the answer depends on, give numbers at several code
+      distances, and say what else you need to know before answering.
+    difficulty: medium
+    pattern: Resource counting and estimation
+    topics: [surface-code, code-distance, overhead, fault-tolerance]
+    companies: [IBM, PsiQuantum, Google Quantum AI, Microsoft Azure Quantum]
+    modelAnswer: |
+      There is no single number, and the right answer starts by saying what it
+      depends on.
+
+      For the rotated surface code, one logical qubit at distance d uses d^2
+      data qubits and d^2 - 1 measurement ancillas, so 2d^2 - 1 physical qubits
+      per patch:
+
+          d = 3   ->  17 physical qubits per logical qubit    1,700 for 100
+          d = 5   ->  49                                       4,900
+          d = 7   ->  97                                       9,700
+          d = 11  ->  241                                     24,100
+          d = 15  ->  449                                     44,900
+
+      So the answer for 100 logical qubits ranges from about 1,700 to about
+      45,000 depending on d alone, a factor of 26.
+
+      What sets d. The logical error rate per round falls roughly as
+      (p/p_th)^((d+1)/2) where p is the physical error rate and p_th the
+      threshold, near 1 percent for the surface code under circuit-level noise.
+      You choose d so that the total logical error over the whole computation is
+      acceptable, which means you need to know the number of logical operations,
+      not just the number of qubits. An algorithm with 10^6 logical operations
+      needs a per-operation logical error below 10^-7 or so, and that determines
+      d given p.
+
+      So before answering I need three things: the physical error rate, the
+      total number of logical operations, and the target success probability.
+      Without those, any number is arbitrary.
+
+      What the patch count omits, and this is usually the larger term. Magic
+      state distillation factories are not counted above and typically dominate.
+      Routing space between patches for lattice surgery is not counted. Neither
+      is the classical decoding hardware, which must keep up with the syndrome
+      rate in real time or the whole scheme fails.
+
+      The anchor point to cite: Gidney and Ekera estimate about 20 million
+      physical qubits to factor RSA-2048 in about 8 hours, where the logical
+      requirement is 4099 qubits. That ratio, roughly 5000 physical per logical,
+      is far above 2d^2 - 1 at any plausible distance, and the gap is exactly
+      distillation and routing. Quoting 2d^2 - 1 as the overhead is the standard
+      way to underestimate a fault-tolerant machine by an order of magnitude.
+    followUps:
+      - How would you compute d from a physical error rate and an operation count?
+      - Why does magic state distillation dominate the physical qubit budget?
+      - What decoding throughput does a distance 15 patch require?
+    commonMistakes:
+      - Giving a single overhead number without asking for the error rate and the operation count.
+      - Using 2d^2 - 1 as the total overhead, which omits distillation and routing and understates the real figure by roughly an order of magnitude.
+      - Forgetting the classical decoder, whose throughput requirement is a hard constraint on the whole architecture.
+    references:
+      - label: "Fowler et al, 'Surface codes: Towards practical large-scale quantum computation'"
+        url: https://arxiv.org/abs/1208.0928
+      - label: Gidney and Ekera, How to factor 2048 bit RSA integers in 8 hours using 20 million noisy qubits
+        url: https://arxiv.org/abs/1905.09749
+
+  - id: iq-136
+    title: Estimate whether Grover breaks a symmetric cipher
+    kind: coding
+    prompt: |
+      Grover gives a quadratic speedup for brute-force key search. Work out
+      what that means for a 128-bit key concretely: iterations, wall clock at a
+      plausible oracle rate, and the security level that remains.
+    difficulty: medium
+    pattern: Resource counting and estimation
+    topics: [grover, cryptography, resource-estimation, security-levels]
+    companies: [IBM, Microsoft Azure Quantum, PsiQuantum, Quantinuum]
+    modelAnswer: |
+      For a 128-bit key the search space is N = 2^128 and the optimal Grover
+      iteration count is (pi/4)*sqrt(N):
+
+          (pi/4) * 2^64 = 1.4488e19 = 2^63.651 iterations
+
+      So Grover reduces the effective security from 128 bits to about 64 bits of
+      quantum work. That is the headline and it is correct as far as it goes.
+
+      Now make it concrete. At one oracle evaluation per nanosecond, which is
+      wildly optimistic for a fault-tolerant machine where each logical
+      operation takes many surface code cycles, 1.4488e19 iterations take
+      1.4488e10 seconds, which is about 460 years of continuous sequential
+      operation. And the oracle here is a full AES circuit evaluated
+      reversibly, which is thousands of logical gates, not a single operation,
+      so the real figure is orders of magnitude worse still.
+
+      The three reasons this is much less alarming than the bit count suggests:
+
+      1. Grover does not parallelise well. Splitting the search across M
+         machines gives a speedup of only sqrt(M), not M, because each machine
+         searches a subspace of size N/M and takes sqrt(N/M) iterations. Doubling
+         your hardware buys a factor of 1.41. Classical brute force parallelises
+         linearly, so the quantum advantage erodes as you add machines.
+      2. The oracle must be a reversible circuit for the entire cipher, and it
+         runs 2^64 times, all under error correction. Every one of those
+         evaluations consumes magic states.
+      3. Sequential depth is the killer. Those 2^63.651 iterations are strictly
+         sequential, so the computation cannot be shortened by adding qubits,
+         and it must maintain coherence, meaning error correction, for its entire
+         duration.
+
+      The practical guidance: 128-bit symmetric keys are considered to retain
+      roughly 64 bits of security against a quantum adversary, and the standard
+      recommendation is to move to 256-bit keys, which retain 128 bits, at
+      essentially no cost. Contrast this with public key cryptography, where
+      Shor gives an exponential speedup and the algorithms must be replaced
+      entirely rather than have their parameters doubled. That contrast, a
+      parameter change for symmetric and a replacement for asymmetric, is the
+      substance of the answer.
+    followUps:
+      - Derive the sqrt(M) parallelisation result.
+      - How many logical gates does a reversible AES-128 oracle need, roughly?
+      - Why does the same argument not rescue RSA from Shor?
+    commonMistakes:
+      - Reporting 2^64 as the wall clock cost without noting that each iteration is a full reversible cipher evaluation under error correction.
+      - Assuming Grover parallelises linearly, which would make the attack far more feasible than it is.
+      - Treating the symmetric and asymmetric cases as the same problem. One needs a parameter change, the other a replacement.
+    references:
+      - label: Grover, A fast quantum mechanical algorithm for database search
+        url: https://arxiv.org/abs/quant-ph/9605043
+      - label: NIST Post-Quantum Cryptography project
+        url: https://csrc.nist.gov/projects/post-quantum-cryptography
+
+  - id: iq-137
+    title: Build a resource estimate for a chemistry workload
+    kind: coding
+    prompt: |
+      A chemistry team wants ground state energy of a molecule with 100 spin
+      orbitals to chemical accuracy. Build the resource estimate: qubits,
+      Hamiltonian terms, measurement cost for VQE, and the fault-tolerant
+      alternative.
+    difficulty: hard
+    pattern: Resource counting and estimation
+    topics: [chemistry, vqe, resource-estimation, measurement-cost]
+    companies: [IBM, PsiQuantum, Google Quantum AI, Multiverse Computing]
+    modelAnswer: |
+      Layer the estimate and be explicit about which layer dominates.
+
+      Qubits. One per spin orbital under Jordan-Wigner, so 100, reduced by two
+      to four by tapering off Z2 symmetries such as particle number and spin.
+      Call it 96 to 98. This is the easy layer and it is not the constraint.
+
+      Hamiltonian terms. The electronic structure Hamiltonian has O(N^4) terms
+      in the number of spin orbitals, so N = 100 gives on the order of 10^8
+      terms before truncation, and around 10^6 to 10^7 after discarding small
+      coefficients. This is the layer that dominates everything downstream and
+      it is the number people omit.
+
+      Measurement cost for VQE. Each energy evaluation estimates the expectation
+      of every term. Chemical accuracy is 1.6 millihartree. For a single Pauli
+      term measured with S shots the standard error is at most 1/sqrt(S), so
+      reaching 1.6e-3 accuracy on a sum of L terms with coefficients c_i needs
+      roughly (sum |c_i|)^2 / epsilon^2 shots in total under an optimal
+      allocation. With sum |c_i| of order 10^3 hartree for a molecule this size
+      and epsilon = 1.6e-3, that is around 4e11 shots per energy evaluation. An
+      optimiser needing hundreds of evaluations multiplies that again.
+
+      That number is why VQE at 100 orbitals is not a near-term workload, and
+      quoting it is the point of the exercise. Grouping commuting terms reduces
+      the constant by one to two orders of magnitude, and classical shadows or
+      other randomised measurement schemes help further, but not by the eight
+      orders of magnitude that would be needed.
+
+      The fault-tolerant alternative. Quantum phase estimation with a
+      qubitisation-based block encoding gives the energy to accuracy epsilon
+      with a query complexity that is additive in the evolution time and
+      logarithmic in 1/epsilon, rather than the inverse-square shot scaling of
+      VQE. That is the decisive structural difference: VQE pays epsilon^-2 and
+      QPE pays log(1/epsilon). The cost is a fault-tolerant machine with
+      distillation factories, ancillas for the block encoding, and the qubit
+      overheads from the surface code analysis, which put it far beyond current
+      hardware.
+
+      The conclusion to deliver: at 100 spin orbitals neither approach runs
+      today, and the reason is different in each case. VQE is blocked by
+      measurement cost, which is a shot-count problem that no amount of qubit
+      count fixes. QPE is blocked by fault tolerance, which is a hardware
+      problem. Any roadmap that does not say which of the two it is attacking is
+      not a roadmap.
+    followUps:
+      - How much does commuting-family grouping actually reduce the shot count?
+      - What do classical shadows buy here, and what do they cost?
+      - Why does the epsilon^-2 versus log(1/epsilon) difference matter so much at chemical accuracy?
+    commonMistakes:
+      - Reporting the qubit count as the headline resource for chemistry, when the term count and the shot count dominate.
+      - Omitting the inverse-square dependence of VQE shot count on accuracy, which is what makes chemical accuracy expensive.
+      - Comparing VQE and QPE on qubit count alone, hiding the structural difference in accuracy scaling.
+    references:
+      - label: Kandala et al, Hardware-efficient Variational Quantum Eigensolver for Small Molecules and Quantum Magnets
+        url: https://arxiv.org/abs/1704.05018
+      - label: Low and Chuang, Hamiltonian Simulation by Qubitization
+        url: https://arxiv.org/abs/1610.06546
+
+  - id: iq-138
+    title: Decide what to count for a given audience
+    kind: coding
+    prompt: |
+      You have to report resource estimates to three audiences: a hardware
+      team, an algorithms team and an executive. Say what you report to each
+      and why the metrics differ, using a concrete algorithm.
+    difficulty: hard
+    pattern: Resource counting and estimation
+    topics: [communication, metrics, resource-estimation, engineering-judgement]
+    companies: [IBM, PsiQuantum, Multiverse Computing, Terra Quantum]
+    modelAnswer: |
+      Take the QFT on 100 qubits as the running example, since the numbers are
+      concrete: 100 Hadamards, 4950 controlled phases, 50 SWAPs, becoming
+      roughly 9900 CNOTs plus 150 on a CNOT-native device.
+
+      To the hardware team, report what constrains the device. Two-qubit gate
+      count and circuit depth after routing on their actual coupling map, since
+      routing on a line can multiply the two-qubit count several fold. The
+      required two-qubit fidelity to reach a target success probability: at 9900
+      CNOTs, a success probability of 0.5 needs per-gate fidelity above
+      0.9999300, which is far beyond current devices and is the single most useful
+      sentence in the report. Idle time per qubit, which drives dephasing.
+      Measurement and reset time if the circuit uses them. These are actionable
+      because they map onto things the hardware team can improve.
+
+      To the algorithms team, report what they can change. Gate counts by type,
+      T count if fault tolerance is in scope, ancilla count, and the sensitivity
+      of each to algorithmic choices. Here the useful finding is that truncating
+      the QFT to 10 levels cuts the controlled phase count from 4950 to
+      exactly 945, and I measured the accuracy cost directly at n = 6: keeping 4
+      of 5 levels gives spectral error 0.098 with 14 gates instead of 15. That
+      is a lever they control. Also report the depth and the critical path,
+      since that is what parallelisation can attack.
+
+      To the executive, report the decision, the confidence and the dependency.
+      Not gate counts. Something like: this workload needs two-qubit fidelity
+      about two orders of magnitude better than we have, it is therefore not a
+      candidate for the next 18 months, and the leading indicator to watch is
+      the published two-qubit fidelity on devices of this size. Give a range
+      rather than a point estimate and name the assumption that dominates the
+      uncertainty. If asked for a date, explain that the uncertainty is in
+      hardware roadmaps rather than in the algorithm, and offer the leading
+      indicator instead.
+
+      The general principle: report the quantity that the audience can act on,
+      at the confidence you actually have. A gate count given to an executive is
+      noise; a date given to anyone is a guess dressed as an estimate. And in
+      all three reports, state the assumptions explicitly, because a resource
+      estimate without its assumptions is not reproducible and will be quoted
+      back at you without them.
+    followUps:
+      - How would you express uncertainty in a resource estimate without being useless?
+      - What leading indicators would you actually track for this workload?
+      - How do you handle an executive who insists on a date?
+    commonMistakes:
+      - Giving the same gate-count table to all three audiences, which is actionable for none of them except the algorithms team.
+      - Reporting a point estimate without the assumptions that determine it.
+      - Offering a calendar date when the uncertainty lies in hardware roadmaps rather than in anything you can estimate.
+    references:
+      - label: Preskill, Quantum Computing in the NISQ era and beyond
+        url: https://arxiv.org/abs/1801.00862
+      - label: "Tomesh et al, SupermarQ: A Scalable Quantum Benchmark Suite"
+        url: https://arxiv.org/abs/2202.11045
+
+  - id: iq-139
+    title: Detect an unrealistic resource estimate
+    kind: coding
+    prompt: |
+      You are reviewing a paper claiming a useful quantum advantage on
+      near-term hardware. What do you check, in what order, and what specific
+      numbers would make you reject the claim?
+    difficulty: hard
+    pattern: Resource counting and estimation
+    topics: [peer-review, scepticism, resource-estimation, benchmarking]
+    companies: [IBM, Google Quantum AI, PsiQuantum, Multiverse Computing]
+    modelAnswer: |
+      Check in this order, because each check is cheaper than the next and any
+      one of them can end the review.
+
+      1. Is there a tuned classical baseline? Not a straw man, not a default
+         parameter run, a genuinely optimised classical method with comparable
+         engineering effort. Most claims fail here. If the classical baseline is
+         a single sentence in the paper, that is the answer.
+      2. Two-qubit gate count against device fidelity. Compute the naive circuit
+         fidelity as (1 - p)^g. At 1 percent two-qubit error, 100 gates gives
+         0.366, 300 gives 0.049, and 500 gives 0.0066. If the claimed circuit
+         has more than a few hundred two-qubit gates on a device with percent
+         level error and the paper reports clean results, something is
+         unexplained and must be accounted for, usually by mitigation whose shot
+         cost then needs checking.
+      3. Shot budget. Multiply circuits by shots by the mitigation overhead. Zero
+         noise extrapolation with three scale factors multiplies variance by 19.
+         A kernel matrix at m = 1000 needs 499,500 circuit pairs. If the total
+         shot count exceeds what the stated device time could deliver, the
+         numbers do not add up and the paper should say how it resolved that.
+      4. Is the quantum computation classically simulable? Check the qubit
+         count against 30, the gate set against Clifford, and the entanglement
+         structure against a bounded bond dimension. A 20-qubit statevector is
+         16 MiB, so a 20-qubit demonstration is reproducible on a laptop and the
+         hardware is not doing anything a laptop cannot.
+      5. Was the problem instance chosen or compiled using knowledge of the
+         answer? The classic case is factoring 15, where knowing the order lets
+         you compile away nearly the whole circuit. Ask whether the circuit
+         would work on an instance the authors did not already know the answer
+         to.
+      6. Extrapolation. If advantage is claimed to arrive at larger sizes, check
+         the scaling of both the quantum and the classical side. Quantum
+         resource estimates that assume error rates two orders of magnitude
+         better than today, while holding the classical baseline fixed at
+         today's algorithms, are comparing a future quantum machine against a
+         past classical one.
+
+      Specific numbers that would make me reject: a circuit with more than a few
+      hundred two-qubit gates on percent-error hardware reported without a noise
+      analysis; a shot count exceeding the stated device hours; a demonstration
+      at 20 qubits or fewer described as beyond classical reach; a comparison
+      against an untuned baseline; or an advantage claim that depends on
+      extrapolating hardware improvement while freezing classical progress.
+
+      What would persuade me: a clearly stated problem with a well-defined
+      classical difficulty, a tuned classical baseline with published code,
+      device time and shot counts that add up, and an ablation showing the
+      quantum computation is not classically simulable.
+    followUps:
+      - How would you assess whether a classical baseline is genuinely tuned?
+      - What ablation would demonstrate the quantum computation was necessary?
+      - How do you review a claim about a future fault-tolerant machine?
+    commonMistakes:
+      - Accepting a qubit count as evidence of difficulty, when 20 qubits is a 16 MiB statevector.
+      - Reviewing the quantum side carefully and the classical baseline not at all.
+      - Comparing projected quantum performance against present-day classical algorithms.
+    references:
+      - label: Aaronson and Chen, Complexity-Theoretic Foundations of Quantum Supremacy Experiments
+        url: https://arxiv.org/abs/1612.05903
+      - label: Preskill, Quantum Computing in the NISQ era and beyond
+        url: https://arxiv.org/abs/1801.00862
+
+  - id: iq-140
+    title: Build an automated resource counter into a compiler
+    kind: coding
+    prompt: |
+      Design the resource counting pass for a quantum compiler. What does it
+      report, at which stage of compilation, and how do you keep the numbers
+      honest as the circuit is rewritten?
+    difficulty: hard
+    pattern: Resource counting and estimation
+    topics: [compiler-passes, tooling, metrics, regression-testing]
+    companies: [IBM, Classiq, Quantinuum, Q-CTRL]
+    modelAnswer: |
+      Count at every stage, not once, because the numbers change by large
+      factors and the interesting information is in the deltas.
+
+      Stages and what to report at each:
+
+      * Source. Logical gate counts by type, qubit count, ancilla count, and
+        circuit depth. This is what the algorithm author controls.
+      * After high-level optimisation. The same, so the author can see what the
+        optimiser found. Report the delta, not just the new totals.
+      * After basis translation. Native gate counts. This is where a controlled
+        phase becomes 2 CNOTs and a Toffoli becomes 6 CNOTs and 7 T gates, and
+        the totals typically jump by a large factor. I verified those two counts
+        directly against the reference unitaries.
+      * After routing. Two-qubit gate count and depth on the real coupling map,
+        plus the SWAP count added by routing and the final qubit permutation.
+        Routing is often the largest single multiplier, and reporting the SWAP
+        count separately makes it visible.
+      * After scheduling. Wall clock estimate from per-gate durations, idle time
+        per qubit, and the critical path.
+      * Fault-tolerant projection, if requested. T count, T depth, magic state
+        count, and logical qubit count, plus a physical qubit estimate at a
+        stated code distance using 2d^2 - 1 per patch, with an explicit note that
+        this excludes distillation and routing space.
+
+      Keeping the numbers honest as the circuit is rewritten:
+
+      * Attach the counts to a content hash of the circuit at each stage, so a
+        stale count cannot be reported for a changed circuit.
+      * Assert invariants that must hold across a rewrite: qubit count never
+        decreases without an explicit ancilla release, and the unitary is
+        preserved up to global phase, which for large circuits means the
+        Clifford-restricted equivalence check rather than a full comparison.
+      * Store every stage's counts in the build artefact and diff them against
+        the previous run in CI. A pass that reduces gate count on one benchmark
+        and doubles it on another is a common regression and it is invisible
+        without per-benchmark tracking.
+      * Fail the build on a regression above a threshold, with a documented
+        allowance for deliberate trades, for example a pass that increases gate
+        count to reduce depth.
+      * Report a fidelity projection alongside the counts, computed from the
+        device calibration as the product of per-gate fidelities. A count of
+        9900 CNOTs means nothing to most readers, while a projected success
+        probability of 0.37 at 0.99 per-gate fidelity over 100 gates means
+        something immediately.
+
+      The design principle: counts are only useful in comparison, so the pass
+      should be built around diffs and thresholds rather than around printing
+      absolute numbers that nobody has a reference point for.
+    followUps:
+      - What threshold would you set for failing a build on a gate count regression?
+      - How would you handle a pass that legitimately trades gate count for depth?
+      - How do you estimate wall clock without a full scheduler?
+    commonMistakes:
+      - Counting only at the source level, before basis translation and routing multiply the totals by large factors.
+      - Reporting absolute counts with no baseline, which nobody can act on.
+      - Letting counts go stale by not binding them to the circuit content hash they were computed from.
+    references:
+      - label: IBM Quantum transpilation guide
+        url: https://docs.quantum.ibm.com/guides/transpile
+      - label: pytket documentation
+        url: https://docs.quantinuum.com/tket/

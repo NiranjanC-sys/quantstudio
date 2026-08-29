@@ -1,0 +1,62 @@
+module: t1.m10
+cards:
+  - id: t1.m10.d1
+    front: "What question does Deutsch's algorithm answer, and in how many queries?"
+    back: "Whether a one-bit function is constant or balanced, in exactly one query. Classically two are needed."
+    lesson: t1.m10.l1
+  - id: t1.m10.d2
+    front: "Which single bit does Deutsch's algorithm return?"
+    back: "f(0) XOR f(1). Outcome 0 means constant and outcome 1 means balanced. It never reveals f(0) itself."
+    lesson: t1.m10.l1
+  - id: t1.m10.d3
+    front: "How are the four one-bit oracles built as circuits?"
+    back: "f = 0 is nothing, f = 1 is X on the ancilla, f(x) = x is a CNOT, and f(x) = 1 - x is a CNOT followed by X."
+    lesson: t1.m10.l1
+  - id: t1.m10.d4
+    front: "Why is the classical query bound for Deutsch's problem exactly 2?"
+    back: "After one query both a constant and a balanced function remain consistent with the answer, so no single query decides. Two always suffice."
+    lesson: t1.m10.l1
+  - id: t1.m10.d5
+    front: "State the Deutsch-Jozsa promise."
+    back: "The function on n bits is either constant on all 2 to the n inputs, or balanced, taking each value on exactly half of them. No other function is allowed."
+    lesson: t1.m10.l2
+  - id: t1.m10.d6
+    front: "Give the amplitude of the all-zeros outcome in Deutsch-Jozsa."
+    back: "One over 2 to the n, times the sum over x of (-1) to the f(x). It is plus or minus 1 for constant f and exactly 0 for balanced f."
+    lesson: t1.m10.l2
+  - id: t1.m10.d7
+    front: "What is the exact worst-case classical query complexity of Deutsch-Jozsa?"
+    back: "2 to the (n-1), plus 1. For n = 3 that is 5, for n = 10 it is 513."
+    lesson: t1.m10.l2
+  - id: t1.m10.d8
+    front: "Does the Deutsch-Jozsa separation survive if the classical algorithm is allowed to be randomised?"
+    back: "No. A handful of random queries answers correctly with high probability; 21 queries give a failure probability of 2 to the -20."
+    lesson: t1.m10.l2
+  - id: t1.m10.d9
+    front: "What promise does Bernstein-Vazirani make about the oracle?"
+    back: "That f(x) = s dot x modulo 2 for a hidden string s. Every such f is constant when s is zero and balanced otherwise."
+    lesson: t1.m10.l3
+  - id: t1.m10.d10
+    front: "What state does the Bernstein-Vazirani circuit leave the query register in?"
+    back: "Exactly the basis state |s>, with amplitude 1. There is no error probability and no repetition."
+    lesson: t1.m10.l3
+  - id: t1.m10.d11
+    front: "Why does Bernstein-Vazirani need exactly n classical queries?"
+    back: "Each classical query returns one bit, and s has n bits, so at least n are needed. Querying the n standard basis vectors achieves it."
+    lesson: t1.m10.l3
+  - id: t1.m10.d12
+    front: "State Simon's promise."
+    back: "f is two-to-one with f(x) = f(y) exactly when y = x or y = x XOR s, for a hidden non-zero s."
+    lesson: t1.m10.l4
+  - id: t1.m10.d13
+    front: "What does a single run of Simon's algorithm give you?"
+    back: "A uniformly random string z from the subspace of vectors satisfying z dot s = 0, which is one linear constraint on s."
+    lesson: t1.m10.l4
+  - id: t1.m10.d14
+    front: "How many runs of Simon's algorithm do you need, and what is the classical post-processing?"
+    back: "About n runs, until the collected vectors reach rank n - 1, then Gaussian elimination over GF(2). At exactly n - 1 runs the chance of spanning is only about 0.2888."
+    lesson: t1.m10.l4
+  - id: t1.m10.d15
+    front: "What is the classical query lower bound for Simon's problem, and why does it matter?"
+    back: "Omega of 2 to the n/2, even for randomised algorithms. It is the first exponential separation in this track that randomisation does not erase."
+    lesson: t1.m10.l4

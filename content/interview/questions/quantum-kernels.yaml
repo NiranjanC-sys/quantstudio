@@ -1,0 +1,721 @@
+# Benchmark pattern 13: quantum kernels in classical machine learning. Every
+# kernel matrix entry, eigenvalue and shot-noise figure was computed.
+
+questions:
+  - id: iq-121
+    title: Define the quantum kernel and compute one by hand
+    kind: coding
+    prompt: |
+      Define the quantum kernel induced by a feature map circuit, write the
+      circuit that estimates one entry on hardware, and compute a small kernel
+      matrix explicitly. State the properties the matrix must have.
+    difficulty: easy
+    pattern: Quantum kernels in classical machine learning
+    topics: [quantum-kernels, feature-map, fidelity, kernel-matrix]
+    companies: [IBM, Xanadu, Multiverse Computing, Terra Quantum]
+    modelAnswer: |
+      A feature map is a data-dependent circuit U(x) taking |0...0> to a state
+      |phi(x)>. The induced kernel is the squared overlap
+
+          K(x, y) = |<phi(x)|phi(y)>|^2
+
+      which is a valid positive semidefinite kernel because it is an inner
+      product of density matrices, K(x, y) = Tr(rho(x) rho(y)) for pure states.
+
+      On hardware you estimate it with the compute-uncompute circuit: apply
+      U(x), then U(y)^dagger, then measure all qubits and take the fraction of
+      shots returning the all-zero string. That fraction is exactly
+      |<0|U(y)^dagger U(x)|0>|^2 = K(x, y).
+
+      I built a two-qubit ZZ feature map with two repetitions and computed the
+      kernel matrix for four points, where the first two points are identical:
+
+          x0 = (0.1, 0.2)
+          x1 = (0.1, 0.2)
+          x2 = (0.9, 1.4)
+          x3 = (2.5, 0.3)
+
+          K = [[1.000000000, 1.000000000, 0.133204000, 0.055280140],
+               [1.000000000, 1.000000000, 0.133204000, 0.055280140],
+               [0.133204000, 0.133204000, 1.000000000, 0.444367530],
+               [0.055280140, 0.055280140, 0.444367530, 1.000000000]]
+
+      The properties to check, all of which I verified numerically:
+
+      * The diagonal is exactly 1, since K(x, x) = |<phi(x)|phi(x)>|^2 = 1 for a
+        normalised state. A diagonal entry other than 1 means a bug.
+      * The matrix is symmetric, since the overlap magnitude is symmetric.
+      * The matrix is positive semidefinite. Its eigenvalues here are
+        0.000000000, 0.551322630, 1.387087040 and 2.061590330, so the minimum
+        is zero and none is negative. The zero eigenvalue is expected because
+        two rows are identical.
+      * Every entry lies in [0, 1], since it is a squared overlap.
+
+      The exact zero eigenvalue from duplicated points is worth noting: a
+      quantum kernel matrix estimated from finite shots will show a small
+      negative eigenvalue there instead, and that is the first place shot noise
+      becomes visible.
+    followUps:
+      - What is the swap test alternative to compute-uncompute, and when would you prefer it?
+      - How do you handle a kernel matrix that comes back with negative eigenvalues from shot noise?
+      - Which classical models can consume a precomputed kernel matrix directly?
+    commonMistakes:
+      - Defining the kernel as the overlap rather than its squared magnitude, which is not real and not a valid kernel.
+      - Forgetting to invert the second feature map circuit, which computes an unrelated quantity.
+      - Assuming the estimated matrix will be positive semidefinite. Finite shots routinely produce small negative eigenvalues.
+    references:
+      - label: Havlicek et al, Supervised learning with quantum enhanced feature spaces
+        url: https://arxiv.org/abs/1804.11326
+      - label: Schuld and Killoran, Quantum machine learning in feature Hilbert spaces
+        url: https://arxiv.org/abs/1803.07128
+
+  - id: iq-122
+    title: Cost the kernel matrix for a real dataset
+    kind: coding
+    prompt: |
+      You want to train a support vector machine with a quantum kernel on 1000
+      training samples. Work out the number of circuits and shots, and tell me
+      whether this is feasible on a cloud device.
+    difficulty: easy
+    pattern: Quantum kernels in classical machine learning
+    topics: [scaling, shot-budget, kernel-methods, feasibility]
+    companies: [IBM, Xanadu, Multiverse Computing, AWS Braket]
+    modelAnswer: |
+      The kernel matrix is m by m and symmetric with a known diagonal, so you
+      need m(m-1)/2 distinct entries.
+
+          m = 100   ->  4,950 circuit pairs
+          m = 1000  ->  499,500 circuit pairs
+
+      At 1000 shots per entry that is 4,950,000 shots for m = 100 and
+      499,500,000 shots for m = 1000.
+
+      Is 1000 shots enough per entry? The estimator is a binomial proportion, so
+      the standard error is sqrt(K(1-K)/S). At a kernel value of 0.3:
+
+          S = 100    ->  standard error 0.045826
+          S = 1,000  ->  0.014491
+          S = 10,000 ->  0.004583
+
+      So 1000 shots gives roughly 0.014 accuracy per entry. Whether that
+      suffices depends on the conditioning of the kernel matrix; a matrix with
+      small eigenvalues amplifies entry-level noise into large changes in the
+      learned model, and the near-zero eigenvalue produced by near-duplicate
+      samples is exactly where that bites.
+
+      Feasibility. At a typical cloud throughput of a few thousand shots per
+      second including queueing and job overhead, 499 million shots is on the
+      order of days to weeks of exclusive device time, plus 499,500 separate
+      circuit submissions unless the provider supports batching. It is not
+      feasible for m = 1000 today. For m = 100 it is 5 million shots, which is
+      hours, and that is the realistic scale for a research demonstration.
+
+      The scaling is the real problem: the shot count grows as m^2 while a
+      classical kernel evaluation is essentially free, so the quantum kernel
+      method inherits the quadratic training cost of kernel methods and adds a
+      large constant. Three mitigations worth naming: subsample to a
+      representative set and use Nystrom approximation to reconstruct the full
+      matrix from m by r evaluations with r much smaller than m; batch many
+      circuit pairs into a single job to amortise submission overhead; and
+      allocate shots non-uniformly, spending more on entries that the
+      optimisation is sensitive to.
+
+      The honest summary for an interview: quantum kernels are a well-defined
+      method with a clear estimation procedure and a quadratic sampling cost
+      that currently limits demonstrations to hundreds of samples.
+    followUps:
+      - How does the Nystrom approximation change the circuit count?
+      - How would you allocate a fixed shot budget non-uniformly across entries?
+      - What test set size do you need for the accuracy claim to be meaningful?
+    commonMistakes:
+      - Counting m^2 entries rather than m(m-1)/2, doubling the estimated cost.
+      - Choosing shots per entry without relating it to the conditioning of the kernel matrix.
+      - Ignoring job submission overhead, which for half a million separate circuits dominates the shot time on a cloud service.
+    references:
+      - label: Havlicek et al, Supervised learning with quantum enhanced feature spaces
+        url: https://arxiv.org/abs/1804.11326
+      - label: AWS Braket developer guide
+        url: https://docs.aws.amazon.com/braket/
+
+  - id: iq-123
+    title: Choose a feature map and justify it
+    kind: coding
+    prompt: |
+      Design the feature map for a classification problem with four continuous
+      features. Say what determines the number of qubits, the entangling
+      structure and the repetitions, and explain why a more expressive feature
+      map is not automatically better.
+    difficulty: medium
+    pattern: Quantum kernels in classical machine learning
+    topics: [feature-map, expressivity, generalisation, design]
+    companies: [IBM, Xanadu, Multiverse Computing, Classiq]
+    modelAnswer: |
+      Start from the standard structure: a layer of Hadamards, a layer of
+      single-qubit phase rotations encoding each feature, then a layer of
+      two-qubit entangling phases encoding pairwise products, repeated some
+      number of times. With four features the natural choice is four qubits,
+      one per feature, and pairwise entangling terms.
+
+      What determines each choice:
+
+      * Qubit count. One per feature is the default. Fewer qubits with multiple
+        features per qubit is possible via repeated rotations on the same qubit,
+        and it trades circuit width for depth. More qubits than features gains
+        nothing unless you are encoding derived features.
+      * Entangling structure. Full pairwise entanglement gives a kernel
+        sensitive to all feature interactions, at a cost of n(n-1)/2 two-qubit
+        blocks per repetition. A linear chain gives only neighbouring
+        interactions but is far cheaper and maps directly onto hardware
+        connectivity. Choose the structure to match the interactions you believe
+        exist in the data, and if you do not know, treat it as a
+        hyperparameter.
+      * Repetitions. More repetitions produce a more oscillatory kernel. Two is
+        the common default.
+
+      Why more expressive is not better, and this is the substance of the
+      question. As the feature map becomes more expressive, the states
+      |phi(x)> for different x become closer to orthogonal, so the off-diagonal
+      kernel entries approach zero and the kernel matrix approaches the
+      identity. A kernel matrix close to the identity means every training point
+      is its own island: the model memorises the training set and generalises to
+      nothing. This is the kernel-method version of the barren plateau problem
+      and it has the same root, namely that Haar-random states in a large
+      Hilbert space are nearly orthogonal.
+
+      You can see it in the numbers. For the two-qubit ZZ map with two
+      repetitions on my four test points, the off-diagonal entries are
+      0.133204000 and 0.055280140 between distinct points and 0.444367530
+      between the closest pair. Those are healthy values: they are well away
+      from both 0 and 1. If a feature map produces off-diagonals of 0.001 across
+      the board, it is too expressive for the data, and the fix is fewer
+      repetitions, weaker entanglement, or rescaling the input features to a
+      narrower range.
+
+      So the design rule: choose the feature map so the kernel matrix has
+      structure, verify by looking at the eigenvalue spectrum, and treat
+      expressivity as something to tune down rather than up.
+    followUps:
+      - How would you diagnose a kernel matrix that has become effectively the identity?
+      - What does feature rescaling do to the kernel, and how would you choose the scale?
+      - How does the choice interact with the number of shots you can afford?
+    commonMistakes:
+      - Increasing repetitions or entanglement to make the model more powerful, which drives the kernel matrix towards the identity and destroys generalisation.
+      - Failing to rescale input features, so the encoding angles wrap around and unrelated inputs map to the same state.
+      - Choosing full entanglement without checking whether the coupling map supports it, producing a large routing overhead.
+    references:
+      - label: Schuld and Killoran, Quantum machine learning in feature Hilbert spaces
+        url: https://arxiv.org/abs/1803.07128
+      - label: McClean et al, Barren plateaus in quantum neural network training landscapes
+        url: https://arxiv.org/abs/1803.11173
+
+  - id: iq-124
+    title: Repair a kernel matrix that is not positive semidefinite
+    kind: coding
+    prompt: |
+      Your estimated kernel matrix has small negative eigenvalues and the SVM
+      solver refuses it. Explain why this happens, and give me the repair
+      options with their trade-offs.
+    difficulty: medium
+    pattern: Quantum kernels in classical machine learning
+    topics: [positive-semidefinite, shot-noise, numerical-repair, svm]
+    companies: [IBM, Multiverse Computing, Xanadu, Terra Quantum]
+    modelAnswer: |
+      The exact kernel is positive semidefinite by construction, since
+      K(x, y) = Tr(rho(x) rho(y)) is a Gram matrix. The estimated kernel is not,
+      because each entry is an independent binomial estimate and independent
+      perturbations of a Gram matrix do not preserve positive semidefiniteness.
+
+      The magnitude tells you whether it is noise or a bug. At 1000 shots the
+      standard error per entry is 0.014491 at a kernel value of 0.3, so
+      eigenvalue perturbations of that order are expected. On my exact
+      four-point example the eigenvalues are 0.000000000, 0.551322630,
+      1.387087040 and 2.061590330; the exact zero comes from two identical
+      sample points, and that is precisely the eigenvalue that shot noise will
+      push negative. If instead you see a negative eigenvalue of magnitude 0.3
+      when the standard error is 0.014, that is not shot noise, it is a bug, and
+      the usual causes are a missing conjugate transpose on the second feature
+      map or an asymmetric estimation procedure that computes K(x,y) and K(y,x)
+      differently.
+
+      Repairs, in order of preference:
+
+      1. Enforce symmetry first. Replace K with (K + K^T)/2. Often you have
+         estimated only the upper triangle, in which case this is free, but if
+         you estimated both halves independently this alone removes a
+         substantial part of the problem and costs nothing.
+      2. Spectral clipping. Diagonalise, set negative eigenvalues to zero, and
+         reconstruct. This is the projection onto the positive semidefinite cone
+         in Frobenius norm, so it is the minimal change in that norm. It costs
+         an eigendecomposition, O(m^3), which is the same order as training the
+         SVM anyway.
+      3. Diagonal shift. Add epsilon times the identity with epsilon just above
+         the most negative eigenvalue. Cheap and it preserves the off-diagonal
+         structure exactly, but it changes K(x, x) away from 1 and biases the
+         model towards treating every point as slightly more distinct than it
+         is. Equivalent to adding regularisation.
+      4. Use a solver that tolerates indefinite kernels. Some SVM formulations
+         handle this, but the optimisation is no longer convex and the solution
+         loses its guarantees.
+
+      Prefer 1 then 2. Do not simply take absolute values of eigenvalues, which
+      is not a projection onto anything meaningful and can substantially change
+      the model.
+
+      The better fix is upstream: allocate more shots to the entries that matter
+      most, and remove near-duplicate training points, since duplicated points
+      create exactly the near-zero eigenvalues that shot noise pushes negative.
+    followUps:
+      - How would you decide the shot budget from a target on the smallest eigenvalue?
+      - What does spectral clipping do to the learned decision boundary?
+      - Why is taking absolute values of eigenvalues the wrong repair?
+    commonMistakes:
+      - Treating any negative eigenvalue as shot noise without comparing its magnitude against the estimator's standard error.
+      - Taking absolute values of eigenvalues rather than clipping to zero, which is not a projection and changes the model unpredictably.
+      - Repairing the matrix while leaving near-duplicate training points in place, so the problem recurs on every re-estimation.
+    references:
+      - label: Havlicek et al, Supervised learning with quantum enhanced feature spaces
+        url: https://arxiv.org/abs/1804.11326
+      - label: PennyLane demos and tutorials
+        url: https://pennylane.ai/qml/
+
+  - id: iq-125
+    title: Compare quantum kernels against classical kernels honestly
+    kind: coding
+    prompt: |
+      A stakeholder asks whether a quantum kernel will beat an RBF kernel on
+      their tabular dataset. Give them a straight answer, including what would
+      have to be true for the quantum kernel to win.
+    difficulty: medium
+    pattern: Quantum kernels in classical machine learning
+    topics: [benchmarking, classical-baselines, advantage, evaluation]
+    companies: [IBM, Multiverse Computing, Terra Quantum, Xanadu]
+    modelAnswer: |
+      Almost certainly not, and the reasoning is worth more than the answer.
+
+      A quantum kernel is a kernel. It goes into the same SVM as any other
+      kernel, and it wins only if it encodes an inductive bias better matched to
+      the data than the alternatives. There is no general argument that a
+      quantum feature map does that for arbitrary tabular data, and there is a
+      strong argument that it does not: the RBF kernel is universal, meaning it
+      can approximate any continuous decision boundary given enough data, so
+      there is no expressivity gap to exploit.
+
+      What would have to be true for the quantum kernel to win:
+
+      1. The data has structure that the quantum feature map matches and that
+         classical kernels do not. The known constructions with provable
+         separations are built from problems such as discrete logarithm, where
+         the quantum feature map computes something classically hard. Those are
+         constructed examples, not naturally occurring datasets, and saying so
+         is the honest framing.
+      2. The kernel is classically hard to estimate. If the feature map circuit
+         is shallow or has limited entanglement, it can be simulated
+         classically, in which case the quantum kernel is just an unusual
+         classical kernel and the hardware adds nothing but cost.
+      3. The dataset is small enough that the m^2 estimation cost is affordable.
+         At m = 1000 that is 499,500 circuit pairs and roughly 500 million
+         shots at 1000 shots each, which is days of device time. At m = 100 it
+         is 4,950 pairs and 5 million shots, which is hours.
+
+      Conditions 2 and 3 are in tension: the feature maps that are hard to
+      simulate classically are deep and highly entangling, which makes them
+      noisy on hardware and drives the kernel matrix towards the identity, which
+      destroys generalisation.
+
+      What to actually do for the stakeholder: run the classical baselines
+      first, properly. RBF SVM, gradient boosted trees, and a small neural
+      network, all with hyperparameter search and honest cross validation. Then,
+      if there is interest in the quantum method for its own sake, run it on a
+      subsample and compare on the same splits with the same protocol. Report
+      the comparison including the wall clock and monetary cost.
+
+      Be alert to the standard evaluation failure: reporting a quantum kernel
+      result against an untuned classical baseline. A default-parameter RBF SVM
+      is not a baseline, it is a straw man, and results of that kind are why the
+      area has a credibility problem.
+    followUps:
+      - What is the discrete logarithm based construction, and why is it not a practical dataset?
+      - How would you check whether a given feature map is classically simulable?
+      - What evaluation protocol would make a positive result credible?
+    commonMistakes:
+      - Comparing against an untuned classical baseline, which is the most common way these results are inflated.
+      - Assuming a larger Hilbert space implies better learning. Expressivity without matching inductive bias hurts generalisation.
+      - Ignoring that a shallow feature map is classically simulable, so the hardware contributes nothing.
+    references:
+      - label: Havlicek et al, Supervised learning with quantum enhanced feature spaces
+        url: https://arxiv.org/abs/1804.11326
+      - label: Tang, A quantum-inspired classical algorithm for recommendation systems
+        url: https://arxiv.org/abs/1807.04271
+
+  - id: iq-126
+    title: Implement the swap test and compare it to compute-uncompute
+    kind: coding
+    prompt: |
+      Write the swap test for estimating the overlap of two states, compare it
+      against the compute-uncompute method for kernel estimation on qubit
+      count, depth and variance, and say which you would ship.
+    difficulty: medium
+    pattern: Quantum kernels in classical machine learning
+    topics: [swap-test, overlap-estimation, circuit-cost, variance]
+    companies: [IBM, Xanadu, Quantinuum, Classiq]
+    modelAnswer: |
+      The swap test uses an ancilla and a controlled swap. Prepare
+      |phi(x)> on register A and |phi(y)> on register B, put the ancilla in |+>,
+      apply a controlled swap of A and B, apply H to the ancilla, and measure
+      it. The probability of measuring 0 is
+      (1 + |<phi(x)|phi(y)>|^2)/2, so the kernel is 2*P(0) - 1.
+
+      ```python
+      import cirq
+
+      def swap_test(prep_x, prep_y, n):
+          a = cirq.LineQubit(0)
+          A = cirq.LineQubit.range(1, 1 + n)
+          B = cirq.LineQubit.range(1 + n, 1 + 2 * n)
+          return cirq.Circuit(
+              prep_x(A), prep_y(B), cirq.H(a),
+              [cirq.CSWAP(a, A[i], B[i]) for i in range(n)],
+              cirq.H(a), cirq.measure(a, key='r'),
+          )
+      ```
+
+      Compare against compute-uncompute, which applies U(x) then U(y)^dagger on
+      a single register and measures the probability of the all-zero string.
+
+      Qubits. Swap test needs 2n + 1; compute-uncompute needs n. For a
+      four-feature problem that is 9 against 4, which on a small device is the
+      difference between running and not running.
+
+      Depth. Swap test needs n controlled swaps, each of which is three Toffoli
+      equivalents or a native Fredkin if available, so it adds substantial
+      two-qubit depth on top of two feature map circuits. Compute-uncompute is
+      exactly two feature map circuits and nothing else. Compute-uncompute wins
+      decisively here.
+
+      Variance. The swap test estimates P(0) = (1 + K)/2, a binomial proportion
+      whose variance is P(0)(1-P(0))/S. At K = 0.3 that is P(0) = 0.65, variance
+      0.2275/S, and after the factor of 2 in K = 2*P(0) - 1 the variance of the
+      kernel estimate is 0.91/S, giving a standard error of 0.030166 at
+      S = 1000. Compute-uncompute estimates K directly as a binomial
+      proportion, variance K(1-K)/S = 0.21/S, standard error 0.014491 at
+      S = 1000. So compute-uncompute has less than half the standard error for
+      the same shots. I computed these directly.
+
+      Ship compute-uncompute. It uses half the qubits, far less depth, and has
+      lower variance. The swap test earns its place only when you cannot invert
+      the state preparation, for instance when one of the states arrives from a
+      physical process rather than a known circuit, or when you need the overlap
+      of two states that must exist simultaneously.
+
+      One caveat that cuts the other way: compute-uncompute measures the
+      probability of the all-zero string over n qubits, so readout error on any
+      qubit biases it downwards, and the bias grows with n. The swap test
+      measures a single ancilla, so its readout error is n-independent. On a
+      device with poor readout and many qubits that can reverse the ranking, and
+      it is the one argument for the swap test worth taking seriously.
+    followUps:
+      - At what readout error rate and qubit count does the swap test become preferable?
+      - What is the destructive swap test, and how does it compare?
+      - How would you mitigate the all-zero readout bias in compute-uncompute?
+    commonMistakes:
+      - Forgetting the factor of two, reporting P(0) as the kernel rather than 2*P(0) - 1.
+      - Comparing only qubit count and depth, missing that the swap test also has higher variance per shot.
+      - Ignoring that compute-uncompute's all-zero readout is increasingly biased as the qubit count grows.
+    references:
+      - label: Schuld and Killoran, Quantum machine learning in feature Hilbert spaces
+        url: https://arxiv.org/abs/1803.07128
+      - label: PennyLane demos and tutorials
+        url: https://pennylane.ai/qml/
+
+  - id: iq-127
+    title: Handle noise in a quantum kernel on real hardware
+    kind: coding
+    prompt: |
+      Your kernel matrix estimated on hardware has a diagonal that is not 1 and
+      off-diagonals that are uniformly too small. Explain the mechanism and give
+      the corrections, saying which are principled and which are hacks.
+    difficulty: hard
+    pattern: Quantum kernels in classical machine learning
+    topics: [noise, kernel-estimation, mitigation, hardware]
+    companies: [IBM, Q-CTRL, Xanadu, Multiverse Computing]
+    modelAnswer: |
+      The mechanism is decoherence pulling the state towards maximally mixed.
+      The compute-uncompute circuit for K(x, x) should return the all-zero
+      string with probability exactly 1, since U(x)^dagger U(x) is the identity.
+      Any deviation is pure noise, and it gives you a direct, calibration-free
+      measurement of the circuit's error.
+
+      Model the noise as global depolarising with survival probability f: the
+      measured kernel becomes approximately
+
+          K_measured(x, y) = f * K_true(x, y) + (1 - f) / 2^n
+
+      The diagonal gives you f directly, since K_true(x, x) = 1 implies
+      f = (K_measured(x, x) - 2^-n)/(1 - 2^-n). That is why the diagonal being
+      below 1 and the off-diagonals being uniformly suppressed are the same
+      phenomenon: both are the factor f.
+
+      Corrections, principled first:
+
+      1. Diagonal normalisation. Rescale using the measured diagonal:
+         K_hat(x, y) = K_measured(x, y) / sqrt(K_m(x,x) K_m(y,y)). This is
+         principled because the diagonal is known exactly to be 1, so you are
+         using a measured quantity with a known true value to calibrate. It
+         costs m extra circuits, which is negligible against m(m-1)/2.
+      2. Depolarising inversion. Estimate f from the diagonal and invert the
+         model above. This also corrects the additive 2^-n floor, which
+         diagonal normalisation does not. It is principled to exactly the extent
+         that the global depolarising model is accurate, and that model is a
+         reasonable approximation for deep circuits and a poor one for shallow
+         ones.
+      3. Readout error mitigation on the all-zero probability. Since the
+         estimator is the probability of one specific bitstring, readout error
+         biases it, and a calibrated correction is cheap and principled.
+      4. Zero-noise extrapolation applied to the kernel entries. Principled but
+         expensive, at 5x to 19x shots depending on scale factors, and the shot
+         cost is already the binding constraint at m^2 entries.
+
+      The hack to avoid: adding a constant to the off-diagonals or rescaling
+      them to fill [0, 1] so the matrix "looks right". That changes the geometry
+      of the feature space arbitrarily and there is no true value it is
+      recovering.
+
+      One important consequence of the noise model: since noise multiplies all
+      off-diagonals by the same f and adds the same floor, it acts roughly like
+      a change of kernel bandwidth rather than like random corruption. An SVM
+      with a tuned regularisation parameter is surprisingly robust to it, which
+      is why noisy quantum kernel demonstrations often still classify well. That
+      robustness is a property of the classical learner, not evidence that the
+      quantum computation was accurate, and conflating the two is the error to
+      avoid when reading such results.
+    followUps:
+      - How would you validate the global depolarising assumption for your circuits?
+      - What does the additive 2^-n floor do to the kernel matrix at large n?
+      - Why does an SVM tolerate a uniform rescaling of the off-diagonals?
+    commonMistakes:
+      - Rescaling off-diagonals to fill the unit interval, which changes the feature space geometry with no justification.
+      - Ignoring the diagonal, which is a free and exact measurement of the circuit fidelity.
+      - Concluding from good classification accuracy that the kernel was accurately estimated. The learner absorbs uniform suppression.
+    references:
+      - label: Temme, Bravyi and Gambetta, Error mitigation for short-depth quantum circuits
+        url: https://arxiv.org/abs/1612.02058
+      - label: Havlicek et al, Supervised learning with quantum enhanced feature spaces
+        url: https://arxiv.org/abs/1804.11326
+
+  - id: iq-128
+    title: Train the feature map rather than fixing it
+    kind: coding
+    prompt: |
+      Instead of a fixed feature map, make its parameters trainable. Give the
+      objective you would optimise, the gradient method, and say what problems
+      this introduces that the fixed-kernel method does not have.
+    difficulty: hard
+    pattern: Quantum kernels in classical machine learning
+    topics: [kernel-alignment, trainable-kernels, optimisation, overfitting]
+    companies: [IBM, Xanadu, Multiverse Computing, Terra Quantum]
+    modelAnswer: |
+      The standard objective is kernel-target alignment: maximise the
+      normalised inner product between the kernel matrix K(theta) and the ideal
+      kernel yy^T built from the labels,
+
+          A(theta) = <K(theta), yy^T>_F / (||K(theta)||_F ||yy^T||_F)
+
+      This is a scalar in [-1, 1] measuring how well the kernel's similarity
+      structure matches the label structure, and maximising it is a well-posed
+      surrogate for downstream classification accuracy that does not require
+      retraining the SVM at every step.
+
+      Gradients. Each kernel entry is a squared overlap of parameterised
+      circuits, so the parameter-shift rule applies to the feature map
+      parameters, with the usual caveat that a squared overlap needs care: the
+      derivative of |<phi(x,theta)|phi(y,theta)>|^2 involves the overlap itself,
+      so it is estimated from the same compute-uncompute circuits at shifted
+      parameters. The cost is two extra circuit evaluations per parameter per
+      kernel entry, which multiplies the already quadratic m^2 cost by 2P for P
+      parameters. At m = 100 and P = 20 that is 4,950 * 40 = 198,000 additional
+      circuit evaluations per gradient step. This is the dominant practical
+      problem.
+
+      What goes wrong that fixed kernels avoid:
+
+      * Overfitting the kernel to the training labels. Kernel-target alignment
+        is computed from the training labels, so maximising it can drive the
+        kernel towards the ideal training kernel, which is exactly memorisation.
+        The fix is to compute alignment on a held-out split, or to regularise
+        towards a less expressive kernel, and to report test accuracy from a
+        third split that was never used for either.
+      * Barren plateaus. The same phenomenon that afflicts variational circuits
+        applies here: for expressive parameterised feature maps the gradient of
+        the alignment concentrates exponentially in the number of qubits. Shallow
+        maps and local cost functions mitigate this, and the mitigation is the
+        same as for VQE, which is worth pointing out because it shows the
+        problem is structural rather than specific to kernels.
+      * Loss of the convexity guarantee. The whole appeal of kernel methods is
+        that training the SVM is convex given the kernel. Making the kernel
+        trainable puts a non-convex optimisation in front of the convex one, so
+        you inherit local minima, initialisation sensitivity and all the tuning
+        burden that kernel methods were supposed to avoid. You have effectively
+        built a neural network with extra steps.
+
+      The judgement to offer: trainable kernels are a reasonable research
+      direction and a poor engineering default. If you are going to accept a
+      non-convex optimisation over a parameterised quantum circuit, the honest
+      comparison is against a variational quantum classifier trained directly,
+      not against a fixed quantum kernel, because the trainable kernel has given
+      up the property that distinguished it.
+    followUps:
+      - How would you regularise kernel-target alignment to avoid memorisation?
+      - Does the barren plateau argument apply to alignment in the same way as to energy?
+      - What would make you prefer a trainable kernel over a variational classifier?
+    commonMistakes:
+      - Computing kernel-target alignment on the training set and reporting the resulting accuracy on the same set.
+      - Ignoring the multiplicative cost of gradients over an already quadratic number of kernel entries.
+      - Presenting the trainable kernel as retaining the convexity advantage of kernel methods, which it does not.
+    references:
+      - label: Schuld and Killoran, Quantum machine learning in feature Hilbert spaces
+        url: https://arxiv.org/abs/1803.07128
+      - label: McClean et al, Barren plateaus in quantum neural network training landscapes
+        url: https://arxiv.org/abs/1803.11173
+
+  - id: iq-129
+    title: Decide whether a feature map is classically simulable
+    kind: coding
+    prompt: |
+      Given a feature map circuit, how do you determine whether the induced
+      kernel can be computed classically? Walk through the checks, and say what
+      it means for the value of the method if the answer is yes.
+    difficulty: hard
+    pattern: Quantum kernels in classical machine learning
+    topics: [classical-simulation, dequantisation, complexity, evaluation]
+    companies: [IBM, Xanadu, Multiverse Computing, Google Quantum AI]
+    modelAnswer: |
+      Run these checks in order, cheapest first.
+
+      1. Gate set. If the feature map uses only Clifford gates, the kernel is
+         computable in polynomial time by the Gottesman-Knill theorem, using a
+         stabilizer tableau of 2n by 2n+1 bits. Data-dependent rotations are
+         usually non-Clifford, so this rarely fires, but a map built from
+         Hadamards and CZ gates with only a few rotation angles is worth
+         checking. Adding k non-Clifford gates costs a factor exponential in k,
+         so a map with fewer than about 20 T-equivalent gates is still
+         classically tractable.
+      2. Entanglement structure. If the entangling gates form a
+         one-dimensional chain or a tree, the state has bounded bond dimension
+         and a matrix product state representation computes the overlap
+         exactly in polynomial time. An MPS at n = 30 and bond dimension 256
+         needs about 60 MiB against 16 GiB for a dense statevector, so this is
+         not a marginal saving. Full pairwise entanglement over many
+         repetitions is what defeats it.
+      3. Qubit count. Below about 30 qubits, direct statevector simulation
+         computes the kernel exactly. A 20-qubit feature map is 16 MiB per
+         state, so the entire kernel matrix for m = 1000 samples is 1000 state
+         vectors and 499,500 inner products, which is minutes on a laptop
+         against days on hardware.
+      4. Tensor network contraction. Even at larger n, the quantity
+         |<phi(x)|phi(y)>|^2 is a closed tensor network with no open indices,
+         and its contraction cost is governed by treewidth rather than qubit
+         count. A shallow circuit on a planar coupling map contracts cheaply
+         regardless of n.
+
+      What it means if the answer is yes: the quantum hardware contributes
+      nothing. The kernel is a well-defined classical kernel that happens to be
+      described by a circuit, and you should compute it classically, which is
+      faster, exact, free of shot noise and free of device queues. It may still
+      be a good kernel; being classically simulable does not make it a bad
+      inductive bias. But the claim "quantum machine learning" is then only
+      about the inspiration, not about the computation, and an evaluation that
+      does not say so is misleading.
+
+      The uncomfortable corollary: the feature maps that pass all four checks,
+      meaning deep, densely entangling and beyond 30 qubits, are exactly the
+      ones that produce kernel matrices close to the identity and that suffer
+      most from hardware noise. The regime where the quantum computation is
+      necessary and the regime where the method works are not currently the same
+      regime, and stating that plainly is what a senior candidate does.
+    followUps:
+      - How would you estimate the treewidth of a feature map circuit?
+      - What bond dimension would a two-repetition full-entanglement map need at n = 20?
+      - Does classical simulability of the kernel imply classical simulability of the full circuit?
+    commonMistakes:
+      - Equating a large Hilbert space with classical hardness. The relevant question is treewidth and entanglement structure, not dimension.
+      - Running a 20-qubit feature map on hardware when a laptop computes the same kernel exactly in minutes.
+      - Concluding that a classically simulable kernel is worthless. It may be a fine kernel; the claim about quantum advantage is what fails.
+    references:
+      - label: Aaronson and Gottesman, Improved Simulation of Stabilizer Circuits
+        url: https://arxiv.org/abs/quant-ph/0406196
+      - label: Tang, A quantum-inspired classical algorithm for recommendation systems
+        url: https://arxiv.org/abs/1807.04271
+
+  - id: iq-130
+    title: Design the evaluation protocol for a quantum kernel result
+    kind: coding
+    prompt: |
+      You must publish a quantum kernel classification result and want it to
+      survive scrutiny. Specify the full evaluation protocol: splits, baselines,
+      statistics, ablations and what you report.
+    difficulty: hard
+    pattern: Quantum kernels in classical machine learning
+    topics: [evaluation, benchmarking, reproducibility, scientific-method]
+    companies: [IBM, Multiverse Computing, Xanadu, Terra Quantum]
+    modelAnswer: |
+      Design it so the result is falsifiable by a reader with your code.
+
+      Splits. Three-way: train, validation for all hyperparameter selection
+      including the feature map choice and the SVM regularisation, and a test
+      split touched exactly once. Repeat over multiple random splits and report
+      the distribution, not the best. With m in the hundreds, which is the
+      feasible scale, the variance across splits is large enough that a single
+      split proves nothing.
+
+      Baselines, tuned to the same effort as the quantum method. RBF SVM with a
+      grid over bandwidth and regularisation; gradient boosted trees; a small
+      multilayer perceptron; and, critically, the classically computed version
+      of the same quantum kernel. That last one is the ablation that matters
+      most: if the exactly simulated kernel performs the same as the hardware
+      one, the hardware contributed nothing, and if it performs better, the
+      difference is your noise budget.
+
+      Statistics. Report mean and standard deviation across splits, and a
+      paired test across splits rather than an unpaired comparison of means,
+      because the splits are shared. State the number of splits. With m = 100
+      and a test split of 20, a single accuracy figure has a standard error
+      around 0.1, so differences below that are not results.
+
+      Ablations that a reviewer will ask for, so run them first:
+
+      * Feature map depth. Show accuracy against number of repetitions. If it is
+        flat, the entanglement is not doing anything.
+      * Entanglement structure. Compare full pairwise against linear chain
+        against no entanglement. The no-entanglement case is a product feature
+        map and is trivially classical; if it matches, there is no story.
+      * Shot count. Show accuracy against shots per entry. If accuracy is flat
+        from 100 to 10,000 shots, the classifier is absorbing the noise and the
+        kernel precision is not what drives the result.
+      * Kernel matrix diagnostics. Report the eigenvalue spectrum and the
+        distribution of off-diagonal entries. A spectrum concentrated near the
+        identity is evidence the feature map is too expressive for the data.
+
+      What to report, numerically. Circuit counts and shots: m(m-1)/2 pairs,
+      which is 4,950 at m = 100, times shots per entry. Wall clock and device
+      time. The measured kernel diagonal, which for a noiseless computation must
+      be exactly 1 and whose deviation quantifies hardware fidelity. The
+      standard error per entry, which at 1000 shots and a kernel value of 0.3 is
+      0.014491.
+
+      What not to do: report a single accuracy number against a default-
+      parameter classical baseline on one split. That is the pattern that has
+      damaged the credibility of this area, and a protocol that avoids it is
+      most of what makes a result publishable.
+    followUps:
+      - How would you construct the paired statistical test across splits?
+      - What would you conclude if the simulated kernel outperforms the hardware one by a wide margin?
+      - How would you preregister the analysis to avoid selection effects?
+    commonMistakes:
+      - Selecting the feature map on the test split, which invalidates the reported accuracy.
+      - Omitting the classically simulated version of the same kernel, which is the ablation that determines whether the hardware mattered.
+      - Reporting a single split, where the standard error at test-set sizes of tens is larger than any claimed effect.
+    references:
+      - label: Havlicek et al, Supervised learning with quantum enhanced feature spaces
+        url: https://arxiv.org/abs/1804.11326
+      - label: "Tomesh et al, SupermarQ: A Scalable Quantum Benchmark Suite"
+        url: https://arxiv.org/abs/2202.11045

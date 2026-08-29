@@ -1,0 +1,62 @@
+module: t1.m8
+cards:
+  - id: t1.m8.d1
+    front: "Define circuit depth in terms of scheduling."
+    back: "The number of layers under as-soon-as-possible scheduling: each operation goes in the first layer where all the qubits it touches are free."
+    lesson: t1.m8.l1
+  - id: t1.m8.d2
+    front: "A four-qubit GHZ state built as a CNOT ladder has what depth, and built as a tree?"
+    back: "Depth 4 as a ladder and depth 3 as a tree, with four gates and three CNOTs either way. On n qubits the ladder is depth n and the tree is 1 + ceiling of log2 n."
+    lesson: t1.m8.l1
+  - id: t1.m8.d3
+    front: "What does a barrier do to a circuit's semantics and to its depth?"
+    back: "Nothing to the semantics, since it has no matrix. It fences the scheduler, so it can increase the depth and it blocks optimisation across it."
+    lesson: t1.m8.l1
+  - id: t1.m8.d4
+    front: "State the principle of deferred measurement."
+    back: "Any mid-circuit measurement used to classically control later gates can be replaced by a coherent control on the unmeasured qubit, with the measurement moved to the end. The output distribution is unchanged."
+    lesson: t1.m8.l2
+  - id: t1.m8.d5
+    front: "Convert 'measure qubit 0, then apply X to qubit 1 if the bit is 1' into a deferred circuit."
+    back: "A CNOT from qubit 0 to qubit 1, followed by measuring both at the end."
+    lesson: t1.m8.l2
+  - id: t1.m8.d6
+    front: "What does deferring a measurement cost you?"
+    back: "Qubit reuse. The measured qubit must stay coherent to the end of the circuit instead of being freed."
+    lesson: t1.m8.l2
+  - id: t1.m8.d7
+    front: "Why is reset not a unitary operation?"
+    back: "It maps both |0> and |1> to |0>, so it is not invertible. No matrix with two equal columns can be unitary."
+    lesson: t1.m8.l3
+  - id: t1.m8.d8
+    front: "How is reset implemented physically?"
+    back: "As a measurement followed by an X conditioned on the outcome."
+    lesson: t1.m8.l3
+  - id: t1.m8.d9
+    front: "In the RedQuant IR, how are the classical bits of a condition ordered?"
+    back: "Least significant first. bits [0, 1] with value 3 means c0 = 1 and c1 = 1, while value 1 means c0 = 1 and c1 = 0."
+    lesson: t1.m8.l4
+  - id: t1.m8.d10
+    front: "What is the difference between a control and a condition in the IR?"
+    back: "A control reads a qubit that may be in superposition and entangles with it. A condition reads a classical bit that already has a value."
+    lesson: t1.m8.l4
+  - id: t1.m8.d11
+    front: "In a circuit with feed-forward, which resource dominates the runtime?"
+    back: "The number of classical round trips, not the gate count. Two round trips in series cost more than fifty gates in parallel."
+    lesson: t1.m8.l4
+  - id: t1.m8.d12
+    front: "What does it mean for a finite gate set to be approximately universal?"
+    back: "Its finite products form a dense subset of the unitary group, so any unitary can be approximated to any epsilon."
+    lesson: t1.m8.l5
+  - id: t1.m8.d13
+    front: "Give two independent reasons why the Clifford group is not universal."
+    back: "It is finite for fixed n, so it cannot be dense; and by Gottesman-Knill, Clifford circuits are classically simulable in polynomial time."
+    lesson: t1.m8.l5
+  - id: t1.m8.d14
+    front: "State the Solovay-Kitaev gate-count bound."
+    back: "O of log to the c of 1/epsilon gates, with Nielsen and Chuang stating c approximately 2. Constructive algorithms achieve an exponent nearer 4."
+    lesson: t1.m8.l6
+  - id: t1.m8.d15
+    front: "On the c = 2 reading, what does improving accuracy from 1e-3 to 1e-6 cost in sequence length?"
+    back: "A factor of four, because log2(1/epsilon) doubles from 9.966 to 19.932 and the length grows as its square."
+    lesson: t1.m8.l6

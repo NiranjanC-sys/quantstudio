@@ -1460,7 +1460,7 @@ export const T1: TrackSeed = {
               ),
               val(
                 'hid-readout-symmetric',
-                'Raw counts 900 to 100 with e0 = e1 = 0.05 correct to probabilities [1.0, 0.0]',
+                'Raw counts 950 to 50 with e0 = e1 = 0.05 correct to probabilities [1.0, 0.0]',
                 'readout_symmetric',
                 [1, 0],
                 { tolerance: 1e-9, hidden: true },
